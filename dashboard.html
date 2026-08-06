@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flow Suite — Dashboard</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+<style>
+:root {
+  --bg: #0f1117; --bg2: #1a1d27; --bg3: #22263a; --bg4: #2a2f47;
+  --border: rgba(255,255,255,0.07); --text: #f0f2f8; --text2: #8b92b3; --text3: #545878;
+  --blue: #4f8ef7; --blue-dim: rgba(79,142,247,0.15);
+  --green: #3ecf8e; --green-dim: rgba(62,207,142,0.13);
+  --amber: #f5a623; --amber-dim: rgba(245,166,35,0.13);
+  --red: #f25c5c; --red-dim: rgba(242,92,92,0.13);
+  --purple: #a78bfa; --purple-dim: rgba(167,139,250,0.13);
+  --teal: #2dd4bf;
+  --radius: 12px; --radius-sm: 8px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+
+.top-bar{display:flex;align-items:center;justify-content:space-between;padding:.9rem 1.5rem;background:var(--bg2);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;flex-wrap:wrap;gap:10px}
+.top-bar-brand{display:flex;align-items:center;gap:10px}
+.top-bar-brand .icon-wrap{width:34px;height:34px;border-radius:var(--radius-sm);background:linear-gradient(135deg,#4f8ef7,#a78bfa);display:flex;align-items:center;justify-content:center;font-size:18px;color:#fff;flex-shrink:0}
+.top-bar-brand h1{font-size:15px;font-weight:600;color:var(--text)}
+.top-bar-brand span{font-size:11px;color:var(--text2);margin-top:1px;display:block}
+.top-bar-right{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--text2)}
+.btn{padding:7px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg3);color:var(--text);font-size:12px;cursor:pointer;font-weight:500}
+.btn:hover{border-color:var(--blue)}
+
+.nav-bar{display:flex;align-items:center;gap:6px;padding:.6rem 1.5rem;background:var(--bg2);border-bottom:1px solid var(--border);font-size:12px;flex-wrap:wrap}
+.nav-crumb{color:var(--text2);cursor:pointer;padding:3px 8px;border-radius:6px;transition:all .12s}
+.nav-crumb:hover{background:var(--bg3);color:var(--text)}
+.nav-crumb.active{color:var(--blue);font-weight:500}
+.nav-sep{color:var(--text3)}
+
+.toolbar{display:flex;align-items:center;gap:8px;padding:.75rem 1.5rem;background:var(--bg2);border-bottom:1px solid var(--border);flex-wrap:wrap}
+.filter-input{padding:7px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px;width:220px;background:var(--bg3);color:var(--text)}
+.filter-input:focus{outline:none;border-color:var(--blue)}
+.filter-input::placeholder{color:var(--text3)}
+.sort-sel{padding:7px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px;background:var(--bg3);color:var(--text);cursor:pointer}
+.total-badge{margin-left:auto;font-size:12px;color:var(--text2)}
+
+.cap-section{padding:1.5rem;border-bottom:1px solid var(--border)}
+.cap-title{display:flex;align-items:center;gap:10px;margin-bottom:1.25rem}
+.cap-title h2{font-size:15px;font-weight:600;color:var(--text)}
+.cap-title span{font-size:11px;color:var(--text2)}
+.cap-title .badge-pill{font-size:10px;padding:3px 10px;border-radius:20px;background:var(--blue-dim);color:var(--blue);font-weight:600}
+.cap-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:1.5rem}
+.cap-card{border-radius:var(--radius);padding:1rem 1.1rem;border:1px solid var(--border);background:var(--bg2);position:relative;overflow:hidden}
+.cap-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px}
+.cap-card.c-blue::before{background:linear-gradient(90deg,var(--blue),var(--purple))}
+.cap-card.c-amber::before{background:linear-gradient(90deg,var(--amber),#ff6b35)}
+.cap-card.c-red::before{background:linear-gradient(90deg,var(--red),#ff8c42)}
+.cap-card.c-teal::before{background:linear-gradient(90deg,var(--teal),var(--green))}
+.cap-card-label{font-size:11px;color:var(--text2);margin-bottom:8px;display:flex;align-items:center;gap:5px}
+.cap-card-value{font-size:22px;font-weight:700;color:var(--text);margin-bottom:2px}
+.cap-card-sub{font-size:10px;color:var(--text3)}
+.cap-chart-box{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem;margin-bottom:1.25rem}
+.cap-chart-box-title{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text2);margin-bottom:1rem}
+.cap-legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:1rem}
+.cap-leg{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text2)}
+.cap-leg-dot{width:10px;height:10px;border-radius:3px;flex-shrink:0}
+.cap-table-box{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.ctbl{width:100%;border-collapse:collapse;font-size:12px}
+.ctbl thead th{text-align:left;padding:10px 14px;color:var(--text2);font-weight:500;white-space:nowrap;background:var(--bg3);border-bottom:1px solid var(--border)}
+.ctbl thead th.r{text-align:right}
+.ctbl tbody tr{border-bottom:1px solid var(--border);transition:background .1s}
+.ctbl tbody tr:hover{background:var(--bg3)}
+.ctbl tbody td{padding:9px 14px;color:var(--text)}
+.ctbl tbody td.r{text-align:right;font-variant-numeric:tabular-nums}
+.ctbl tfoot td{padding:10px 14px;font-weight:700;border-top:1px solid var(--border);background:var(--bg3);color:var(--text)}
+.ctbl tfoot td.r{text-align:right}
+.bar-row{display:flex;align-items:center;gap:8px}
+.bar-bg{flex:1;height:6px;background:var(--bg4);border-radius:3px;min-width:50px;overflow:hidden}
+.bar-fg{height:100%;border-radius:3px;transition:width .4s}
+.status-badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:10px;font-weight:600}
+.sb-ok{background:var(--green-dim);color:var(--green)}
+.sb-over{background:var(--red-dim);color:var(--red)}
+.sb-info{background:var(--blue-dim);color:var(--blue)}
+.btn-report{display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px;cursor:pointer;font-weight:600;background:var(--bg3);color:var(--text);transition:all .15s}
+.btn-report:hover{border-color:var(--blue);background:var(--bg4)}
+.btn-report.primary{background:var(--blue);color:#fff;border-color:var(--blue)}
+.btn-report.primary:hover{opacity:.88}
+.group-row td{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text2);background:var(--bg3)!important}
+
+.pedidos-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;padding:1.5rem}
+.pedido-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:1.1rem;cursor:pointer;transition:all .18s}
+.pedido-card:hover{border-color:var(--blue);background:var(--bg3);transform:translateY(-2px);box-shadow:0 8px 32px rgba(79,142,247,.15)}
+.pc-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px}
+.pc-num{font-size:17px;font-weight:700;color:var(--text)}
+.pc-tags-count{font-size:11px;color:var(--text3);background:var(--bg3);padding:2px 8px;border-radius:20px}
+.pc-equip{font-size:12px;font-weight:600;color:var(--blue);margin-bottom:8px}
+.pc-equip.no-info{color:var(--text3);font-weight:400}
+.pc-dates{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+.date-chip{font-size:10px;padding:3px 9px;border-radius:20px;font-weight:500;display:inline-flex;align-items:center;gap:4px}
+.dc-prev{background:var(--blue-dim);color:var(--blue)}
+.dc-repr{background:var(--amber-dim);color:var(--amber)}
+.dc-late{background:var(--red-dim);color:var(--red)}
+.pc-obs{font-size:11px;color:var(--text2);background:var(--bg3);border-radius:var(--radius-sm);padding:6px 9px;margin-bottom:10px;border-left:2px solid var(--blue);line-height:1.4}
+.pc-peso{font-size:21px;font-weight:700;color:var(--blue);margin-bottom:1px}
+.pc-peso-sub{font-size:10px;color:var(--text3);margin-bottom:10px}
+.pc-prog-row{margin-bottom:8px}
+.pc-prog-label{display:flex;justify-content:space-between;font-size:10px;color:var(--text2);margin-bottom:4px}
+.pc-prog-bar{height:6px;background:var(--bg4);border-radius:3px;overflow:hidden}
+.pc-prog-fill{height:100%;border-radius:3px}
+.pc-pills{display:flex;gap:5px;flex-wrap:wrap;margin-top:8px}
+.pill{font-size:10px;padding:3px 9px;border-radius:20px;font-weight:600;display:inline-flex;align-items:center;gap:4px}
+.pill-red{background:var(--red-dim);color:var(--red)}
+.pill-green{background:var(--green-dim);color:var(--green)}
+
+.cliente-banner{margin:1.25rem 1.5rem 0;background:linear-gradient(135deg,var(--bg3),var(--bg2));border:1px solid var(--border);border-radius:var(--radius);padding:1.1rem 1.25rem;display:grid;grid-template-columns:1fr auto;gap:16px;align-items:start}
+.cb-equip{font-size:19px;font-weight:700;color:var(--text);margin-bottom:8px}
+.cb-dates{display:flex;gap:8px;flex-wrap:wrap}
+.cb-obs{font-size:12px;color:var(--text2);margin-top:10px;padding:7px 12px;background:var(--bg);border-radius:var(--radius-sm);border-left:3px solid var(--blue);font-style:italic}
+.cb-right{text-align:right}
+.cb-pedido-num{font-size:26px;font-weight:800;color:var(--blue)}
+.cb-tags-count{font-size:11px;color:var(--text3);margin-top:2px}
+
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;padding:1.25rem 1.5rem}
+.metric{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:.85rem 1rem}
+.metric-label{font-size:11px;color:var(--text2);margin-bottom:6px}
+.metric-value{font-size:19px;font-weight:700;color:var(--text)}
+.metric-sub{font-size:10px;color:var(--text3);margin-top:3px}
+
+.prog-wrap{padding:0 1.5rem .75rem}
+.prog-row{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.prog-label{font-size:11px;color:var(--text2);width:100px;flex-shrink:0}
+.prog-bar{flex:1;height:8px;background:var(--bg4);border-radius:4px;overflow:hidden}
+.prog-fill{height:100%;border-radius:4px}
+.prog-pct{font-size:12px;font-weight:700;width:38px;text-align:right;flex-shrink:0}
+
+.section{padding:0 1.5rem 1.25rem}
+.section-title{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text2);margin-bottom:12px}
+.cards-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:1rem;cursor:pointer;transition:all .15s}
+.card:hover{border-color:var(--blue);background:var(--bg3);transform:translateY(-1px)}
+.card-name{font-size:13px;font-weight:600;color:var(--text);margin-bottom:3px}
+.card-sub{font-size:11px;color:var(--text3);margin-bottom:8px}
+.card-ton{font-size:19px;font-weight:700;color:var(--blue)}
+.card-kg{font-size:10px;color:var(--text3);margin-top:1px}
+
+.tbl-wrap{overflow-x:auto}
+.dtbl{width:100%;border-collapse:collapse;font-size:12px}
+.dtbl thead th{text-align:left;padding:8px 12px;color:var(--text2);border-bottom:1px solid var(--border);font-weight:500;white-space:nowrap;background:var(--bg3)}
+.dtbl thead th.r{text-align:right}
+.dtbl tbody tr{border-bottom:1px solid var(--border);transition:background .1s}
+.dtbl tbody tr:hover td{background:var(--bg3)}
+.dtbl tbody td{padding:8px 12px;color:var(--text);vertical-align:middle}
+.dtbl tbody td.r{text-align:right;font-variant-numeric:tabular-nums}
+.dtbl tbody td.muted{color:var(--text2)}
+.pend-badge{display:inline-block;background:var(--red-dim);color:var(--red);font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px}
+
+.empty{text-align:center;padding:4rem 2rem;color:var(--text2);font-size:14px}
+.empty-icon{font-size:48px;display:block;margin-bottom:14px;color:var(--text3)}
+.status-bar{padding:.4rem 1.5rem;font-size:11px;color:var(--text3);border-top:1px solid var(--border);background:var(--bg2);position:sticky;bottom:0}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--bg4);border-radius:3px}
+
+.btn-print{display:flex;align-items:center;gap:6px;padding:7px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px;cursor:pointer;font-weight:500;transition:all .15s}
+.btn-print-pdf{background:var(--red);color:#fff;border-color:var(--red)}
+.btn-print-pdf:hover{opacity:.85}
+.btn-print-imp{background:var(--bg3);color:var(--text)}
+.btn-print-imp:hover{background:var(--bg4);border-color:var(--blue)}
+
+@media print {
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  body { background:#fff !important; color:#111 !important; }
+  .top-bar, .nav-bar, .toolbar, .status-bar, .cap-section { display:none !important; }
+  #mainContent { padding:0 !important; }
+  .pedidos-grid { grid-template-columns: repeat(3, 1fr) !important; gap:8px !important; padding:0 !important; }
+  .pedido-card { border:1px solid #ccc !important; background:#fff !important; color:#111 !important; page-break-inside:avoid; }
+  .pc-num { color:#1a1a2e !important; font-size:14px !important; }
+  .pc-equip { color:#1a4fa0 !important; }
+  .pc-peso { color:#1a4fa0 !important; }
+  .pc-prog-bar { background:#e0e0e0 !important; }
+  #printHeader { display:block !important; }
+  #printFooter { display:block !important; }
+}
+#printHeader { display:none; }
+#printFooter { display:none; }
+</style>
+</head>
+<body>
+
+<div id="printHeader" style="display:none;padding:20px 24px 12px;border-bottom:2px solid #1a4fa0;margin-bottom:16px">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start">
+    <div>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+        <div style="width:32px;height:32px;border-radius:6px;background:linear-gradient(135deg,#1a4fa0,#6d28d9);display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px">🏭</div>
+        <div>
+          <div style="font-size:18px;font-weight:700;color:#1a1a2e">Flow Suite</div>
+          <div style="font-size:11px;color:#666">Dashboard Industrial · Planejamento e Expedição</div>
+        </div>
+      </div>
+      <div style="font-size:20px;font-weight:600;color:#1a4fa0;margin-top:10px">Relatório Geral de Pedidos</div>
+    </div>
+    <div style="text-align:right">
+      <div style="font-size:11px;color:#666">Gerado em</div>
+      <div id="printDate" style="font-size:13px;font-weight:600;color:#1a1a2e"></div>
+    </div>
+  </div>
+  <div id="printMetrics" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:14px"></div>
+</div>
+<div id="printFooter" style="display:none;position:fixed;bottom:0;left:0;right:0;padding:8px 24px;border-top:1px solid #ccc;justify-content:space-between;align-items:center;background:#fff;font-size:10px;color:#666">
+  <span>Flow Suite · Relatório Geral de Pedidos</span>
+  <span id="printDateFooter"></span>
+</div>
+
+<div class="top-bar">
+  <div class="top-bar-brand">
+    <div class="icon-wrap">📊</div>
+    <div><h1>Dashboard</h1><span>Visão gerencial · Lê direto do banco de dados</span></div>
+  </div>
+  <div class="top-bar-right">
+    <span>Logado como <strong id="userNome" style="color:var(--text)">...</strong></span>
+    <div id="sininhoWrap"></div>
+    <button class="btn" onclick="carregarDados()"><i class="ti ti-refresh"></i> Atualizar</button>
+    <button class="btn" onclick="alternarTelaCheia()" title="Tela cheia"><i class="ti ti-maximize" id="iconFullscreen"></i></button>
+    <button class="btn" onclick="window.location.href='index.html'">Início</button>
+    <button class="btn" onclick="logout()">Sair</button>
+  </div>
+</div>
+
+<!-- Botão flutuante de sair da tela cheia -->
+<button id="btnSairFullscreen" onclick="alternarTelaCheia()" style="display:none;position:fixed;top:12px;right:12px;z-index:9999;padding:8px 16px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg3);color:var(--text);font-size:13px;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.4);align-items:center;gap:6px">
+  <i class="ti ti-x" style="font-size:14px"></i> Sair da tela cheia
+</button>
+
+<div class="nav-bar" id="navBar" style="display:none"></div>
+<div id="capacidadeSection"></div>
+<div id="headerArea"></div>
+<div id="mainContent">
+  <div class="empty"><i class="ti ti-loader-2 empty-icon"></i>Carregando dados do banco...</div>
+</div>
+<div class="status-bar" id="statusBar">Carregando...</div>
+
+<script src="js/supabase-client.js"></script>
+<script>
+let AUTH = null;
+let DB = {};              // DB[pedido][tag][produto] = [itens...]
+let PEDIDOS_INFO = {};    // numero_pedido -> row from pedidos
+let CAPACIDADE = {};      // setor -> capacidade_mensal_ton (kg)
+let allPedidos = [];
+let state = { tela: 'geral', pedido: null, tag: null, produto: null };
+const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+let capChart = null;
+
+async function init(){
+  AUTH = await exigirLogin(['gestao', 'admin', 'pcp']);
+  if (!AUTH) return;
+  document.getElementById('userNome').textContent = AUTH.nome;
+  iniciarSininho('sininhoWrap');
+  await carregarDados();
+}
+
+/* Busca todas as linhas de uma tabela, paginando (Supabase limita a 1000
+   linhas por consulta por padrão — sem isso, dados recentes somem em silêncio). */
+async function buscarTudo(tabela, colunas){
+  const PAGE = 1000;
+  let todas = [];
+  let offset = 0;
+  while (true){
+    const { data, error } = await sb.from(tabela).select(colunas).range(offset, offset + PAGE - 1);
+    if (error) return { data: null, error };
+    todas = todas.concat(data);
+    if (data.length < PAGE) break;
+    offset += PAGE;
+  }
+  return { data: todas, error: null };
+}
+
+async function carregarDados(){
+  setStatus('Carregando dados do banco...');
+  const [pedidosRes, itensRes, etapasRes, capRes, romItensRes, romaneiosRes] = await Promise.all([
+    buscarTudo('pedidos', '*'),
+    buscarTudo('itens', '*'),
+    buscarTudo('etapas_avanco', 'item_id, etapa, percentual'),
+    buscarTudo('capacidade_setor', '*'),
+    buscarTudo('romaneio_itens', 'item_id, romaneio_id, quantidade_expedida'),
+    buscarTudo('romaneios', 'id, numero, pedido_id, data_criacao'),
+  ]);
+
+  if (pedidosRes.error || itensRes.error || etapasRes.error || capRes.error || romItensRes.error || romaneiosRes.error){
+    setStatus('Erro ao carregar dados.');
+    document.getElementById('mainContent').innerHTML =
+      `<div class="empty">Erro: ${esc((pedidosRes.error||itensRes.error||etapasRes.error||capRes.error||romItensRes.error||romaneiosRes.error).message)}</div>`;
+    return;
+  }
+
+  PEDIDOS_INFO = {};
+  pedidosRes.data.forEach(p => PEDIDOS_INFO[p.numero_pedido] = p);
+
+  CAPACIDADE = {};
+  capRes.data.forEach(c => CAPACIDADE[c.setor] = Number(c.capacidade_mensal_ton) * 1000);
+
+  const romaneiosPorId = {};
+  romaneiosRes.data.forEach(r => romaneiosPorId[r.id] = r);
+
+  // qtd já expedida por item (piece count), somando todos os romaneios (parciais inclusos),
+  // e o detalhe de em quais romaneios/datas isso aconteceu (para o relatório "Itens Expedidos").
+  const qtdExpedidaPorItem = {};
+  const expedicoesPorItem = {};
+  romItensRes.data.forEach(ri => {
+    qtdExpedidaPorItem[ri.item_id] = (qtdExpedidaPorItem[ri.item_id] || 0) + Number(ri.quantidade_expedida);
+    const rom = romaneiosPorId[ri.romaneio_id];
+    if (!expedicoesPorItem[ri.item_id]) expedicoesPorItem[ri.item_id] = [];
+    expedicoesPorItem[ri.item_id].push({ numero: rom?.numero || null, data: rom?.data_criacao || null, qtd: Number(ri.quantidade_expedida) });
+  });
+
+  // max percentual por item+etapa
+  const maxPorItemEtapa = {};
+  etapasRes.data.forEach(e => {
+    const key = e.item_id + '|' + e.etapa;
+    if (!maxPorItemEtapa[key] || e.percentual > maxPorItemEtapa[key]) maxPorItemEtapa[key] = e.percentual;
+  });
+
+  DB = {};
+  itensRes.data.forEach(it => {
+    const pedidoRow = pedidosRes.data.find(p => p.id === it.pedido_id);
+    if (!pedidoRow) return;
+    const numeroPedido = pedidoRow.numero_pedido;
+    const tag = it.tag || 'SEM TAG';
+    const produto = it.produto;
+
+    let somaEtapas = 0;
+    ETAPAS.forEach(e => { somaEtapas += maxPorItemEtapa[it.id + '|' + e.key] || 0; });
+    const avancoPct = somaEtapas / (ETAPAS.length * 100) * 100; // 0-100
+    const pesoTotal = Number(it.peso_total);
+    const fabricado = pesoTotal * (avancoPct / 100);
+
+    const qtdExpedida = qtdExpedidaPorItem[it.id] || 0;
+    let expedido, pendExp;
+    if (qtdExpedida > 0){
+      // já passou pelo módulo de Expedição novo (suporta expedição parcial) — calcula exato
+      expedido = qtdExpedida * Number(it.peso_unitario);
+      pendExp = Math.max(0, pesoTotal - expedido);
+    } else {
+      // ainda não mexido no sistema novo: usa o status binário + valor histórico da coluna Z
+      expedido = it.status_expedicao === 'expedido' ? pesoTotal : 0;
+      pendExp = it.status_expedicao === 'pendente'
+        ? (it.peso_pendente_historico !== null && it.peso_pendente_historico !== undefined ? Number(it.peso_pendente_historico) : pesoTotal)
+        : 0;
+    }
+
+    const saldo = Math.max(0, Number(it.quantidade) - qtdExpedida);
+    const item = { ...it, pesoTotal, avancoPct, fabricado, expedido, pendExp, qtdExpedida, saldo, expedicoes: expedicoesPorItem[it.id] || [] };
+
+    if (!DB[numeroPedido]) DB[numeroPedido] = {};
+    if (!DB[numeroPedido][tag]) DB[numeroPedido][tag] = {};
+    if (!DB[numeroPedido][tag][produto]) DB[numeroPedido][tag][produto] = [];
+    DB[numeroPedido][tag][produto].push(item);
+  });
+
+  allPedidos = Object.keys(DB).sort();
+  state = { tela: 'geral', pedido: null, tag: null, produto: null };
+  renderCapacidade();
+  renderTela();
+  setStatus(`${itensRes.data.length.toLocaleString('pt-BR')} itens · ${allPedidos.length} pedidos · atualizado às ${new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`);
+}
+
+/* ── HELPERS ── */
+function itensFlat(map){ return Object.values(map).reduce((a, itens) => a.concat(itens), []); }
+function todosItensDoPedido(p){
+  const tags = DB[p] || {};
+  let all = [];
+  Object.values(tags).forEach(setObj => Object.values(setObj).forEach(itens => { all = all.concat(itens); }));
+  return all;
+}
+async function baixarDesenho(desenhoEngenhariaId, btnEl){
+  const textoOriginal = btnEl.textContent;
+  btnEl.textContent = 'Abrindo...'; btnEl.style.pointerEvents = 'none';
+  try {
+    const { data: d, error } = await sb.from('desenhos_engenharia').select('arquivo_path, arquivo_nome').eq('id', desenhoEngenhariaId).single();
+    if (error) throw error;
+    if (!d.arquivo_path){ alert('Esse desenho ainda não tem arquivo enviado.'); return; }
+    const { data: signed, error: errSign } = await sb.storage.from('desenhos').createSignedUrl(d.arquivo_path, 3600, { download: d.arquivo_nome || true });
+    if (errSign) throw errSign;
+    window.open(signed.signedUrl, '_blank');
+  } catch (err) {
+    alert('Não foi possível baixar o desenho: ' + (err.message || err));
+  } finally {
+    btnEl.textContent = textoOriginal; btnEl.style.pointerEvents = '';
+  }
+}
+
+function aplicarFiltroDash(inputId, wrapId){
+  const termo = (document.getElementById(inputId)?.value || '').trim().toLowerCase();
+  document.querySelectorAll(`#${wrapId} tbody tr`).forEach(tr => {
+    const alvo = tr.dataset.search;
+    if (alvo === undefined) return; // linhas separadoras de grupo ficam sempre visíveis
+    tr.style.display = (!termo || alvo.includes(termo)) ? '' : 'none';
+  });
+}
+function fmt_t(kg){ return (kg/1000).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+' t'; }
+function fmt_kg(kg){ return kg.toLocaleString('pt-BR',{maximumFractionDigits:0}); }
+function setStatus(m){ document.getElementById('statusBar').textContent = m; }
+function mHTML(items){
+  return `<div class="metrics">${items.map(m => `<div class="metric"><div class="metric-label">${m.label}</div><div class="metric-value" style="${m.color?'color:'+m.color:''}">${m.val}</div>${m.sub?`<div class="metric-sub">${m.sub}</div>`:''}</div>`).join('')}</div>`;
+}
+function prHTML(pF, pE){
+  return `<div class="prog-wrap">
+    <div class="prog-row"><span class="prog-label"><i class="ti ti-tools"></i> Fabricação</span><div class="prog-bar"><div class="prog-fill" style="width:${pF.toFixed(1)}%;background:linear-gradient(90deg,var(--blue),var(--purple))"></div></div><span class="prog-pct" style="color:var(--blue)">${pF.toFixed(0)}%</span></div>
+    <div class="prog-row"><span class="prog-label"><i class="ti ti-truck"></i> Expedição</span><div class="prog-bar"><div class="prog-fill" style="width:${pE.toFixed(1)}%;background:linear-gradient(90deg,var(--green),var(--teal))"></div></div><span class="prog-pct" style="color:var(--green)">${pE.toFixed(0)}%</span></div>
+  </div>`;
+}
+function resP(p){
+  const tags = DB[p]; let peso=0, fab=0, exp=0, pE=0, nTags=Object.keys(tags).length;
+  Object.values(tags).forEach(t => Object.values(t).forEach(itens => itens.forEach(i => {
+    peso += i.pesoTotal; fab += i.fabricado; exp += i.expedido; pE += i.pendExp;
+  })));
+  return { peso, fab, exp, pendExp: pE, nTags, pctFab: peso>0?Math.min(100,fab/peso*100):0, pctExp: peso>0?Math.min(100,exp/peso*100):0 };
+}
+function getCli(p){ return PEDIDOS_INFO[p] || null; }
+function fmtD(d){ return d ? new Date(d).toLocaleDateString('pt-BR') : null; }
+function isLate(d){ if(!d) return false; const dt=new Date(d); dt.setHours(0,0,0,0); return dt<hoje; }
+
+/* ── SETOR TABLE / CARDS (reaproveitado do dashboard original) ── */
+function setorAgg(items){
+  let cargaProg=0, expedido=0, pendExp=0, somaAvanco=0;
+  items.forEach(it => { cargaProg+=it.pesoTotal; expedido+=it.expedido; pendExp+=it.pendExp; somaAvanco+=it.avancoPct; });
+  return { cargaProg, expedido, pendExp, avanco: items.length ? somaAvanco/items.length : null, n: items.length };
+}
+function setoresDoPedido(pedido){
+  const tags = DB[pedido]||{}; const map={};
+  Object.values(tags).forEach(setObj => Object.entries(setObj).forEach(([setor,itens]) => {
+    if(!map[setor]) map[setor]=[];
+    map[setor]=map[setor].concat(itens);
+  }));
+  return map;
+}
+function setorTableHTML(map, onClickFn){
+  const setores = Object.keys(map).sort();
+  const ft = kg => (kg/1000).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  let totCarga=0, totExp=0, totPend=0;
+  const rows = setores.map(setor => {
+    const a = setorAgg(map[setor]);
+    totCarga+=a.cargaProg; totExp+=a.expedido; totPend+=a.pendExp;
+    const av = a.avanco; const avPct = av!==null ? Math.min(100,Math.max(0,av)) : 0;
+    const barCol = avPct>=100?'var(--green)':(avPct>=50?'var(--amber)':'var(--red)');
+    return `<tr${onClickFn?` style="cursor:pointer" onclick="${onClickFn}('${esc(setor)}')"`:''}>
+      <td><strong style="color:var(--text)">${esc(setor)}</strong></td>
+      <td class="r" style="color:var(--amber)">${ft(a.cargaProg)}</td>
+      <td class="r" style="color:var(--teal)">${ft(a.expedido)}</td>
+      <td class="r" style="color:var(--red)">${ft(a.pendExp)}</td>
+      <td><div class="bar-row"><div class="bar-bg"><div class="bar-fg" style="width:${avPct.toFixed(1)}%;background:${barCol}"></div></div><span style="font-size:10px;width:36px;text-align:right;color:var(--text2)">${av!==null?av.toFixed(0)+'%':'—'}</span></div></td>
+    </tr>`;
+  }).join('');
+  return `<div class="cap-table-box"><div style="overflow-x:auto"><table class="ctbl">
+    <thead><tr><th>Setor</th><th class="r">Carga programada (t)</th><th class="r">Expedido (t)</th><th class="r">Pend. exp. (t)</th><th style="width:150px">Avanço</th></tr></thead>
+    <tbody>${rows}</tbody>
+    <tfoot><tr><td>TOTAL</td><td class="r" style="color:var(--amber)">${ft(totCarga)}</td><td class="r" style="color:var(--teal)">${ft(totExp)}</td><td class="r" style="color:var(--red)">${ft(totPend)}</td><td></td></tr></tfoot>
+  </table></div></div>`;
+}
+
+/* ── CAPACIDADE (geral, todos os pedidos) ── */
+function calcSetores(){
+  const s={};
+  SETORES.forEach(k => s[k]={cargaProg:0,expedido:0,pesoPendExp:0,cap:CAPACIDADE[k]||0});
+  allPedidos.forEach(p => Object.values(DB[p]).forEach(tags => Object.entries(tags).forEach(([prod,itens]) => {
+    const setor = prod.trim().toUpperCase();
+    if(!s[setor]) return;
+    itens.forEach(it => { s[setor].cargaProg+=it.pesoTotal; s[setor].expedido+=it.expedido; s[setor].pesoPendExp+=it.pendExp; });
+  })));
+  SETORES.forEach(k => s[k].cargaLiquida = Math.max(0, s[k].cargaProg - s[k].expedido));
+  return s;
+}
+
+function renderCapacidade(){
+  const s = calcSetores();
+  const ativos = SETORES.filter(k => s[k].cap>0);
+  let totCap=0, totProg=0, totExp=0, totPE=0, totLiquida=0;
+  ativos.forEach(k => { totCap+=s[k].cap; totLiquida+=s[k].cargaLiquida; totProg+=s[k].cargaProg; totExp+=s[k].expedido; totPE+=s[k].pesoPendExp; });
+  const ft = kg => (kg/1000).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+
+  const sec = document.getElementById('capacidadeSection');
+  if (state.tela !== 'geral'){ sec.style.display='none'; return; }
+  sec.style.display='block';
+  sec.innerHTML = `
+  <div class="cap-section">
+    <div class="cap-title">
+      <i class="ti ti-gauge" style="font-size:22px;color:var(--blue)"></i>
+      <div><h2>Capacidade de Produção</h2><span>Visão geral · Todos os pedidos em carteira</span></div>
+      <span class="badge-pill"><i class="ti ti-building-factory-2"></i> ${ativos.length} setores</span>
+    </div>
+    <div class="cap-cards">
+      <div class="cap-card c-blue"><div class="cap-card-label"><i class="ti ti-speedometer"></i> Capacidade total/mês</div><div class="cap-card-value" style="color:var(--blue)">${ft(totCap)} t</div><div class="cap-card-sub">${ativos.length} setores ativos</div></div>
+      <div class="cap-card c-amber"><div class="cap-card-label"><i class="ti ti-clipboard-list"></i> Programado</div><div class="cap-card-value" style="color:var(--amber)">${ft(totProg)} t</div><div class="cap-card-sub">todos os pedidos</div></div>
+      <div class="cap-card c-teal"><div class="cap-card-label"><i class="ti ti-truck"></i> Expedido</div><div class="cap-card-value" style="color:var(--teal)">${ft(totExp)} t</div><div class="cap-card-sub">já saiu da empresa</div></div>
+      <div class="cap-card c-red"><div class="cap-card-label"><i class="ti ti-clock-pause"></i> Total em carteira</div><div class="cap-card-value" style="color:var(--red)">${ft(totPE)} t</div><div class="cap-card-sub">pendente expedição</div></div>
+    </div>
+    <div class="cap-chart-box" style="max-width:100%;overflow:hidden">
+      <div class="cap-chart-box-title">Capacidade × Carga líquida × Expedido × Pend. expedição — por setor (t/mês)</div>
+      <div style="position:relative;width:100%;height:200px"><canvas id="capChart"></canvas></div>
+      <div class="cap-legend">
+        <span class="cap-leg"><span class="cap-leg-dot" style="background:rgba(79,142,247,0.7)"></span>Capacidade mensal</span>
+        <span class="cap-leg"><span class="cap-leg-dot" style="background:rgba(62,207,142,0.85)"></span>Carga líquida — dentro da capacidade</span>
+        <span class="cap-leg"><span class="cap-leg-dot" style="background:rgba(255,30,30,0.95)"></span>Carga líquida — acima da capacidade</span>
+        <span class="cap-leg"><span class="cap-leg-dot" style="background:rgba(45,212,191,0.85)"></span>Expedido</span>
+        <span class="cap-leg"><span class="cap-leg-dot" style="background:rgba(245,166,35,0.85)"></span>Pend. expedição</span>
+      </div>
+    </div>
+    <div class="cap-table-box"><div style="overflow-x:auto"><table class="ctbl">
+      <thead><tr><th>Setor</th><th class="r">Capacidade (t/mês)</th><th class="r">Carga líquida (t)</th><th class="r">Expedido (t)</th><th class="r">Pend. exp. (t)</th><th class="r">Cap. livre (t)</th><th style="width:130px">Ocupação</th><th>Status</th></tr></thead>
+      <tbody>
+        ${ativos.map(k => {
+          const d=s[k]; const livre=Math.max(0,d.cap-d.cargaLiquida); const util=d.cap>0?(d.cargaLiquida/d.cap*100):0;
+          const barCol=util>100?'var(--red)':'var(--green)'; const badge=util>100?'sb-over':'sb-ok'; const badgeTxt=util>100?'Indisponível':'Disponível';
+          return `<tr><td><strong style="color:var(--text)">${k}</strong></td><td class="r" style="color:var(--blue)">${ft(d.cap)}</td><td class="r" style="color:var(--amber)">${ft(d.cargaLiquida)}</td><td class="r" style="color:var(--teal)">${ft(d.expedido)}</td><td class="r" style="color:var(--red)">${ft(d.pesoPendExp)}</td><td class="r" style="color:${livre>0?'var(--green)':'var(--red)'};font-weight:700">${ft(livre)}</td><td><div class="bar-row"><div class="bar-bg"><div class="bar-fg" style="width:${Math.min(100,util).toFixed(1)}%;background:${barCol}"></div></div><span style="font-size:10px;width:36px;text-align:right;color:var(--text2)">${util.toFixed(0)}%</span></div></td><td><span class="status-badge ${badge}">${badgeTxt}</span></td></tr>`;
+        }).join('')}
+      </tbody>
+      <tfoot><tr><td>TOTAL</td><td class="r" style="color:var(--blue)">${ft(totCap)}</td><td class="r" style="color:var(--amber)">${ft(totLiquida)}</td><td class="r" style="color:var(--teal)">${ft(totExp)}</td><td class="r" style="color:var(--red)">${ft(totPE)}</td><td class="r" style="color:var(--green)">${ft(Math.max(0,totCap-totLiquida))}</td><td colspan="2"></td></tr></tfoot>
+    </table></div></div>
+  </div>`;
+
+  if (capChart){ capChart.destroy(); capChart=null; }
+  const ctx = document.getElementById('capChart');
+  if (ctx){
+    Chart.defaults.color='#8b92b3';
+    capChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: ativos,
+        datasets: [
+          { label:'Capacidade mensal', data: ativos.map(k=>+(s[k].cap/1000).toFixed(2)), backgroundColor:'rgba(79,142,247,0.7)', borderRadius:5, borderSkipped:false },
+          { label:'Carga líquida', data: ativos.map(k=>+(s[k].cargaLiquida/1000).toFixed(2)), backgroundColor: ativos.map(k=>s[k].cargaLiquida<=s[k].cap?'rgba(62,207,142,0.85)':'rgba(255,30,30,0.95)'), borderRadius:5, borderSkipped:false },
+          { label:'Expedido', data: ativos.map(k=>+(s[k].expedido/1000).toFixed(2)), backgroundColor:'rgba(45,212,191,0.85)', borderRadius:5, borderSkipped:false },
+          { label:'Pend. expedição', data: ativos.map(k=>+(s[k].pesoPendExp/1000).toFixed(2)), backgroundColor:'rgba(245,166,35,0.85)', borderRadius:5, borderSkipped:false },
+        ]
+      },
+      plugins: [ChartDataLabels],
+      options: {
+        responsive:true, maintainAspectRatio:false,
+        plugins:{
+          legend:{display:false},
+          tooltip:{ backgroundColor:'#22263a', borderColor:'rgba(255,255,255,0.1)', borderWidth:1, callbacks:{label:c=>` ${c.dataset.label}: ${c.parsed.y.toLocaleString('pt-BR',{maximumFractionDigits:2})} t`} },
+          datalabels:{ display: ctx => ctx.dataset.data[ctx.dataIndex] > 0, anchor:'end', align:'end', color:'#e0e4f0', font:{size:9,weight:'600'}, formatter: val => val>0 ? val.toLocaleString('pt-BR',{maximumFractionDigits:1})+'t' : '', padding:{bottom:2}, clip:false }
+        },
+        layout:{padding:{top:20}},
+        scales:{
+          x:{ ticks:{font:{size:11},color:'#8b92b3',maxRotation:0,minRotation:0,autoSkip:false}, grid:{color:'rgba(255,255,255,0.04)'} },
+          y:{ ticks:{callback:v=>v.toLocaleString('pt-BR')+'t',font:{size:11},color:'#8b92b3'}, grid:{color:'rgba(255,255,255,0.06)'} }
+        }
+      }
+    });
+  }
+}
+
+/* ── ROTEADOR ── */
+function renderTela(){
+  const map = { geral: renderGeral, pedido: renderPedido, tag: renderTag, produto: renderProduto, relatorioGeral: renderRelatorioGeral, itensExpedidos: renderItensExpedidos };
+  renderCapacidade();
+  (map[state.tela] || renderGeral)();
+  renderNav();
+}
+function renderNav(){
+  const nb = document.getElementById('navBar');
+  if (state.tela === 'geral'){ nb.style.display='none'; return; }
+  nb.style.display='flex';
+  const cli = getCli(state.pedido);
+  const label = cli && cli.equipamento ? `${state.pedido} — ${cli.equipamento}` : state.pedido;
+  let h = `<span class="nav-crumb" onclick="irGeral()"><i class="ti ti-layout-dashboard"></i> Todos os pedidos</span>`;
+  if (state.pedido) h += `<span class="nav-sep">›</span><span class="nav-crumb ${state.tela==='pedido'?'active':''}" onclick="irPedido()">${esc(label)}</span>`;
+  if (state.tela === 'relatorioGeral') h += `<span class="nav-sep">›</span><span class="nav-crumb active">Relatório Geral</span>`;
+  if (state.tela === 'itensExpedidos') h += `<span class="nav-sep">›</span><span class="nav-crumb active">Itens Expedidos</span>`;
+  if (state.tag) h += `<span class="nav-sep">›</span><span class="nav-crumb ${state.tela==='tag'?'active':''}" onclick="irTag()">${esc(state.tag)}</span>`;
+  if (state.produto) h += `<span class="nav-sep">›</span><span class="nav-crumb active">${esc(state.produto)}</span>`;
+  nb.innerHTML = h;
+}
+function irGeral(){ state={tela:'geral',pedido:null,tag:null,produto:null}; renderTela(); }
+function irPedido(){ state.tela='pedido'; state.tag=null; state.produto=null; renderTela(); }
+function irTag(){ state.tela='tag'; state.produto=null; renderTela(); }
+function abrirPedido(p){ state={tela:'pedido',pedido:p,tag:null,produto:null}; renderTela(); }
+function abrirTag(tag){ state.tela='tag'; state.tag=tag; state.produto=null; renderTela(); }
+function abrirProduto(p){ state.tela='produto'; state.produto=p; renderTela(); }
+function abrirRelatorioGeral(){ state.tela='relatorioGeral'; renderTela(); }
+function abrirItensExpedidos(){ state.tela='itensExpedidos'; renderTela(); }
+
+/* ── GERAL ── */
+function renderGeral(){
+  document.getElementById('headerArea').innerHTML = `
+  <div class="toolbar">
+    <input class="filter-input" id="filterInput" placeholder="🔍 Filtrar pedido ou equipamento..." oninput="filtrarGeral(this.value)">
+    <select class="sort-sel" id="sortSel" onchange="filtrarGeral(document.getElementById('filterInput').value)">
+      <option value="num">Ordenar: Número</option>
+      <option value="peso">Maior peso</option>
+      <option value="fab">% Fabricação</option>
+      <option value="exp">% Expedição</option>
+      <option value="pend">Maior pendência</option>
+    </select>
+    <span class="total-badge" id="totalBadge"></span>
+    <button class="btn-print btn-print-pdf" onclick="gerarPDF()"><i class="ti ti-file-type-pdf"></i> Gerar PDF</button>
+    <button class="btn-print btn-print-imp" onclick="imprimirRelatorio()"><i class="ti ti-printer"></i> Imprimir</button>
+  </div>`;
+  document.getElementById('mainContent').innerHTML = `<div class="pedidos-grid" id="pedidosGrid"></div>`;
+  filtrarGeral('');
+}
+
+function filtrarGeral(q){
+  const sort = document.getElementById('sortSel')?.value || 'num';
+  let lista = allPedidos.filter(p => {
+    if (!q) return true;
+    const ql = q.toLowerCase();
+    const c = getCli(p);
+    return p.toLowerCase().includes(ql) || (c && c.equipamento && c.equipamento.toLowerCase().includes(ql));
+  }).map(p => ({ p, s: resP(p), c: getCli(p) }));
+
+  if (sort==='peso') lista.sort((a,b)=>b.s.peso-a.s.peso);
+  else if (sort==='fab') lista.sort((a,b)=>b.s.pctFab-a.s.pctFab);
+  else if (sort==='exp') lista.sort((a,b)=>b.s.pctExp-a.s.pctExp);
+  else if (sort==='pend') lista.sort((a,b)=>b.s.pendExp-a.s.pendExp);
+  else lista.sort((a,b)=>a.p.localeCompare(b.p));
+
+  document.getElementById('totalBadge').textContent = `${lista.length} pedido${lista.length!==1?'s':''}`;
+  const grid = document.getElementById('pedidosGrid'); if (!grid) return;
+  if (!lista.length){ grid.innerHTML = `<div class="empty">Nenhum pedido encontrado.</div>`; return; }
+
+  grid.innerHTML = lista.map(({p,s,c}) => {
+    const temPendencia = s.pendExp > 0;
+    const late = c && isLate(c.data_reprogramada || c.data_prevista) && temPendencia;
+    return `<div class="pedido-card" style="${late?'border-color:var(--red)':''}" onclick="abrirPedido('${esc(p)}')">
+      <div class="pc-top"><span class="pc-num">${esc(p)}${c&&c.cliente?' · '+esc(c.cliente):''}</span><span class="pc-tags-count">${s.nTags} TAG${s.nTags!==1?'s':''}</span></div>
+      <div class="pc-equip ${c&&c.equipamento?'':'no-info'}">${c&&c.equipamento?esc(c.equipamento):'Sem equipamento cadastrado'}</div>
+      ${c ? (() => {
+        let d = '<div class="pc-dates">';
+        if (c.data_prevista) d += `<span class="date-chip dc-prev">Prev: ${fmtD(c.data_prevista)}</span>`;
+        if (c.data_reprogramada) d += `<span class="date-chip ${(isLate(c.data_reprogramada)&&temPendencia)?'dc-late':'dc-repr'}">Repr: ${fmtD(c.data_reprogramada)}</span>`;
+        return d + '</div>';
+      })() : ''}
+      ${c && c.observacao ? `<div class="pc-obs">${esc(c.observacao)}</div>` : ''}
+      <div class="pc-peso">${fmt_t(s.peso)}</div>
+      <div class="pc-peso-sub">${fmt_kg(s.peso)} kg total</div>
+      <div class="pc-prog-row"><div class="pc-prog-label"><span>Fabricação</span><span style="font-weight:700;color:var(--blue)">${s.pctFab.toFixed(1)}%</span></div><div class="pc-prog-bar"><div class="pc-prog-fill" style="width:${s.pctFab.toFixed(1)}%;background:linear-gradient(90deg,var(--blue),var(--purple))"></div></div></div>
+      <div class="pc-prog-row"><div class="pc-prog-label"><span>Expedição</span><span style="font-weight:700;color:var(--green)">${s.pctExp.toFixed(1)}%</span></div><div class="pc-prog-bar"><div class="pc-prog-fill" style="width:${s.pctExp.toFixed(1)}%;background:linear-gradient(90deg,var(--green),var(--teal))"></div></div></div>
+      <div class="pc-pills">
+        ${late?`<span class="pill pill-red">Atrasada</span>`:''}
+        ${s.pendExp>0?`<span class="pill pill-red">${fmt_t(s.pendExp)} pend.exp</span>`:''}
+        ${s.pendExp===0?`<span class="pill pill-green">Em dia</span>`:''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ── PEDIDO ── */
+function renderPedido(){
+  document.getElementById('headerArea').innerHTML = `<div class="toolbar"><button class="btn" onclick="irGeral()">← Todos os pedidos</button></div>`;
+  const cli = getCli(state.pedido); const tags = DB[state.pedido]; const tk = Object.keys(tags);
+  const s = resP(state.pedido);
+  const maxTP = Math.max(...tk.map(t => itensFlat(tags[t]).reduce((a,i)=>a+i.pesoTotal,0)), 1);
+
+  let h = '';
+  if (cli){
+    const late = isLate(cli.data_reprogramada || cli.data_prevista) && s.pendExp>0;
+    h = `<div class="cliente-banner">
+      <div>
+        <div class="cb-equip">${esc(cli.equipamento || '—')}</div>
+        <div class="cb-dates">
+          ${cli.data_prevista?`<span class="date-chip dc-prev">Prevista: <strong>${fmtD(cli.data_prevista)}</strong></span>`:''}
+          ${cli.data_reprogramada?`<span class="date-chip ${late?'dc-late':'dc-repr'}">Reprogramada: <strong>${fmtD(cli.data_reprogramada)}</strong></span>`:''}
+        </div>
+        ${cli.observacao?`<div class="cb-obs">${esc(cli.observacao)}</div>`:''}
+      </div>
+      <div class="cb-right"><div class="cb-pedido-num">${esc(state.pedido)}${cli.cliente?' · '+esc(cli.cliente):''}</div><div class="cb-tags-count">${tk.length} TAGs</div></div>
+    </div>`;
+  }
+
+  h += mHTML([
+    { label:'Peso total', val: fmt_t(s.peso), sub: fmt_kg(s.peso)+' kg' },
+    { label:'Fabricado', val: fmt_t(s.fab), sub: s.pctFab.toFixed(1)+'%', color:'var(--green)' },
+    { label:'Expedido', val: fmt_t(s.exp), sub: s.pctExp.toFixed(1)+'%', color:'var(--amber)' },
+    { label:'Pend. expedição', val: fmt_t(s.pendExp), sub:'a expedir', color:'var(--red)' },
+    { label:'TAGs', val: tk.length, sub:'no pedido' },
+  ]);
+  h += prHTML(s.pctFab, s.pctExp);
+
+  h += `<div style="display:flex;gap:10px;flex-wrap:wrap;padding:0 1.5rem 1.25rem">
+    <button class="btn-report" onclick="abrirRelatorioGeral()"><i class="ti ti-report"></i> Relatório Geral</button>
+    <button class="btn-report primary" onclick="abrirItensExpedidos()"><i class="ti ti-truck-delivery"></i> Itens Expedidos</button>
+  </div>`;
+
+  const mapaSetores = setoresDoPedido(state.pedido);
+  h += `<div class="section" style="padding-top:1.25rem"><div class="section-title">Setores do pedido — carga programada, expedido, pendente e avanço</div>${setorTableHTML(mapaSetores, null)}</div>`;
+  h += `<div class="section"><div class="section-title">TAGs do pedido — clique para ver os setores</div><div class="cards-grid">`;
+  tk.sort().forEach(tag => {
+    const itensTag = itensFlat(tags[tag]);
+    const tPeso = itensTag.reduce((a,i)=>a+i.pesoTotal,0);
+    const tPE = itensTag.reduce((a,i)=>a+i.pendExp,0);
+    const barW = tPeso>0 ? (tPeso/maxTP*100).toFixed(1) : 0;
+    h += `<div class="card" onclick="abrirTag('${esc(tag)}')">
+      <div class="card-name">${esc(tag)}</div>
+      <div class="card-sub">${Object.keys(tags[tag]).length} setor${Object.keys(tags[tag]).length!==1?'es':''}</div>
+      <div class="card-ton">${fmt_t(tPeso)}</div>
+      <div class="card-kg">${fmt_kg(tPeso)} kg</div>
+      <div style="height:3px;background:var(--bg4);border-radius:2px;margin:9px 0"><div style="height:100%;width:${barW}%;background:var(--blue);border-radius:2px"></div></div>
+      ${tPE>0?`<span class="pill pill-red">${fmt_t(tPE)} pend.</span>`:`<span class="pill pill-green">ok</span>`}
+    </div>`;
+  });
+  h += `</div></div>`;
+  document.getElementById('mainContent').innerHTML = h;
+  setStatus(`${state.pedido}${cli&&cli.equipamento?' — '+cli.equipamento:''} · ${tk.length} TAGs · ${fmt_kg(s.peso)} kg`);
+}
+
+/* ── RELATÓRIO GERAL (todos os itens do pedido — abertos primeiro, expedidos depois) ── */
+function renderRelatorioGeral(){
+  const cli = getCli(state.pedido);
+  document.getElementById('headerArea').innerHTML = `
+  <div class="toolbar">
+    <button class="btn" onclick="irPedido()">← ${esc(state.pedido)}</button>
+    <input class="filter-input" style="flex:1;min-width:260px" id="filtroRelGeral" placeholder="🔍 Filtrar por produto, desenho, desenho cliente, tag, remessa, status ou LE..." oninput="aplicarFiltroDash('filtroRelGeral','relGeralWrap')">
+  </div>`;
+
+  const itens = todosItensDoPedido(state.pedido);
+  const abertos = itens.filter(it => it.status_expedicao !== 'expedido');
+  const expedidos = itens.filter(it => it.status_expedicao === 'expedido');
+
+  const linha = it => {
+    const les = (it.expedicoes || []).map(e => e.numero).filter(Boolean).join(', ') || '—';
+    const chave = `${state.pedido} ${cli?.cliente||''} ${it.produto||''} ${it.desenho||''} ${it.desenho_cliente||''} ${it.tag||''} ${it.remessa||''} ${it.status_expedicao||''} ${les}`.toLowerCase();
+    const statusHtml = it.status_expedicao === 'expedido' ? '<span class="status-badge sb-ok">Expedido</span>'
+      : it.status_expedicao === 'parcial' ? '<span class="status-badge sb-info">Em Aberto (parcial)</span>'
+      : '<span class="status-badge sb-info">Em Aberto</span>';
+    return `<tr data-search="${esc(chave)}">
+      <td>${esc(state.pedido)}</td>
+      <td>${esc(cli?.cliente || '')}</td>
+      <td>${esc(it.produto || '')}</td>
+      <td>${esc(it.desenho || '')}</td>
+      <td>${esc(it.desenho_cliente || '—')}</td>
+      <td>${esc(it.tag || '')}</td>
+      <td>${esc(it.remessa || '—')}</td>
+      <td class="r">${Number(it.quantidade).toLocaleString('pt-BR')}</td>
+      <td class="r">${it.avancoPct.toFixed(0)}%</td>
+      <td class="r">${it.qtdExpedida.toLocaleString('pt-BR')}</td>
+      <td class="r">${it.saldo.toLocaleString('pt-BR')}</td>
+      <td>${statusHtml}</td>
+      <td>${esc(les)}</td>
+      <td>${it.desenho_engenharia_id ? `<span class="btn" onclick="baixarDesenho(${it.desenho_engenharia_id}, this)">📎 Baixar</span>` : '—'}</td>
+    </tr>`;
+  };
+
+  document.getElementById('mainContent').innerHTML = `
+    <div class="section" style="padding-top:1.25rem">
+    <div class="section-title">Relatório Geral — ${esc(state.pedido)}${cli?.cliente ? ' · ' + esc(cli.cliente) : ''}</div>
+    <div id="relGeralWrap" class="tbl-wrap"><table class="dtbl">
+      <thead><tr>
+        <th>Pedido</th><th>Cliente</th><th>Produto</th><th>Desenho MDE</th><th>Desenho Cliente</th><th>TAG</th><th>Remessa</th>
+        <th class="r">Quantidade</th><th class="r">% Fabricado</th><th class="r">Qtd. expedida</th><th class="r">Saldo</th><th>Status</th><th>Romaneio/LE</th><th>Arquivo</th>
+      </tr></thead>
+      <tbody>
+        <tr class="group-row"><td colspan="14">Itens em Aberto (${abertos.length})</td></tr>
+        ${abertos.length ? abertos.map(linha).join('') : `<tr><td colspan="14" class="empty">Nenhum item em aberto.</td></tr>`}
+        <tr class="group-row"><td colspan="14">Itens Expedidos (${expedidos.length})</td></tr>
+        ${expedidos.length ? expedidos.map(linha).join('') : `<tr><td colspan="14" class="empty">Nenhum item expedido ainda.</td></tr>`}
+      </tbody>
+    </table></div>
+    </div>`;
+  setStatus(`Relatório Geral · ${state.pedido} · ${itens.length} itens · ${abertos.length} em aberto · ${expedidos.length} expedidos`);
+}
+
+/* ── ITENS EXPEDIDOS (consolidado de todos os romaneios do pedido) ── */
+function renderItensExpedidos(){
+  const cli = getCli(state.pedido);
+  document.getElementById('headerArea').innerHTML = `
+  <div class="toolbar">
+    <button class="btn" onclick="irPedido()">← ${esc(state.pedido)}</button>
+    <input class="filter-input" style="flex:1;min-width:260px" id="filtroItensExp" placeholder="🔍 Filtrar por romaneio/LE, desenho, desenho cliente, tag, remessa ou produto..." oninput="aplicarFiltroDash('filtroItensExp','itensExpWrap')">
+  </div>`;
+
+  const itens = todosItensDoPedido(state.pedido);
+  let linhas = [];
+  itens.forEach(it => (it.expedicoes || []).forEach(exp => linhas.push({ it, exp })));
+  linhas.sort((a, b) => new Date(a.exp.data || 0) - new Date(b.exp.data || 0));
+
+  const rowsHtml = linhas.map(({ it, exp }) => {
+    const chave = `${state.pedido} ${cli?.cliente||''} ${exp.numero||''} ${it.produto||''} ${it.desenho||''} ${it.desenho_cliente||''} ${it.tag||''} ${it.remessa||''}`.toLowerCase();
+    return `<tr data-search="${esc(chave)}">
+      <td>${esc(state.pedido)}</td>
+      <td>${esc(cli?.cliente || '')}</td>
+      <td><strong>${esc(exp.numero || '—')}</strong></td>
+      <td>${exp.data ? new Date(exp.data).toLocaleDateString('pt-BR') : '—'}</td>
+      <td>${esc(it.desenho || '')}</td>
+      <td>${esc(it.desenho_cliente || '—')}</td>
+      <td>${esc(it.produto || '')}</td>
+      <td>${esc(it.tag || '')}</td>
+      <td>${esc(it.remessa || '—')}</td>
+      <td class="r">${exp.qtd.toLocaleString('pt-BR')}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('mainContent').innerHTML = `
+    <div class="section" style="padding-top:1.25rem">
+    <div class="section-title">Itens Expedidos — ${esc(state.pedido)}${cli?.cliente ? ' · ' + esc(cli.cliente) : ''}</div>
+    <div id="itensExpWrap" class="tbl-wrap"><table class="dtbl">
+      <thead><tr>
+        <th>Pedido</th><th>Cliente</th><th>Romaneio/LE</th><th>Data expedição</th><th>Desenho MDE</th><th>Desenho Cliente</th><th>Produto</th><th>TAG</th><th>Remessa</th><th class="r">Qtd. expedida</th>
+      </tr></thead>
+      <tbody>${rowsHtml || `<tr><td colspan="10" class="empty">Nenhum item expedido ainda para este pedido.</td></tr>`}</tbody>
+    </table></div>
+    </div>`;
+  setStatus(`Itens Expedidos · ${state.pedido} · ${linhas.length} lançamentos de expedição`);
+}
+
+/* ── TAG ── */
+function renderTag(){
+  document.getElementById('headerArea').innerHTML = '';
+  const prods = DB[state.pedido][state.tag];
+  const itensTag = itensFlat(prods);
+  const tP = itensTag.reduce((a,i)=>a+i.pesoTotal,0), tF = itensTag.reduce((a,i)=>a+i.fabricado,0), tE = itensTag.reduce((a,i)=>a+i.expedido,0), tPE = itensTag.reduce((a,i)=>a+i.pendExp,0);
+  const pF = tP>0?Math.min(100,tF/tP*100):0, pE = tP>0?Math.min(100,tE/tP*100):0;
+  let h = mHTML([
+    { label:'Peso total TAG', val: fmt_t(tP), sub: fmt_kg(tP)+' kg' },
+    { label:'Fabricado', val: fmt_t(tF), sub: pF.toFixed(1)+'%', color:'var(--green)' },
+    { label:'Expedido', val: fmt_t(tE), sub: pE.toFixed(1)+'%', color:'var(--amber)' },
+    { label:'Pend. expedição', val: fmt_t(tPE), sub:'a expedir', color:'var(--red)' },
+    { label:'Setores', val: Object.keys(prods).length, sub:'clique para detalhar' },
+  ]);
+  h += prHTML(pF, pE);
+  h += `<div class="section"><div class="section-title">Setores da TAG ${esc(state.tag)}</div>${setorTableHTML(prods, 'abrirProduto')}</div>`;
+  document.getElementById('mainContent').innerHTML = h;
+  setStatus(`${state.pedido} › ${state.tag} · ${Object.keys(prods).length} setores`);
+}
+
+/* ── PRODUTO/SETOR ── */
+function renderProduto(){
+  document.getElementById('headerArea').innerHTML = '';
+  const itens = DB[state.pedido][state.tag][state.produto];
+  const tP = itens.reduce((a,i)=>a+i.pesoTotal,0), tF = itens.reduce((a,i)=>a+i.fabricado,0), tE = itens.reduce((a,i)=>a+i.expedido,0), tPE = itens.reduce((a,i)=>a+i.pendExp,0);
+  const pF = tP>0?Math.min(100,tF/tP*100):0, pE = tP>0?Math.min(100,tE/tP*100):0;
+  const ip = itens.filter(it => it.pendExp>0);
+  let h = mHTML([
+    { label:'Carga programada', val: fmt_t(tP), sub: fmt_kg(tP)+' kg' },
+    { label:'Fabricado', val: fmt_t(tF), sub: pF.toFixed(1)+'%', color:'var(--green)' },
+    { label:'Expedido', val: fmt_t(tE), sub: pE.toFixed(1)+'%', color:'var(--amber)' },
+    { label:'Pend. expedição', val: fmt_t(tPE), sub: ip.length+' desenhos', color:'var(--red)' },
+    { label:'Itens', val: itens.length, sub:'neste setor' },
+  ]);
+  h += prHTML(pF, pE);
+  h += `<div class="section"><div class="section-title">Todos os itens — Setor ${esc(state.produto)}</div>
+  <div class="tbl-wrap"><table class="dtbl">
+    <thead><tr><th>Cód. MDE</th><th>Desenho MDE</th><th>Desenho Cliente</th><th>Descrição</th><th class="r">Qtde</th><th class="r">Peso unit.</th><th class="r">Peso total</th><th class="r">Avanço</th><th>Status</th></tr></thead>
+    <tbody>${itens.map(it => `<tr>
+      <td class="muted">${it.codigo_mde}</td>
+      <td style="font-weight:${it.pendExp>0?'700':'400'}">${esc(it.desenho)}</td>
+      <td class="muted">${esc(it.desenho_cliente || '—')}</td>
+      <td class="muted">${esc(it.descricao)}</td>
+      <td class="r">${Number(it.quantidade).toLocaleString('pt-BR')}</td>
+      <td class="r">${Number(it.peso_unitario).toLocaleString('pt-BR',{maximumFractionDigits:2})}</td>
+      <td class="r">${it.pesoTotal.toLocaleString('pt-BR',{maximumFractionDigits:1})}</td>
+      <td class="r" style="color:var(--blue)">${it.avancoPct.toFixed(0)}%</td>
+      <td>${{expedido:'<span style="color:var(--green)">Expedido</span>',parcial:'<span style="color:var(--amber)">Parcial</span>',pendente:'<span class="pend-badge">Pendente</span>'}[it.status_expedicao] || it.status_expedicao}</td>
+    </tr>`).join('')}</tbody>
+  </table></div></div>`;
+  document.getElementById('mainContent').innerHTML = h;
+  setStatus(`${state.pedido} › ${state.tag} › Setor ${state.produto} · ${itens.length} itens`);
+}
+
+/* ── PDF / IMPRESSÃO ── */
+function prepararImpressao(){
+  const agora = new Date();
+  const dtStr = agora.toLocaleDateString('pt-BR') + ' às ' + agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  document.getElementById('printDate').textContent = dtStr;
+  document.getElementById('printDateFooter').textContent = dtStr;
+
+  let gP=0, gF=0, gE=0, gPE=0;
+  allPedidos.forEach(p => { const s=resP(p); gP+=s.peso; gF+=s.fab; gE+=s.exp; gPE+=s.pendExp; });
+  const pF = gP>0?Math.min(100,gF/gP*100):0, pE = gP>0?Math.min(100,gE/gP*100):0;
+
+  document.getElementById('printMetrics').innerHTML = [
+    { label:'Total de Pedidos', val:allPedidos.length, sub:'em carteira', color:'#1a4fa0' },
+    { label:'Peso Total', val:fmt_t(gP), sub:fmt_kg(gP)+' kg', color:'#1a1a2e' },
+    { label:'Fabricação', val:pF.toFixed(1)+'%', sub:fmt_t(gF)+' fabricado', color:'#166534' },
+    { label:'Expedição', val:pE.toFixed(1)+'%', sub:fmt_t(gE)+' expedido', color:'#92400e' },
+  ].map(m => `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;border-top:3px solid ${m.color}">
+    <div style="font-size:10px;color:#666;margin-bottom:4px">${m.label}</div>
+    <div style="font-size:18px;font-weight:700;color:${m.color}">${m.val}</div>
+    <div style="font-size:10px;color:#888;margin-top:2px">${m.sub}</div>
+  </div>`).join('');
+
+  document.getElementById('printHeader').style.display='block';
+  document.getElementById('printFooter').style.display='flex';
+}
+function restaurarTela(){
+  document.getElementById('printHeader').style.display='none';
+  document.getElementById('printFooter').style.display='none';
+}
+function gerarPDF(){ prepararImpressao(); setTimeout(()=>{ window.print(); setTimeout(restaurarTela,1000); },300); }
+function imprimirRelatorio(){ prepararImpressao(); setTimeout(()=>{ window.print(); setTimeout(restaurarTela,1000); },300); }
+
+/* ── TELA CHEIA ── */
+function alternarTelaCheia(){
+  if (!document.fullscreenElement){
+    document.documentElement.requestFullscreen().catch(err => console.log('Erro ao entrar em tela cheia:', err.message));
+  } else {
+    document.exitFullscreen();
+  }
+}
+document.addEventListener('fullscreenchange', () => {
+  const btnSair = document.getElementById('btnSairFullscreen');
+  const iconBtn = document.getElementById('iconFullscreen');
+  if (document.fullscreenElement){
+    if (btnSair) btnSair.style.display = 'flex';
+    if (iconBtn) iconBtn.className = 'ti ti-minimize';
+  } else {
+    if (btnSair) btnSair.style.display = 'none';
+    if (iconBtn) iconBtn.className = 'ti ti-maximize';
+  }
+});
+
+init().catch(err => {
+  document.getElementById('mainContent').innerHTML = `<div class="empty">Erro ao iniciar a página: ${esc(err.message||err)}</div>`;
+  console.error('Erro no init():', err);
+});
+</script>
+</body>
+</html>

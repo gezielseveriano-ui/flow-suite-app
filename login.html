@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flow Suite — Login</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{
+  --bg:#0f1117; --bg2:#1a1d27; --bg3:#22263a; --bg4:#2a2f47;
+  --border:rgba(255,255,255,0.07); --text:#f0f2f8; --text2:#8b92b3; --text3:#545878;
+  --blue:#149c76; --red:#f25c5c; --red-dim:rgba(242,92,92,0.13);
+  --radius:12px; --radius-sm:8px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--text);
+  min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;
+}
+.card{
+  width:100%;max-width:360px;background:var(--bg2);border:1px solid var(--border);
+  border-radius:var(--radius);padding:2rem 1.75rem;
+}
+.brand{display:flex;align-items:center;gap:10px;margin-bottom:1.75rem}
+.brand .icon-wrap{
+  width:38px;height:38px;border-radius:var(--radius-sm);
+  background:var(--blue);
+  display:flex;align-items:center;justify-content:center;font-size:19px;color:#fff;
+}
+.brand h1{font-size:16px;font-weight:700}
+.brand span{font-size:11px;color:var(--text2);display:block;margin-top:1px}
+label{font-size:12px;color:var(--text2);display:block;margin-bottom:6px;margin-top:14px}
+input{
+  width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);
+  background:var(--bg3);color:var(--text);font-size:14px;
+}
+input:focus{outline:none;border-color:var(--blue)}
+button{
+  width:100%;margin-top:22px;padding:11px;border:none;border-radius:var(--radius-sm);
+  background:var(--blue);color:#fff;font-size:14px;font-weight:600;cursor:pointer;
+  transition:opacity .15s;
+}
+button:hover{background:#0e7c5c}
+button:disabled{opacity:.6;cursor:default}
+.msg{
+  margin-top:14px;padding:9px 12px;border-radius:var(--radius-sm);font-size:12px;
+  background:var(--red-dim);color:var(--red);display:none;
+}
+.msg.show{display:block}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="brand">
+    <div class="icon-wrap">🏭</div>
+    <div>
+      <h1>Flow Suite</h1>
+      <span>Planejamento e Controle da Produção</span>
+    </div>
+  </div>
+  <form id="loginForm">
+    <label for="email">E-mail</label>
+    <input id="email" type="email" required autocomplete="username">
+    <label for="senha">Senha</label>
+    <input id="senha" type="password" required autocomplete="current-password">
+    <button type="submit" id="btnEntrar">Entrar</button>
+    <div class="msg" id="msg"></div>
+  </form>
+</div>
+
+<script src="js/supabase-client.js"></script>
+<script>
+const params = new URLSearchParams(window.location.search);
+const msgEl = document.getElementById('msg');
+if (params.get('erro') === 'perfil_invalido') {
+  msgEl.textContent = 'Seu usuário não tem um perfil válido ou está inativo. Fale com o administrador.';
+  msgEl.classList.add('show');
+}
+
+document.getElementById('loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('btnEntrar');
+  btn.disabled = true; btn.textContent = 'Entrando...';
+  msgEl.classList.remove('show');
+
+  const email = document.getElementById('email').value.trim();
+  const senha = document.getElementById('senha').value;
+
+  const { error } = await sb.auth.signInWithPassword({ email, password: senha });
+
+  if (error) {
+    msgEl.textContent = 'E-mail ou senha inválidos.';
+    msgEl.classList.add('show');
+    btn.disabled = false; btn.textContent = 'Entrar';
+    return;
+  }
+
+  window.location.href = 'index.html';
+});
+
+// se já estiver logado, pula direto
+sb.auth.getSession().then(({ data: { session } }) => {
+  if (session) window.location.href = 'index.html';
+});
+</script>
+</body>
+</html>

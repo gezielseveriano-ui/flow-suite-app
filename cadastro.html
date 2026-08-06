@@ -1,0 +1,1141 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flow Suite — Cadastro</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<style>
+:root{
+  --bg:#dcded9; --bg2:#ffffff; --bg3:#eceeea; --bg4:#dfe1dc;
+  --border:#cfd1cc; --text:#16181d; --text2:#5b5f68; --text3:#9a9da5;
+  --blue:#149c76; --blue-dim:#d7f0e6; --blue-hover:#0e7c5c; --header-bg:#059669;
+  --green:#158a52; --green-dim:#e3f5eb; --red:#c0392b; --red-dim:#fbe6e4;
+  --radius:12px; --radius-sm:8px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+
+.top-bar{display:flex;align-items:center;justify-content:space-between;padding:.9rem 1.5rem;background:var(--bg2);border-bottom:1px solid var(--border);flex-wrap:wrap;gap:10px}
+.top-bar-brand{display:flex;align-items:center;gap:10px}
+.top-bar-brand .icon-wrap{width:34px;height:34px;border-radius:var(--radius-sm);background:linear-gradient(135deg,#4f8ef7,#a78bfa);display:flex;align-items:center;justify-content:center;font-size:18px;color:#fff}
+.top-bar-brand h1{font-size:15px;font-weight:600}
+.top-bar-brand span{font-size:11px;color:var(--text2);display:block;margin-top:1px}
+.top-bar-right{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--text2)}
+.btn{padding:7px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg3);color:var(--text);font-size:12px;cursor:pointer;font-weight:500}
+.btn:hover{border-color:var(--blue)}
+.btn-primary{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}
+.btn-primary:hover{background:var(--blue-hover);border-color:var(--blue-hover)}
+
+.nav-bar{display:flex;align-items:center;gap:6px;padding:.6rem 1.5rem;background:var(--bg2);border-bottom:1px solid var(--border);font-size:12px}
+.nav-crumb{color:var(--text2);cursor:pointer;padding:3px 8px;border-radius:6px}
+.nav-crumb:hover{background:var(--bg3);color:var(--text)}
+.nav-crumb.active{color:var(--blue);font-weight:500}
+.top-bar,.nav-bar{background:var(--header-bg);border-bottom:1px solid rgba(255,255,255,.1)}
+.top-bar-brand h1{color:#fff}
+.top-bar-brand span{color:rgba(255,255,255,.75)}
+.top-bar-right{color:rgba(255,255,255,.9)}
+.top-bar .btn{background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.25);color:#fff}
+.top-bar .btn:hover{background:rgba(255,255,255,.24);border-color:rgba(255,255,255,.4)}
+.nav-crumb{color:rgba(255,255,255,.75)}
+.nav-crumb:hover{background:rgba(255,255,255,.14);color:#fff}
+.nav-crumb.active{color:#fff!important;font-weight:700}
+.nav-sep{color:var(--text3)}
+
+.toolbar{display:flex;align-items:center;justify-content:space-between;padding:1.25rem 1.5rem .5rem}
+.toolbar h2{font-size:14px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.05em}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;padding:1rem 1.5rem}
+.pedido-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:1.1rem;cursor:pointer;transition:all .15s;box-shadow:0 1px 3px rgba(16,24,40,.07),0 1px 2px rgba(16,24,40,.04)}
+.pedido-card:hover{border-color:var(--blue);background:var(--blue-dim);box-shadow:0 4px 10px rgba(16,24,40,.09),0 2px 4px rgba(16,24,40,.06);transform:translateY(-2px)}
+.pc-num{font-size:16px;font-weight:700;margin-bottom:4px;color:var(--text)}
+.pc-cliente{font-size:12px;color:var(--blue);font-weight:600;margin-bottom:6px}
+.pc-equip{font-size:12px;color:var(--text2);margin-bottom:8px}
+.pc-dates{font-size:11px;color:var(--text3)}
+
+.empty{text-align:center;padding:3rem 2rem;color:var(--text2);font-size:13px}
+
+.tbl-wrap{padding:0 1.5rem 1.5rem}
+.tbl-inner{overflow-x:auto;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius)}
+.dtbl{width:100%;border-collapse:collapse;font-size:12px}
+.dtbl thead th{text-align:left;padding:8px 12px;color:var(--text2);border-bottom:1px solid var(--border);font-weight:500;white-space:nowrap;background:var(--bg3)}
+.dtbl tbody tr{border-bottom:1px solid var(--border)}
+.dtbl tbody tr:hover td{background:var(--bg3)}
+.dtbl tbody td{padding:8px 12px;vertical-align:middle}
+.dtbl td.r{text-align:right;font-variant-numeric:tabular-nums}
+
+.cliente-banner{margin:1.25rem 1.5rem 0;background:linear-gradient(135deg,var(--bg3),var(--bg2));border:1px solid var(--border);border-radius:var(--radius);padding:1.1rem 1.25rem}
+.cb-equip{font-size:17px;font-weight:700;margin-bottom:6px}
+.cb-obs{font-size:12px;color:var(--text2);margin-top:8px;padding:7px 12px;background:var(--bg);border-radius:var(--radius-sm);border-left:3px solid var(--blue);font-style:italic}
+
+/* modal */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:200;padding:20px}
+.overlay.show{display:flex}
+.modal{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:1.5rem;width:100%;max-width:480px;max-height:90vh;overflow-y:auto}
+.modal h3{font-size:15px;font-weight:600;margin-bottom:1.1rem}
+.field{margin-bottom:12px}
+.field label{font-size:11px;color:var(--text2);display:block;margin-bottom:5px}
+.field input,.field select,.field textarea{width:100%;padding:8px 11px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg3);color:var(--text);font-size:13px;font-family:inherit}
+.field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--blue)}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.peso-preview{font-size:12px;color:var(--text2);margin-top:4px}
+.peso-preview strong{color:var(--green)}
+.modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+.err-box{background:var(--red-dim);color:var(--red);font-size:12px;padding:8px 12px;border-radius:var(--radius-sm);margin-bottom:12px;display:none}
+.classif-badge{display:inline-block;padding:3px 9px;border-radius:20px;font-weight:700;font-size:11px;white-space:nowrap}
+.err-box.show{display:block}
+.msg-box{margin:0 1.5rem;padding:9px 14px;border-radius:var(--radius-sm);font-size:12px;display:none}
+.msg-box.show{display:block}
+.msg-box.ok{background:#d9f2e3;color:var(--green)}
+.msg-box.err{background:var(--red-dim);color:var(--red)}
+.pos-card{border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:10px;overflow:hidden}
+.pos-card-head{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 12px;background:var(--bg3)}
+.pos-card-head b{font-size:13px}
+.pos-card-head .sub{font-size:11px;color:var(--text2)}
+.sub-list{padding:6px 12px}
+.sub-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:6px 0;border-top:1px solid var(--border);font-size:12px}
+.sub-row:first-child{border-top:none}
+.sub-row .desc{color:var(--text2)}
+.sub-row.subido .desc{color:var(--text);font-weight:600}
+.row-actions{display:flex;gap:4px;flex-shrink:0}
+.edit-form{padding:10px 12px;background:var(--bg3)}
+.edit-form .field-row{grid-template-columns:1fr 90px}
+.edit-form .field{margin-bottom:8px}
+.edit-form .field label{font-size:10px}
+.edit-form .field input{padding:6px 8px;font-size:12px}
+.badge-subido{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:20px;font-size:10px;font-weight:700;background:var(--green-dim);color:var(--green)}
+.badge-descida{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:20px;font-size:10px;font-weight:700;background:var(--red-dim);color:var(--red)}
+.pos-card.descida{opacity:.55}
+.pos-card.descida .pos-card-head{background:var(--bg4)}
+.btn-sm{padding:3px 9px;font-size:11px}
+.instr-row{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid var(--border);font-size:13px}
+.instr-row:first-child{border-top:none}
+.instr-row .k{color:var(--text2)}
+.instr-row .v{font-weight:600;text-align:right}
+.instr-obs{margin-top:10px;padding:11px;background:var(--bg3);border-radius:var(--radius-sm);font-size:12px;color:var(--text2);font-style:italic}
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <div class="top-bar-brand">
+    <div class="icon-wrap">📋</div>
+    <div><h1>Cadastro</h1><span>Pedidos e itens de produção</span></div>
+  </div>
+  <div class="top-bar-right">
+    <span>Logado como <strong id="userNome" style="color:#fff">...</strong></span>
+    <div id="sininhoWrap"></div>
+    <button class="btn" onclick="window.location.href='index.html'">Início</button>
+    <button class="btn" onclick="logout()">Sair</button>
+  </div>
+</div>
+
+<div class="nav-bar" id="navBar"></div>
+<div class="msg-box" id="msgBox"></div>
+<div id="content"></div>
+
+<!-- MODAL: instruções do desenho (remessa, tag, quantidade a fabricar,
+     observação) -- vale pro desenho inteiro, não por item/posição, já que
+     todas as posições de um desenho compartilham o mesmo "fabricar Nx". -->
+<div class="overlay" id="ovInstrucoesDesenho">
+  <div class="modal">
+    <h3>📋 Instruções de fabricação</h3>
+    <div id="instrucoesDesenhoBody"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn" onclick="fecharModal('ovInstrucoesDesenho')">Fechar</button>
+      <button type="button" class="btn btn-primary" id="btnBaixarInstrucoesDesenhoPdf">📄 Baixar instruções (PDF)</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: novo pedido -->
+<div class="overlay" id="ovPedido">
+  <div class="modal">
+    <h3>Novo Pedido</h3>
+    <div class="err-box" id="errPedido"></div>
+    <form id="formPedido">
+      <div class="field"><label>Número do pedido *</label><input id="fpNumero" required placeholder="Ex: P-201"></div>
+      <div class="field"><label>Cliente</label><input id="fpCliente"></div>
+      <div class="field"><label>Equipamento</label><input id="fpEquip"></div>
+      <div class="field-row">
+        <div class="field"><label>Data prevista</label><input id="fpDataPrev" type="date"></div>
+        <div class="field"><label>Data reprogramada</label><input id="fpDataRepr" type="date"></div>
+      </div>
+      <div class="field"><label>Observação</label><textarea id="fpObs" rows="3"></textarea></div>
+      <div class="modal-actions">
+        <button type="button" class="btn" onclick="fecharModal('ovPedido')">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Salvar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+
+<!-- MODAL: posições e subprodutos (subir/descer) -->
+<div class="overlay" id="ovPosicoes">
+  <div class="modal" style="max-width:640px">
+    <h3 id="posicoesModalTitulo">Posições do desenho</h3>
+    <div id="posicoesModalBody"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn" onclick="fecharModal('ovPosicoes')">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/supabase-client.js"></script>
+<script>
+let AUTH = null;
+let pedidoAtual = null; // {id, numero_pedido, ...}
+let remessaAtual = null; // {id, numero, pedido_id}
+
+function showMsg(text, ok){
+  const box = document.getElementById('msgBox');
+  box.textContent = text;
+  box.className = 'msg-box show ' + (ok ? 'ok' : 'err');
+}
+function abrirModal(id){ document.getElementById(id).classList.add('show'); }
+function fecharModal(id){
+  document.getElementById(id).classList.remove('show');
+  document.querySelectorAll(`#${id} .err-box`).forEach(e => e.classList.remove('show'));
+}
+
+async function init(){
+  AUTH = await exigirLogin(['pcp', 'admin']);
+  if (!AUTH) return;
+  document.getElementById('userNome').textContent = AUTH.nome;
+  iniciarSininho('sininhoWrap');
+
+  renderListaPedidos();
+}
+
+function renderNav(){
+  const nav = document.getElementById('navBar');
+  if (!pedidoAtual){
+    nav.innerHTML = `<span class="nav-crumb active">Pedidos</span>`;
+    return;
+  }
+  if (!remessaAtual){
+    nav.innerHTML = `
+      <span class="nav-crumb" onclick="voltarLista()">Pedidos</span>
+      <span class="nav-sep">/</span>
+      <span class="nav-crumb active">${esc(pedidoAtual.numero_pedido)}</span>`;
+    return;
+  }
+  nav.innerHTML = `
+    <span class="nav-crumb" onclick="voltarLista()">Pedidos</span>
+    <span class="nav-sep">/</span>
+    <span class="nav-crumb" onclick="voltarRemessas()">${esc(pedidoAtual.numero_pedido)}</span>
+    <span class="nav-sep">/</span>
+    <span class="nav-crumb active">Remessa ${remessaAtual.numero}</span>`;
+}
+
+function voltarLista(){
+  pedidoAtual = null;
+  remessaAtual = null;
+  renderListaPedidos();
+}
+
+function voltarRemessas(){
+  remessaAtual = null;
+  renderRemessasPCP();
+}
+
+async function renderListaPedidos(){
+  renderNav();
+  const content = document.getElementById('content');
+  content.innerHTML = `
+    <div class="toolbar">
+      <h2>Pedidos cadastrados</h2>
+      <button class="btn btn-primary" onclick="abrirModal('ovPedido')">+ Novo Pedido</button>
+    </div>
+    <div class="grid" id="pedidosGrid"><div class="empty">Carregando...</div></div>`;
+
+  const { data, error } = await sb
+    .from('pedidos')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  const grid = document.getElementById('pedidosGrid');
+  if (error){
+    grid.innerHTML = `<div class="empty">Erro ao carregar pedidos: ${esc(error.message)}</div>`;
+    return;
+  }
+  if (!data.length){
+    grid.innerHTML = `<div class="empty">Nenhum pedido cadastrado ainda. Clique em "+ Novo Pedido" para começar.</div>`;
+    return;
+  }
+  grid.innerHTML = data.map(p => `
+    <div class="pedido-card" onclick='abrirPedido(${JSON.stringify(p).replace(/'/g, "&#39;")})'>
+      <div class="pc-num">${esc(p.numero_pedido)}</div>
+      ${p.cliente ? `<div class="pc-cliente">${esc(p.cliente)}</div>` : ''}
+      ${p.equipamento ? `<div class="pc-equip">${esc(p.equipamento)}</div>` : ''}
+      <div class="pc-dates">
+        ${p.data_prevista ? `Previsto: ${new Date(p.data_prevista).toLocaleDateString('pt-BR')}` : ''}
+        ${p.data_reprogramada ? ` · Reprog.: ${new Date(p.data_reprogramada).toLocaleDateString('pt-BR')}` : ''}
+      </div>
+    </div>`).join('');
+}
+
+function abrirPedido(p){
+  pedidoAtual = p;
+  remessaAtual = null;
+  renderRemessasPCP();
+}
+
+async function renderRemessasPCP(){
+  renderNav();
+  const content = document.getElementById('content');
+  content.innerHTML = `
+    <div class="cliente-banner">
+      <div class="cb-equip">${esc(pedidoAtual.equipamento || pedidoAtual.numero_pedido)}</div>
+      ${pedidoAtual.cliente ? `<div style="font-size:12px;color:var(--blue);font-weight:600">${esc(pedidoAtual.cliente)}</div>` : ''}
+    </div>
+    <div class="toolbar"><h2>Remessas</h2></div>
+    <div class="grid" id="remessasGrid"><div class="empty">Carregando...</div></div>`;
+
+  const { data, error } = await sb
+    .from('remessas')
+    .select('*, desenhos_engenharia(id)')
+    .eq('pedido_id', pedidoAtual.id)
+    .not('enviada_email_em', 'is', null)
+    .order('numero', { ascending: false });
+
+  const grid = document.getElementById('remessasGrid');
+  if (error){ grid.innerHTML = `<div class="empty">Erro ao carregar remessas: ${esc(error.message)}</div>`; return; }
+  if (!data.length){ grid.innerHTML = `<div class="empty">Nenhuma remessa disponível ainda — a Engenharia precisa disparar a remessa por email antes dela aparecer aqui pro PCP.</div>`; return; }
+
+  grid.innerHTML = data.map(r => `
+    <div class="pedido-card" onclick='abrirRemessaPCP(${JSON.stringify({ id: r.id, numero: r.numero, pedido_id: r.pedido_id, enviada_email_em: r.enviada_email_em }).replace(/'/g, "&#39;")})'>
+      <div class="pc-num">Remessa ${r.numero}</div>
+      <div class="pc-equip">${(r.desenhos_engenharia || []).length} desenho(s)</div>
+      <div style="font-size:11px;color:var(--green);font-weight:600;margin-top:4px">✓ Enviada por email</div>
+    </div>`).join('');
+}
+
+function abrirRemessaPCP(remessa){
+  remessaAtual = remessa;
+  renderDetalhePedido();
+}
+
+async function renderDetalhePedido(){
+  renderNav();
+  const content = document.getElementById('content');
+  content.innerHTML = `
+    <div class="cliente-banner">
+      <div class="cb-equip">${esc(pedidoAtual.equipamento || pedidoAtual.numero_pedido)} — Remessa ${remessaAtual.numero}</div>
+      ${pedidoAtual.cliente ? `<div style="font-size:12px;color:var(--blue);font-weight:600">${esc(pedidoAtual.cliente)}</div>` : ''}
+      ${pedidoAtual.observacao ? `<div class="cb-obs">${esc(pedidoAtual.observacao)}</div>` : ''}
+    </div>
+    <div class="toolbar"><h2>Desenhos da Engenharia — ler e transcrever pro sistema</h2></div>
+    <div class="tbl-wrap" id="desenhosWrap"><div class="empty">Carregando...</div></div>
+    <div class="toolbar"><h2>Itens gerados (produção)</h2></div>
+    <div class="tbl-wrap" id="itensWrap"><div class="empty">Carregando...</div></div>`;
+
+  await renderDesenhosEngenharia();
+  await renderItensGerados();
+}
+
+async function renderDesenhosEngenharia(){
+  const wrap = document.getElementById('desenhosWrap');
+  const { data, error } = await sb
+    .from('desenhos_engenharia')
+    .select('*, desenhos_engenharia_posicoes(id), tags(nome)')
+    .eq('remessa_id', remessaAtual.id)
+    .order('created_at', { ascending: false });
+
+  if (error){ wrap.innerHTML = `<div class="empty">Erro ao carregar desenhos: ${esc(error.message)}</div>`; return; }
+
+  const envioRemessa = remessaAtual.enviada_email_em ? new Date(remessaAtual.enviada_email_em) : null;
+  const pendentes = envioRemessa ? data.filter(d => d.updated_at && new Date(d.updated_at) > envioRemessa) : [];
+  const liberados = envioRemessa ? data.filter(d => !(d.updated_at && new Date(d.updated_at) > envioRemessa)) : data;
+
+  window.__desenhosRemessa = liberados;
+  const avisoPendentes = pendentes.length
+    ? `<div class="empty" style="background:var(--red-dim);color:var(--red);font-weight:600;text-align:left;padding:12px 16px;margin-bottom:10px;border-radius:8px">
+        ⚠ ${pendentes.length} desenho(s) desta remessa ${pendentes.length > 1 ? 'foram revisados' : 'foi revisado'} pela Engenharia e ainda não ${pendentes.length > 1 ? 'foram reenviados' : 'foi reenviado'} por email.
+        Fica oculto do PCP até a Engenharia disparar o email de revisão.
+      </div>`
+    : '';
+
+  if (!liberados.length){ wrap.innerHTML = avisoPendentes + `<div class="empty">Nenhum desenho da Engenharia nesta remessa ainda.</div>`; return; }
+
+  const linhas = [];
+  for (const d of liberados){
+    let arquivoUrl = null;
+    if (d.arquivo_path){
+      const { data: signed } = await sb.storage.from('desenhos').createSignedUrl(d.arquivo_path, 3600, { download: d.arquivo_nome || true });
+      arquivoUrl = signed?.signedUrl || null;
+    }
+    const badges = [
+      d.is_fabricacao ? '<span class="classif-badge" style="background:var(--green-dim);color:var(--green)">🏭 Fabricação</span>' : '',
+      d.is_conhecimento ? '<span class="classif-badge" style="background:var(--red-dim);color:var(--red)">📄 Conhecimento</span>' : '',
+      d.is_compra ? '<span class="classif-badge" style="background:var(--blue-dim);color:var(--blue)">🛒 Compra</span>' : '',
+    ].filter(Boolean).join(' ') || '<span style="color:var(--text3)">— não classificado —</span>';
+    const nPos = (d.desenhos_engenharia_posicoes || []).length;
+    linhas.push(`<tr>
+      <td>${d.codigo_mde}</td>
+      <td>${esc(d.desenho_mde)}</td>
+      <td>${esc(d.desenho_cliente || '—')}</td>
+      <td style="max-width:220px;white-space:normal">${esc(d.nome_equipamento || '—')}</td>
+      <td>${esc(d.revisao || '—')}</td>
+      <td>${esc(d.tags?.nome || '—')}</td>
+      <td>${esc(d.setor || '—')}</td>
+      <td>${badges}</td>
+      <td>${esc(d.observacao || '—')}</td>
+      <td class="r">${d.quantidade_fabricar || 1}x</td>
+      <td class="r">${d.peso_unitario_desenho != null ? Number(d.peso_unitario_desenho).toLocaleString('pt-BR') : '—'}</td>
+      <td>${nPos ? `<span class="btn" onclick="abrirPosicoesModal(${d.id})">${nPos} posição(ões)</span>` : '<span style="color:var(--text3)">ainda não lido</span>'}</td>
+      <td>${arquivoUrl ? `<a href="${arquivoUrl}" target="_blank" class="btn" style="text-decoration:none;display:inline-block">📎 Baixar</a>` : '<span style="color:var(--text3)">—</span>'}</td>
+      <td style="white-space:nowrap">
+        <span class="btn btn-primary" id="btnLer-${d.id}" onclick="lerDesenho(${d.id})">${nPos ? 'Reler' : 'Ler'}</span>
+        <span class="btn" onclick="abrirInstrucoesDesenho(${d.id})" title="Remessa, tag, quantidade a fabricar e observação da Engenharia">📋 Instruções</span>
+      </td>
+    </tr>`);
+  }
+
+  wrap.innerHTML = avisoPendentes + `
+    <div class="tbl-inner">
+    <table class="dtbl">
+      <thead><tr>
+        <th>Cód. MDE</th><th>Desenho MDE</th><th>Desenho Cliente</th><th>Nome do equipamento</th><th>Rev.</th><th>Tag</th><th>Setor</th>
+        <th>Classificação</th><th>Observação</th><th class="r">Qtd. fabricar</th><th class="r">Peso desenho (kg)</th><th>Posições lidas</th><th>Arquivo</th><th></th>
+      </tr></thead>
+      <tbody>${linhas.join('')}</tbody>
+    </table>
+    </div>`;
+}
+
+async function renderItensGerados(){
+  const wrap = document.getElementById('itensWrap');
+  const idsDesenhos = (window.__desenhosRemessa || []).map(d => d.id);
+  if (!idsDesenhos.length){
+    wrap.innerHTML = `<div class="empty">Nenhum item gerado ainda — leia os desenhos da Engenharia acima (marcados como Fabricação) pra gerar os itens de produção.</div>`;
+    return;
+  }
+
+  const { data, error } = await sb
+    .from('itens')
+    .select('*')
+    .in('desenho_engenharia_id', idsDesenhos)
+    .order('created_at', { ascending: false });
+
+  if (error){ wrap.innerHTML = `<div class="empty">Erro ao carregar itens: ${esc(error.message)}</div>`; return; }
+  if (!data.length){ wrap.innerHTML = `<div class="empty">Nenhum item gerado ainda — leia os desenhos da Engenharia acima (marcados como Fabricação) pra gerar os itens de produção.</div>`; return; }
+
+  wrap.innerHTML = `
+    <div class="tbl-inner">
+    <table class="dtbl">
+      <thead><tr>
+        <th>Cód. MDE</th><th>Desenho MDE</th><th>Desenho Cliente</th><th>Descrição</th><th>TAG</th><th>Remessa</th><th>Setor</th>
+        <th class="r">Peso unit. (kg)</th><th class="r">Qtd.</th><th class="r">Peso total (kg)</th>
+        <th>Status</th>
+      </tr></thead>
+      <tbody>
+        ${data.map(it => `<tr>
+          <td>${it.codigo_mde}</td>
+          <td>${esc(it.desenho)}</td>
+          <td>${esc(it.desenho_cliente)}</td>
+          <td>${esc(it.descricao)}</td>
+          <td>${esc(it.tag)}</td>
+          <td>${esc(it.remessa || '—')}</td>
+          <td>${esc(it.produto)}</td>
+          <td class="r">${Number(it.peso_unitario).toLocaleString('pt-BR')}</td>
+          <td class="r">${Number(it.quantidade).toLocaleString('pt-BR')}</td>
+          <td class="r">${Number(it.peso_total).toLocaleString('pt-BR')}</td>
+          <td>${{pendente:'Pendente',parcial:'Parcial',expedido:'Expedido'}[it.status_expedicao] || it.status_expedicao}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+    </div>`;
+}
+
+// ── LEITURA DO DESENHO (transcrição automática pro sistema) ────────────────
+// Só o PCP faz isso agora — roda no serviço local desta máquina (o mesmo
+// serviço Python usado antes na Engenharia). A Engenharia só sobe o arquivo;
+// quem "lê" (transcreve descrição/quantidade/peso pro sistema) é o PCP.
+const DWG_SERVICE_URL = 'http://localhost:8000';
+
+function parseNum(str){
+  const v = parseFloat(String(str).replace(',', '.'));
+  return Number.isFinite(v) ? v : null;
+}
+
+function extrairLetraPosicao(linha){
+  const m = (linha || '').match(/^\S*-([A-Za-z]{1,2})\b/);
+  return m ? m[1].toUpperCase() : null;
+}
+
+function extrairDescricao(linha, sugestao){
+  const tokens = (linha || '').trim().split(/\s+/);
+  if (tokens.length && /^\S*-[A-Za-z]{1,2}$/.test(tokens[0])) tokens.shift();
+  const valoresNumericos = new Set([sugestao.peso_total, sugestao.peso_unitario, sugestao.qtde].filter(Boolean));
+  while (tokens.length){
+    const ultimo = tokens[tokens.length - 1];
+    if (ultimo === '-' || valoresNumericos.has(ultimo)) tokens.pop();
+    else break;
+  }
+  return tokens.join(' ');
+}
+
+function montarPosicoesDaLeitura(data){
+  const campos = data.campos || {};
+  const lista = data.lista_material || [];
+  const temPosicao = lista.some(row => row.provavel_posicao);
+  if (!temPosicao) return { posicoes: [], campos };
+
+  const posicoes = [];
+  let posAtual = null;
+  let contadorLetra = 0;
+  lista.forEach(row => {
+    const sug = row.sugestao || {};
+    const descricao = row.descricao ?? extrairDescricao(row.linha, sug);
+    if (row.provavel_posicao){
+      const letra = extrairLetraPosicao(sug.item || row.linha) || String.fromCharCode(65 + contadorLetra);
+      contadorLetra++;
+      posAtual = {
+        posicao: letra,
+        descricao: descricao || null,
+        quantidade: parseNum(sug.qtde),
+        peso_unitario: parseNum(sug.peso_unitario),
+        peso_total: parseNum(sug.peso_total),
+        subprodutos: [],
+      };
+      posicoes.push(posAtual);
+    } else if (posAtual && (descricao.trim() || sug.qtde || sug.peso_total)){
+      posAtual.subprodutos.push({
+        item: sug.item || null,
+        descricao: descricao.trim() || null,
+        material: sug.material || null,
+        quantidade: parseNum(sug.qtde),
+        peso_unitario: parseNum(sug.peso_unitario),
+        peso_total: parseNum(sug.peso_total),
+      });
+    }
+  });
+  return { posicoes, campos };
+}
+
+async function lerDesenho(desenhoId){
+  const btn = document.getElementById(`btnLer-${desenhoId}`);
+  const textoOriginal = btn.textContent;
+  btn.textContent = 'Lendo...'; btn.style.pointerEvents = 'none';
+
+  try {
+    const { data: d, error: errD } = await sb.from('desenhos_engenharia').select('*').eq('id', desenhoId).single();
+    if (errD) throw errD;
+    if (!d.arquivo_path) throw new Error('Esse desenho ainda não tem arquivo enviado.');
+
+    const { data: blob, error: dlErr } = await sb.storage.from('desenhos').download(d.arquivo_path);
+    if (dlErr) throw new Error(dlErr.message);
+
+    const fd = new FormData();
+    fd.append('file', blob, d.arquivo_nome || 'desenho.dwg');
+    const res = await fetch(`${DWG_SERVICE_URL}/extract`, { method: 'POST', body: fd });
+    if (!res.ok){
+      const t = await res.text().catch(() => '');
+      throw new Error(`serviço respondeu ${res.status}${t ? ': ' + t.slice(0, 200) : ''} — confirme que o serviço local está rodando nesta máquina (uvicorn main:app --port 8000).`);
+    }
+    const data = await res.json();
+    const { posicoes, campos } = montarPosicoesDaLeitura(data);
+
+    const chaveRevisao = Object.keys(campos).find(k => /REVIS/i.test(k));
+    const chaveCliente = Object.keys(campos).find(k => /N[ºo°]/i.test(k) && !/MDE/i.test(k));
+    const updatePayload = {};
+    if (chaveRevisao && !d.revisao) updatePayload.revisao = campos[chaveRevisao];
+    if (chaveCliente && !d.desenho_cliente) updatePayload.desenho_cliente = campos[chaveCliente];
+    if (Object.keys(updatePayload).length){
+      await sb.from('desenhos_engenharia').update(updatePayload).eq('id', desenhoId);
+      Object.assign(d, updatePayload);
+    }
+
+    // antes de apagar, guarda quais subprodutos o PCP tinha "subido" (marcado
+    // pra virar item independente) — senão essa decisão se perde toda vez que
+    // o desenho é relido/revisado. Casa pela posição-mãe (letra) + item/
+    // descrição, já que os ids somem no delete+reinsert abaixo.
+    const chaveSubproduto = (letraPai, item, descricao) => `${letraPai}::${item || ''}::${descricao || ''}`;
+    const { data: subidosAntes } = await sb
+      .from('desenhos_engenharia_subprodutos')
+      .select('item, descricao, desenhos_engenharia_posicoes!inner(posicao, desenho_id)')
+      .eq('desenhos_engenharia_posicoes.desenho_id', desenhoId)
+      .eq('subido', true);
+    const chavesSubidas = new Set(
+      (subidosAntes || []).map(s => chaveSubproduto(s.desenhos_engenharia_posicoes.posicao, s.item, s.descricao))
+    );
+
+    // mesma preservação, agora pra posições inteiras "descidas" (ex: engenharia
+    // mandou fabricar só a posição A por enquanto — B e C ficam fora da
+    // produção até o PCP subir de volta).
+    const { data: descidasAntes } = await sb
+      .from('desenhos_engenharia_posicoes')
+      .select('posicao')
+      .eq('desenho_id', desenhoId)
+      .eq('descida', true);
+    const letrasDescidas = new Set((descidasAntes || []).map(p => p.posicao));
+
+    await sb.from('desenhos_engenharia_posicoes').delete().eq('desenho_id', desenhoId);
+    let posInseridas = [];
+    if (posicoes.length){
+      const { data: posIns, error: errPos } = await sb.from('desenhos_engenharia_posicoes').insert(
+        posicoes.map(({ subprodutos, ...p }) => ({ ...p, desenho_id: desenhoId, descida: letrasDescidas.has(p.posicao) }))
+      ).select();
+      if (errPos) throw errPos;
+      posInseridas = posIns;
+
+      const subInserir = [];
+      posInseridas.forEach((posSalva, i) => {
+        (posicoes[i].subprodutos || []).forEach(s => subInserir.push({
+          ...s,
+          posicao_id: posSalva.id,
+          subido: chavesSubidas.has(chaveSubproduto(posSalva.posicao, s.item, s.descricao)),
+        }));
+      });
+      if (subInserir.length){
+        const { error: errSub } = await sb.from('desenhos_engenharia_subprodutos').insert(subInserir);
+        if (errSub) throw errSub;
+      }
+    }
+
+    let avisoPcp = '';
+    try {
+      avisoPcp = await sincronizarItensPCP(d, posInseridas);
+    } catch (errSync) {
+      avisoPcp = ' (aviso: não consegui sincronizar com o PCP — ' + errSync.message + ')';
+    }
+
+    // conferência cruzada: soma dos pesos dos itens lidos (já multiplicados
+    // pela quantidade a fabricar) deve bater com o peso que a Engenharia
+    // declarou pro desenho inteiro (peso_unitario_desenho x quantidade_fabricar)
+    let avisoPeso = '';
+    if (d.is_fabricacao && d.peso_unitario_desenho != null){
+      const { data: itensDoDesenho } = await sb.from('itens').select('peso_total').eq('desenho_engenharia_id', desenhoId);
+      const somaPesoItens = (itensDoDesenho || []).reduce((acc, it) => acc + Number(it.peso_total || 0), 0);
+      const pesoEsperado = Number(d.peso_unitario_desenho) * Number(d.quantidade_fabricar || 1);
+      const diferenca = Math.abs(somaPesoItens - pesoEsperado);
+      const tolerancia = Math.max(0.5, pesoEsperado * 0.02); // 2% ou 0,5kg, o que for maior
+      if (diferenca > tolerancia){
+        avisoPeso = ` ⚠ PESO NÃO BATE: engenharia declarou ${pesoEsperado.toLocaleString('pt-BR')}kg, soma dos itens lidos deu ${somaPesoItens.toLocaleString('pt-BR')}kg (diferença de ${diferenca.toLocaleString('pt-BR')}kg).`;
+      } else {
+        avisoPeso = ` ✓ peso confere (${somaPesoItens.toLocaleString('pt-BR')}kg).`;
+      }
+    }
+
+    showMsg(`Leitura aplicada — ${posicoes.length} posição(ões) transcrita(s).${avisoPcp}${avisoPeso}`, !avisoPeso.includes('⚠'));
+    await renderDesenhosEngenharia();
+    await renderItensGerados();
+  } catch (err) {
+    showMsg('Erro ao ler o desenho: ' + (err.message || err), false);
+    btn.textContent = textoOriginal; btn.style.pointerEvents = '';
+  }
+}
+
+// ── SUBIR/DESCER SUBPRODUTO ──────────────────────────────────────────────
+// Um subproduto (peça que só compõe uma posição, ex: chapa de desgaste, pino)
+// pode ser "subido" pelo PCP pra virar item de produção independente — com
+// peso e progresso próprios, útil quando essa peça precisa de controle/
+// expedição avulsa. "Descer" desfaz, o peso volta a contar só dentro da
+// posição-mãe. Ver sincronizarItensPCP, que já sabe gerar itens tanto pras
+// posições quanto pros subprodutos marcados como subido.
+let editandoPosicaoId = null;
+let editandoSubprodutoId = null;
+let novaPosicaoAberta = false;
+let novoSubprodutoPosicaoId = null;
+let confirmandoExclusao = null; // { tipo: 'posicao'|'subproduto', id }
+
+function pedirConfirmacaoExclusao(tipo, id){
+  confirmandoExclusao = { tipo, id };
+  renderPosicoesModal(window.__posModalDesenho);
+}
+function cancelarConfirmacaoExclusao(){
+  confirmandoExclusao = null;
+  renderPosicoesModal(window.__posModalDesenho);
+}
+
+// ── INSTRUÇÕES DO DESENHO (remessa, tag, quantidade a fabricar, observação)
+// — vale pro desenho inteiro (todas as posições compartilham o mesmo
+// "fabricar Nx"), diferente do Apontamento onde é por item/posição. Gerado
+// do zero a partir do banco, sem passar pelo conversor de DWG — sem risco
+// de marca d'água da versão gratuita do Aspose.
+function abrirInstrucoesDesenho(desenhoId){
+  const d = (window.__desenhosRemessa || []).find(x => x.id === desenhoId);
+  if (!d) return;
+  const linhas = [
+    ['Pedido', `${pedidoAtual?.numero_pedido || '—'}${pedidoAtual?.cliente ? ' — ' + pedidoAtual.cliente : ''}`],
+    ['Remessa', remessaAtual?.numero || '—'],
+    ['Cód. MDE', d.codigo_mde ?? '—'],
+    ['Desenho MDE', d.desenho_mde || '—'],
+    ['Desenho Cliente', d.desenho_cliente || '—'],
+    ['Equipamento', d.nome_equipamento || '—'],
+    ['Revisão', d.revisao || '—'],
+    ['Tag', d.tags?.nome || '—'],
+    ['Setor', d.setor || '—'],
+    ['Fabricar (conforme desenho)', `${d.quantidade_fabricar || 1}x`],
+    ['Peso do desenho, unitário (kg)', d.peso_unitario_desenho != null ? Number(d.peso_unitario_desenho).toLocaleString('pt-BR') : '—'],
+  ];
+  document.getElementById('instrucoesDesenhoBody').innerHTML =
+    linhas.map(([k, v]) => `<div class="instr-row"><span class="k">${esc(k)}</span><span class="v">${esc(v)}</span></div>`).join('')
+    + `<div class="instr-obs"><strong>Observação da Engenharia:</strong><br>${esc(d.observacao || 'Nenhuma observação.')}</div>`;
+  document.getElementById('btnBaixarInstrucoesDesenhoPdf').onclick = () => baixarInstrucoesDesenhoPDF(d);
+  abrirModal('ovInstrucoesDesenho');
+}
+
+function baixarInstrucoesDesenhoPDF(d){
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  let y = 20;
+
+  doc.setFontSize(16); doc.setFont(undefined, 'bold');
+  doc.text('Instruções de Fabricação', 14, y); y += 12;
+  doc.setFontSize(11); doc.setFont(undefined, 'normal');
+
+  const campos = [
+    ['Pedido', `${pedidoAtual?.numero_pedido || '—'}${pedidoAtual?.cliente ? ' — ' + pedidoAtual.cliente : ''}`],
+    ['Remessa', remessaAtual?.numero || '—'],
+    ['Cód. MDE', String(d.codigo_mde ?? '—')],
+    ['Desenho MDE', d.desenho_mde || '—'],
+    ['Desenho Cliente', d.desenho_cliente || '—'],
+    ['Equipamento', d.nome_equipamento || '—'],
+    ['Revisão', d.revisao || '—'],
+    ['Tag', d.tags?.nome || '—'],
+    ['Setor', d.setor || '—'],
+    ['Fabricar (conforme desenho)', `${d.quantidade_fabricar || 1}x`],
+    ['Peso do desenho, unitário (kg)', d.peso_unitario_desenho != null ? Number(d.peso_unitario_desenho).toLocaleString('pt-BR') : '—'],
+  ];
+  campos.forEach(([k, v]) => {
+    doc.setFont(undefined, 'bold');
+    doc.text(`${k}:`, 14, y);
+    doc.setFont(undefined, 'normal');
+    const linha = doc.splitTextToSize(String(v), 120);
+    doc.text(linha, 80, y);
+    y += 7 * linha.length;
+  });
+
+  y += 4;
+  doc.setFont(undefined, 'bold');
+  doc.text('Observação da Engenharia:', 14, y); y += 7;
+  doc.setFont(undefined, 'normal');
+  const obs = doc.splitTextToSize(d.observacao || 'Nenhuma observação.', 180);
+  doc.text(obs, 14, y); y += 7 * obs.length + 8;
+
+  doc.setFontSize(9); doc.setTextColor(120);
+  doc.text(`Gerado em ${new Date().toLocaleString('pt-BR')}`, 14, y);
+
+  doc.save(`Instrucoes_${(d.desenho_mde || d.codigo_mde || 'desenho').replace(/[^\w.\-]/g, '_')}.pdf`);
+}
+
+async function abrirPosicoesModal(desenhoId){
+  const { data: desenho, error: errD } = await sb.from('desenhos_engenharia').select('*').eq('id', desenhoId).single();
+  if (errD){ showMsg('Erro ao carregar desenho: ' + errD.message, false); return; }
+  document.getElementById('posicoesModalTitulo').textContent = `Posições — ${desenho.desenho_mde}`;
+  document.getElementById('posicoesModalBody').innerHTML = '<div class="empty">Carregando...</div>';
+  editandoPosicaoId = null; editandoSubprodutoId = null; novaPosicaoAberta = false; novoSubprodutoPosicaoId = null; confirmandoExclusao = null;
+  abrirModal('ovPosicoes');
+  await renderPosicoesModal(desenho);
+}
+
+// depois de qualquer alteração manual (editar, excluir, adicionar, subir/
+// descer), recarrega desenho+posições do banco, roda a sincronização com o
+// PCP de novo (pra refletir a correção nos itens de produção) e redesenha.
+async function resyncPosicoesModal(desenhoId, msgPrefixo){
+  const { data: desenho, error: errD } = await sb.from('desenhos_engenharia').select('*').eq('id', desenhoId).single();
+  if (errD){ showMsg('Erro ao recarregar desenho: ' + errD.message, false); return; }
+  const { data: posAtuais, error: errPos } = await sb.from('desenhos_engenharia_posicoes').select('*').eq('desenho_id', desenhoId);
+  if (errPos){ showMsg('Erro ao recarregar posições: ' + errPos.message, false); return; }
+
+  let aviso = '';
+  try {
+    aviso = await sincronizarItensPCP(desenho, posAtuais || []);
+  } catch (errSync) {
+    aviso = ' (aviso: não consegui sincronizar com o PCP — ' + errSync.message + ')';
+  }
+  showMsg(`${msgPrefixo}.${aviso}`, true);
+  await renderPosicoesModal(desenho);
+  await renderItensGerados();
+}
+
+async function renderPosicoesModal(desenho){
+  const { data: posicoes, error } = await sb
+    .from('desenhos_engenharia_posicoes')
+    .select('*, desenhos_engenharia_subprodutos(*)')
+    .eq('desenho_id', desenho.id)
+    .order('posicao');
+  const body = document.getElementById('posicoesModalBody');
+  if (error){ body.innerHTML = `<div class="empty">Erro: ${esc(error.message)}</div>`; return; }
+  window.__posModalDesenho = desenho; // usado pelos onclick de cancelar/reabrir, sem precisar reserializar o desenho
+
+  const formNovaPosicao = novaPosicaoAberta ? `
+    <div class="pos-card">
+      <div class="edit-form">
+        <div class="field-row">
+          <div class="field"><label>Posição (letra)</label><input id="novaPosLetra" placeholder="ex: D" maxlength="2"></div>
+          <div class="field"><label>Qtd.</label><input id="novaPosQtd" type="number" step="0.001" value="1"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Descrição</label><input id="novaPosDesc" placeholder="ex: SUPORTE LATERAL"></div>
+          <div class="field"><label>Peso unitário (kg)</label><input id="novaPosPeso" type="number" step="0.001"></div>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <span class="btn btn-sm" onclick="novaPosicaoAberta=false; renderPosicoesModal(window.__posModalDesenho)">Cancelar</span>
+          <span class="btn btn-sm btn-primary" onclick="salvarNovaPosicao(${desenho.id})">Salvar posição</span>
+        </div>
+      </div>
+    </div>` : `<span class="btn btn-sm" onclick="novaPosicaoAberta=true; renderPosicoesModal(window.__posModalDesenho)">+ Adicionar posição</span>`;
+
+  if (!posicoes.length){
+    body.innerHTML = '<div class="empty">Nenhuma posição lida ainda.</div>' + formNovaPosicao;
+    return;
+  }
+
+  body.innerHTML = posicoes.map(pos => {
+    const subs = (pos.desenhos_engenharia_subprodutos || []);
+    const pesoSubido = subs.filter(s => s.subido).reduce((acc, s) => acc + (Number(s.peso_total) || 0), 0);
+    const pesoRestante = pesoSubido ? Math.max(0, (Number(pos.peso_total) || 0) - pesoSubido) : null;
+
+    const subsHtml = subs.map(s => {
+      if (editandoSubprodutoId === s.id){
+        return `<div class="sub-row edit-form" style="display:block">
+          <div class="field-row">
+            <div class="field"><label>Descrição</label><input id="subEditDesc-${s.id}" value="${esc(s.descricao || '')}"></div>
+            <div class="field"><label>Qtd.</label><input id="subEditQtd-${s.id}" type="number" step="0.001" value="${s.quantidade ?? ''}"></div>
+          </div>
+          <div class="field"><label>Peso unitário (kg)</label><input id="subEditPeso-${s.id}" type="number" step="0.001" value="${s.peso_unitario ?? ''}"></div>
+          <div style="display:flex;gap:8px;justify-content:flex-end">
+            <span class="btn btn-sm" onclick="editandoSubprodutoId=null; renderPosicoesModal(window.__posModalDesenho)">Cancelar</span>
+            <span class="btn btn-sm btn-primary" onclick="salvarEdicaoSubproduto(${desenho.id}, ${s.id})">Salvar</span>
+          </div>
+        </div>`;
+      }
+      return `<div class="sub-row${s.subido ? ' subido' : ''}">
+        <span class="desc">${esc(s.descricao || s.item || '—')} · Qtd. ${s.quantidade ?? '—'}${s.peso_total != null ? ` · ${Number(s.peso_total).toLocaleString('pt-BR')}kg` : ''}${s.subido ? '<span class="badge-subido">ITEM PRÓPRIO</span>' : ''}</span>
+        <span class="row-actions">
+          ${confirmandoExclusao?.tipo === 'subproduto' && confirmandoExclusao?.id === s.id ? `
+            <span style="font-size:11px;color:var(--red);align-self:center">Excluir?</span>
+            <span class="btn btn-sm" onclick="excluirSubproduto(${desenho.id}, ${s.id})">Sim</span>
+            <span class="btn btn-sm" onclick="cancelarConfirmacaoExclusao()">Não</span>
+          ` : `
+            <span class="btn btn-sm" onclick="editandoSubprodutoId=${s.id}; renderPosicoesModal(window.__posModalDesenho)">✏️</span>
+            <span class="btn btn-sm" onclick="pedirConfirmacaoExclusao('subproduto', ${s.id})">🗑️</span>
+            <span class="btn btn-sm" onclick="toggleSubproduto(${desenho.id}, ${s.id}, ${!s.subido})">${s.subido ? '↓ Descer' : '↑ Subir'}</span>
+          `}
+        </span>
+      </div>`;
+    }).join('');
+
+    const formNovoSub = novoSubprodutoPosicaoId === pos.id ? `
+      <div class="sub-row edit-form" style="display:block">
+        <div class="field-row">
+          <div class="field"><label>Descrição</label><input id="novoSubDesc" placeholder="ex: PINO DE FIXAÇÃO"></div>
+          <div class="field"><label>Qtd.</label><input id="novoSubQtd" type="number" step="0.001" value="1"></div>
+        </div>
+        <div class="field"><label>Peso unitário (kg)</label><input id="novoSubPeso" type="number" step="0.001"></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <span class="btn btn-sm" onclick="novoSubprodutoPosicaoId=null; renderPosicoesModal(window.__posModalDesenho)">Cancelar</span>
+          <span class="btn btn-sm btn-primary" onclick="salvarNovoSubproduto(${desenho.id}, ${pos.id})">Salvar peça</span>
+        </div>
+      </div>` : `<div class="sub-row"><span class="btn btn-sm" onclick="novoSubprodutoPosicaoId=${pos.id}; renderPosicoesModal(window.__posModalDesenho)">+ Adicionar peça</span></div>`;
+
+    const cabecalho = editandoPosicaoId === pos.id ? `
+      <div class="pos-card-head edit-form" style="flex-direction:column;align-items:stretch">
+        <div class="field-row">
+          <div class="field"><label>Descrição</label><input id="posEditDesc-${pos.id}" value="${esc(pos.descricao || '')}"></div>
+          <div class="field"><label>Qtd.</label><input id="posEditQtd-${pos.id}" type="number" step="0.001" value="${pos.quantidade ?? ''}"></div>
+        </div>
+        <div class="field"><label>Peso unitário (kg)</label><input id="posEditPeso-${pos.id}" type="number" step="0.001" value="${pos.peso_unitario ?? ''}"></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <span class="btn btn-sm" onclick="editandoPosicaoId=null; renderPosicoesModal(window.__posModalDesenho)">Cancelar</span>
+          <span class="btn btn-sm btn-primary" onclick="salvarEdicaoPosicao(${desenho.id}, ${pos.id})">Salvar</span>
+        </div>
+      </div>` : `
+      <div class="pos-card-head">
+        <div><b>${esc(pos.posicao)} — ${esc(pos.descricao || '—')}</b><div class="sub">Qtd. ${pos.quantidade ?? '—'} · ${pos.peso_total != null ? Number(pos.peso_total).toLocaleString('pt-BR') + 'kg' : '—'}${pesoRestante != null ? ` (restam ${pesoRestante.toLocaleString('pt-BR')}kg na posição — o resto virou item próprio)` : ''}${pos.descida ? '<span class="badge-descida">FORA DE PRODUÇÃO</span>' : ''}</div></div>
+        <span class="row-actions">
+          ${confirmandoExclusao?.tipo === 'posicao' && confirmandoExclusao?.id === pos.id ? `
+            <span style="font-size:11px;color:var(--red);align-self:center">Excluir?</span>
+            <span class="btn btn-sm" onclick="excluirPosicao(${desenho.id}, ${pos.id})">Sim</span>
+            <span class="btn btn-sm" onclick="cancelarConfirmacaoExclusao()">Não</span>
+          ` : `
+            <span class="btn btn-sm" onclick="editandoPosicaoId=${pos.id}; renderPosicoesModal(window.__posModalDesenho)">✏️</span>
+            <span class="btn btn-sm" onclick="pedirConfirmacaoExclusao('posicao', ${pos.id})">🗑️</span>
+            <span class="btn btn-sm" onclick="togglePosicao(${desenho.id}, ${pos.id}, ${pos.descida})">${pos.descida ? '↑ Subir' : '↓ Descer'}</span>
+          `}
+        </span>
+      </div>`;
+
+    return `<div class="pos-card${pos.descida ? ' descida' : ''}">
+      ${cabecalho}
+      <div class="sub-list">${subsHtml}${formNovoSub}</div>
+    </div>`;
+  }).join('') + formNovaPosicao;
+}
+
+function lerNumero(id){
+  const v = document.getElementById(id).value;
+  return v === '' ? null : Number(v);
+}
+
+async function togglePosicao(desenhoId, posicaoId, subir){
+  const { error } = await sb.from('desenhos_engenharia_posicoes').update({ descida: !subir }).eq('id', posicaoId);
+  if (error){ showMsg('Erro ao atualizar: ' + error.message, false); return; }
+  await resyncPosicoesModal(desenhoId, subir ? 'Posição subida' : 'Posição descida');
+}
+
+async function excluirPosicao(desenhoId, posicaoId){
+  confirmandoExclusao = null;
+  const { error } = await sb.from('desenhos_engenharia_posicoes').delete().eq('id', posicaoId);
+  if (error){ showMsg('Erro ao excluir: ' + error.message, false); return; }
+  await resyncPosicoesModal(desenhoId, 'Posição excluída');
+}
+
+async function salvarEdicaoPosicao(desenhoId, posicaoId){
+  const descricao = document.getElementById(`posEditDesc-${posicaoId}`).value.trim() || null;
+  const quantidade = lerNumero(`posEditQtd-${posicaoId}`);
+  const peso_unitario = lerNumero(`posEditPeso-${posicaoId}`);
+  const peso_total = (quantidade != null && peso_unitario != null) ? quantidade * peso_unitario : peso_unitario;
+  const { error } = await sb.from('desenhos_engenharia_posicoes')
+    .update({ descricao, quantidade, peso_unitario, peso_total }).eq('id', posicaoId);
+  if (error){ showMsg('Erro ao salvar: ' + error.message, false); return; }
+  editandoPosicaoId = null;
+  await resyncPosicoesModal(desenhoId, 'Posição atualizada');
+}
+
+async function salvarNovaPosicao(desenhoId){
+  const posicao = document.getElementById('novaPosLetra').value.trim().toUpperCase();
+  if (!posicao){ showMsg('Informe a letra da posição.', false); return; }
+  const descricao = document.getElementById('novaPosDesc').value.trim() || null;
+  const quantidade = lerNumero('novaPosQtd');
+  const peso_unitario = lerNumero('novaPosPeso');
+  const peso_total = (quantidade != null && peso_unitario != null) ? quantidade * peso_unitario : peso_unitario;
+  const { error } = await sb.from('desenhos_engenharia_posicoes')
+    .insert({ desenho_id: desenhoId, posicao, descricao, quantidade, peso_unitario, peso_total });
+  if (error){ showMsg('Erro ao adicionar posição: ' + error.message, false); return; }
+  novaPosicaoAberta = false;
+  await resyncPosicoesModal(desenhoId, 'Posição adicionada');
+}
+
+async function toggleSubproduto(desenhoId, subprodutoId, subir){
+  const { error } = await sb.from('desenhos_engenharia_subprodutos').update({ subido: subir }).eq('id', subprodutoId);
+  if (error){ showMsg('Erro ao atualizar: ' + error.message, false); return; }
+  await resyncPosicoesModal(desenhoId, subir ? 'Subproduto subido' : 'Subproduto descido');
+}
+
+async function excluirSubproduto(desenhoId, subprodutoId){
+  confirmandoExclusao = null;
+  const { error } = await sb.from('desenhos_engenharia_subprodutos').delete().eq('id', subprodutoId);
+  if (error){ showMsg('Erro ao excluir: ' + error.message, false); return; }
+  await resyncPosicoesModal(desenhoId, 'Peça excluída');
+}
+
+async function salvarEdicaoSubproduto(desenhoId, subprodutoId){
+  const descricao = document.getElementById(`subEditDesc-${subprodutoId}`).value.trim() || null;
+  const quantidade = lerNumero(`subEditQtd-${subprodutoId}`);
+  const peso_unitario = lerNumero(`subEditPeso-${subprodutoId}`);
+  const peso_total = (quantidade != null && peso_unitario != null) ? quantidade * peso_unitario : peso_unitario;
+  const { error } = await sb.from('desenhos_engenharia_subprodutos')
+    .update({ descricao, quantidade, peso_unitario, peso_total }).eq('id', subprodutoId);
+  if (error){ showMsg('Erro ao salvar: ' + error.message, false); return; }
+  editandoSubprodutoId = null;
+  await resyncPosicoesModal(desenhoId, 'Peça atualizada');
+}
+
+async function salvarNovoSubproduto(desenhoId, posicaoId){
+  const descricao = document.getElementById('novoSubDesc').value.trim() || null;
+  const quantidade = lerNumero('novoSubQtd');
+  const peso_unitario = lerNumero('novoSubPeso');
+  const peso_total = (quantidade != null && peso_unitario != null) ? quantidade * peso_unitario : peso_unitario;
+  const { error } = await sb.from('desenhos_engenharia_subprodutos')
+    .insert({ posicao_id: posicaoId, descricao, quantidade, peso_unitario, peso_total });
+  if (error){ showMsg('Erro ao adicionar peça: ' + error.message, false); return; }
+  novoSubprodutoPosicaoId = null;
+  await resyncPosicoesModal(desenhoId, 'Peça adicionada');
+}
+
+// ── SINCRONIZAÇÃO ENGENHARIA -> PCP (itens) ───────────────────────────────
+// Mesma lógica usada na Engenharia (ver engenharia.html) — casa cada posição
+// com um item existente pela LETRA da posição, pra preservar progresso já
+// lançado (apontamento/expedição) quando o desenho é relido/revisado.
+async function sincronizarItensPCP(desenho, posicoesAtuais){
+  // posição "descida" (ex: engenharia mandou fabricar só uma parte por vez)
+  // não gera item nenhum pro PCP — nem ela, nem os subprodutos que tiver
+  // subido dentro dela — como se não tivesse sido lançada.
+  posicoesAtuais = posicoesAtuais.filter(p => !p.descida);
+
+  if (!desenho.is_fabricacao){
+    return posicoesAtuais.length ? ' — desenho não marcado como Fabricação, não gerei itens pro PCP.' : '';
+  }
+  if (!desenho.pedido_id){
+    return posicoesAtuais.length ? ' — sem pedido vinculado, não gerei itens pro PCP ainda.' : '';
+  }
+  if (!desenho.setor){
+    return posicoesAtuais.length ? ' — sem setor definido, não gerei itens pro PCP ainda.' : '';
+  }
+
+  let nomeTag = null;
+  if (desenho.tag_id){
+    const { data: tagRow } = await sb.from('tags').select('nome').eq('id', desenho.tag_id).single();
+    nomeTag = tagRow?.nome || null;
+  }
+
+  const { data: itensExistentes, error: errBusca } = await sb
+    .from('itens')
+    .select('id, posicao_engenharia, status_expedicao')
+    .eq('desenho_engenharia_id', desenho.id);
+  if (errBusca) throw errBusca;
+
+  const porPosicao = {};
+  (itensExistentes || []).forEach(it => { if (it.posicao_engenharia) porPosicao[it.posicao_engenharia] = it; });
+
+  // subprodutos "subidos" (ver regra subir/descer) viram posição independente
+  // pro PCP também — com peso e progresso próprios — usando um código
+  // composto (letra-mãe + item) pra não colidir com posições de verdade. Se
+  // um subproduto for "descido" depois, ele some daqui e o item correspondente
+  // é removido/preservado pela mesma lógica de órfãos usada pra posições.
+  //
+  // IMPORTANTE (evitar duplicidade de peso): o peso_total de uma posição já
+  // inclui o peso de TODOS os seus subprodutos (é a soma da lista de material
+  // — ex: "BASE DO CHASSI" 35.6kg = 10.8kg de perfil + 24.8kg de chapa). Se um
+  // subproduto sobe e vira item próprio, o peso dele precisa sair da posição-
+  // mãe, senão ele conta duas vezes no total. `quantidade`/`peso_total` do
+  // subproduto na lista de material já vêm totalizados pro lote inteiro da
+  // posição-mãe (mesma granularidade do peso_total dela), por isso não se
+  // multiplica de novo pela quantidade da posição-mãe aqui.
+  const { data: subsSubidosBruto, error: errSubs } = await sb
+    .from('desenhos_engenharia_subprodutos')
+    .select('posicao_id, item, descricao, quantidade, peso_unitario, peso_total, desenhos_engenharia_posicoes!inner(posicao, quantidade, desenho_id, descida)')
+    .eq('desenhos_engenharia_posicoes.desenho_id', desenho.id)
+    .eq('subido', true);
+  if (errSubs) throw errSubs;
+  // se a posição-mãe está descida (fora de produção por enquanto), o
+  // subproduto subido dela também não vira item — some junto com a mãe.
+  const subsSubidos = (subsSubidosBruto || []).filter(s => !s.desenhos_engenharia_posicoes.descida);
+
+  const pesoSubidoPorPosicaoId = {};
+  (subsSubidos || []).forEach(s => {
+    const total = Number(s.peso_total ?? (s.peso_unitario != null && s.quantidade != null ? s.peso_unitario * s.quantidade : 0)) || 0;
+    pesoSubidoPorPosicaoId[s.posicao_id] = (pesoSubidoPorPosicaoId[s.posicao_id] || 0) + total;
+  });
+  const posicoesAjustadas = posicoesAtuais.map(pos => {
+    const reduzir = pesoSubidoPorPosicaoId[pos.id] || 0;
+    if (!reduzir) return pos;
+    const pesoTotalAjustado = Math.max(0, (Number(pos.peso_total) || 0) - reduzir);
+    const pesoUnitarioAjustado = pos.quantidade ? pesoTotalAjustado / pos.quantidade : pesoTotalAjustado;
+    return { ...pos, peso_unitario: pesoUnitarioAjustado, peso_total: pesoTotalAjustado };
+  });
+
+  const posicoesDeSubprodutos = (subsSubidos || []).map(s => {
+    const pai = s.desenhos_engenharia_posicoes;
+    const pesoUnitario = s.peso_unitario ?? (s.peso_total != null && s.quantidade ? Number(s.peso_total) / Number(s.quantidade) : s.peso_total);
+    return {
+      posicao: `${pai.posicao}.${s.item || 'sp'}`,
+      descricao: s.descricao,
+      quantidade: s.quantidade ?? 1,
+      peso_unitario: pesoUnitario,
+      peso_total: s.peso_total,
+    };
+  });
+  const todasPosicoes = [...posicoesAjustadas, ...posicoesDeSubprodutos];
+
+  const hoje = new Date().toISOString().slice(0, 10);
+  const posicoesVistas = new Set();
+  let criados = 0, atualizados = 0;
+
+  for (const pos of todasPosicoes){
+    posicoesVistas.add(pos.posicao);
+    // multiplica pela "quantidade a fabricar" que a Engenharia informou (ex:
+    // "FABRICAR 3x CONFORME DESENHO" — cada posição da lista de material do
+    // desenho é fabricada 3 vezes, não só 1).
+    const quantidade = (pos.quantidade ?? 1) * (desenho.quantidade_fabricar || 1);
+    const pesoUnitario = pos.peso_unitario ?? pos.peso_total ?? 0;
+    const existente = porPosicao[pos.posicao];
+
+    if (existente){
+      const { error } = await sb.from('itens').update({
+        desenho: desenho.desenho_mde,
+        desenho_cliente: desenho.desenho_cliente,
+        descricao: pos.descricao,
+        produto: desenho.setor,
+        tag: nomeTag,
+        peso_unitario: pesoUnitario,
+        quantidade,
+        revisao: desenho.revisao,
+        remessa: desenho.remessa,
+        data_engenharia: hoje,
+      }).eq('id', existente.id);
+      if (error) throw error;
+      atualizados++;
+    } else {
+      const { error } = await sb.from('itens').insert({
+        pedido_id: desenho.pedido_id,
+        desenho_engenharia_id: desenho.id,
+        posicao_engenharia: pos.posicao,
+        desenho: desenho.desenho_mde,
+        desenho_cliente: desenho.desenho_cliente,
+        descricao: pos.descricao,
+        produto: desenho.setor,
+        tag: nomeTag,
+        peso_unitario: pesoUnitario,
+        quantidade,
+        fornecedor: 'MDE',
+        revisao: desenho.revisao,
+        remessa: desenho.remessa,
+        data_engenharia: hoje,
+      });
+      if (error) throw error;
+      criados++;
+    }
+  }
+
+  let removidos = 0, preservadosOrfaos = 0;
+  for (const [letra, it] of Object.entries(porPosicao)){
+    if (posicoesVistas.has(letra)) continue;
+    const { count: nEtapas } = await sb.from('etapas_avanco').select('id', { count: 'exact', head: true }).eq('item_id', it.id);
+    const semProgresso = (nEtapas || 0) === 0 && it.status_expedicao === 'pendente';
+    if (semProgresso){
+      await sb.from('itens').delete().eq('id', it.id);
+      removidos++;
+    } else {
+      preservadosOrfaos++;
+    }
+  }
+
+  const partes = [];
+  if (criados) partes.push(`${criados} item(ns) novo(s)`);
+  if (atualizados) partes.push(`${atualizados} atualizado(s)`);
+  if (removidos) partes.push(`${removidos} removido(s)`);
+  if (preservadosOrfaos) partes.push(`${preservadosOrfaos} preservado(s) (já tinham progresso)`);
+  return partes.length ? ` — PCP: ${partes.join(', ')}.` : '';
+}
+
+// ── submits ──────────────────────────────────────────────────────────────
+document.getElementById('formPedido').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errBox = document.getElementById('errPedido');
+  errBox.classList.remove('show');
+
+  const payload = {
+    numero_pedido: document.getElementById('fpNumero').value.trim(),
+    cliente: document.getElementById('fpCliente').value.trim() || null,
+    equipamento: document.getElementById('fpEquip').value.trim() || null,
+    data_prevista: document.getElementById('fpDataPrev').value || null,
+    data_reprogramada: document.getElementById('fpDataRepr').value || null,
+    observacao: document.getElementById('fpObs').value.trim() || null,
+  };
+
+  const { error } = await sb.from('pedidos').insert(payload);
+  if (error){
+    errBox.textContent = error.message.includes('duplicate') ? 'Já existe um pedido com esse número.' : error.message;
+    errBox.classList.add('show');
+    return;
+  }
+  e.target.reset();
+  fecharModal('ovPedido');
+  renderListaPedidos();
+});
+
+init().catch(err => {
+  document.getElementById('content').innerHTML =
+    `<div class="empty">Erro ao iniciar a página: ${esc(err.message || err)}</div>`;
+  console.error('Erro no init():', err);
+});
+</script>
+</body>
+</html>

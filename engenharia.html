@@ -1,0 +1,1245 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flow Suite — Engenharia</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{
+  --bg:#dcded9; --bg2:#ffffff; --bg3:#eceeea; --bg4:#dfe1dc;
+  --border:#cfd1cc; --border-strong:#9a9d96; --text:#16181d; --text2:#5b5f68; --text3:#9a9da5;
+  --blue:#149c76; --blue-dim:#d7f0e6; --blue-hover:#0e7c5c; --header-bg:#059669;
+  --green:#158a52; --green-dim:#e3f5eb;
+  --amber:#b5690a; --amber-dim:#faedd9;
+  --red:#c0392b; --red-dim:#fbe6e4;
+  --radius:12px; --radius-sm:8px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+
+.top-bar{display:flex;align-items:center;justify-content:space-between;padding:.9rem 1.5rem;background:var(--header-bg);border-bottom:1px solid rgba(255,255,255,.1);flex-wrap:wrap;gap:10px}
+.top-bar-brand{display:flex;align-items:center;gap:10px}
+.top-bar-brand .icon-wrap{width:34px;height:34px;border-radius:var(--radius-sm);background:linear-gradient(135deg,#4f8ef7,#a78bfa);display:flex;align-items:center;justify-content:center;font-size:18px;color:#fff}
+.top-bar-brand h1{font-size:15px;font-weight:600;color:#fff}
+.top-bar-brand span{font-size:11px;color:rgba(255,255,255,.75);display:block;margin-top:1px}
+.top-bar-right{display:flex;align-items:center;gap:10px;font-size:12px;color:rgba(255,255,255,.9)}
+.btn{padding:7px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg3);color:var(--text);font-size:12px;cursor:pointer;font-weight:500}
+.btn:hover{border-color:var(--blue)}
+.top-bar .btn{background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.25);color:#fff}
+.top-bar .btn:hover{background:rgba(255,255,255,.24);border-color:rgba(255,255,255,.4)}
+.btn-primary{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}
+.btn-primary:hover{background:var(--blue-hover);border-color:var(--blue-hover)}
+.btn-primary:disabled{opacity:.5;cursor:default}
+
+.notice{margin:1.25rem 1.5rem 0;padding:10px 14px;background:var(--amber-dim);color:var(--amber);border-radius:var(--radius-sm);font-size:12px}
+
+.wrap{padding:1.25rem 1.5rem}
+.search-row{display:flex;gap:10px;margin-bottom:1.25rem;flex-wrap:wrap}
+.search-row input{flex:1;min-width:220px;padding:13px 16px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg2);color:var(--text);font-size:16px}
+.search-row input:focus{outline:none;border-color:var(--blue)}
+.empty{text-align:center;padding:3rem 2rem;color:var(--text2);font-size:13px}
+
+.section-title{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text2);margin-bottom:12px}
+
+.form-box{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem;margin-bottom:1.5rem}
+.field-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:12px}
+.field label{font-size:11px;color:var(--text2);display:block;margin-bottom:5px;text-transform:uppercase;letter-spacing:.04em}
+.field input,.field select,.field textarea{width:100%;padding:9px 11px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);background:var(--bg3);color:var(--text);font-size:13px;font-family:inherit}
+.field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--blue)}
+.field input::placeholder{color:var(--text3)}
+.field-erro input,.field-erro select,.field-erro #fdTagsBox,.field-erro .classificacao-row{border-color:var(--red)!important;background:var(--red-dim)!important}
+.field-erro > label{color:var(--red)!important}
+
+.equip-dropdown{display:none;position:absolute;top:100%;left:0;right:0;margin-top:2px;max-height:280px;overflow-y:auto;background:var(--bg2);border:1px solid var(--border-strong);border-radius:var(--radius-sm);box-shadow:0 8px 20px rgba(0,0,0,.15);z-index:50}
+.equip-dropdown.show{display:block}
+.equip-cat-label{padding:7px 12px 3px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text3)}
+.equip-opt{padding:8px 14px;font-size:13px;cursor:pointer}
+.equip-opt:hover{background:var(--bg3)}
+.equip-opt.equip-novo{color:var(--blue);font-weight:600;border-top:1px solid var(--border);margin-top:4px}
+.equip-empty{padding:12px 14px;font-size:12px;color:var(--text3)}
+.equip-novo-form{padding:12px 14px}
+.equip-novo-form select{width:100%;padding:8px 10px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);background:var(--bg3);color:var(--text);font-size:13px;margin-top:4px}
+
+.campo-auto-lido input{border-color:var(--amber)!important;background:var(--amber-dim)!important;box-shadow:0 0 0 1px var(--amber)}
+.campo-auto-lido > label{color:var(--amber)!important}
+.campo-auto-lido > label::after{content:" ⚠ confira";font-weight:700}
+
+.classif-btn{display:flex;flex-direction:column;align-items:flex-start;gap:2px;flex:1;min-width:170px;padding:12px 16px;border:2px solid var(--border-strong);border-radius:var(--radius);background:var(--bg2);font-weight:700;font-size:14px;color:var(--text2);cursor:pointer;transition:all .12s}
+.classif-btn span{font-weight:normal;font-size:11px;color:var(--text2);white-space:normal}
+.classif-btn input{position:absolute;opacity:0;width:0;height:0}
+.classif-fabricacao:has(input:checked){border-color:var(--green);background:var(--green-dim);color:var(--green)}
+.classif-conhecimento:has(input:checked){border-color:var(--red);background:var(--red-dim);color:var(--red)}
+.classif-compra:has(input:checked){border-color:var(--blue);background:var(--blue-dim);color:var(--blue)}
+.classif-btn:hover{border-color:var(--text2)}
+.classif-badge{display:inline-block;padding:3px 9px;border-radius:20px;font-weight:700;font-size:11px;white-space:nowrap}
+#fdTagsBox .tag-chip{display:inline-flex;flex-shrink:0;align-items:center;gap:8px;padding:6px 10px 6px 12px;border:1px solid var(--border-strong);border-radius:20px;background:var(--bg2);font-weight:normal;font-size:13px;text-transform:none;letter-spacing:normal;color:var(--text);cursor:pointer;white-space:nowrap;margin-bottom:0}
+#fdTagsBox .tag-chip:has(input:checked){border-color:var(--blue);background:var(--blue-dim)}
+#fdTagsBox .tag-chip.nao-aplica{border-style:dashed}
+#fdTagsBox .tag-chip-actions{display:flex;gap:4px}
+#fdTagsBox .tag-chip-actions span{cursor:pointer;opacity:.55;font-size:12px}
+#fdTagsBox .tag-chip-actions span:hover{opacity:1}
+
+.pos-list{margin-bottom:12px}
+.pos-card{border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;margin-bottom:10px;background:var(--bg3)}
+.pos-row{display:grid;grid-template-columns:80px 1fr 40px;gap:10px;align-items:end;margin-bottom:8px}
+.pos-row2{display:grid;grid-template-columns:80px 1fr 1fr;gap:10px;align-items:end}
+.pos-row .field label{margin-bottom:4px}
+.pos-remove{background:var(--red-dim);color:var(--red);border:1px solid var(--red-dim);border-radius:var(--radius-sm);cursor:pointer;height:36px;font-size:14px}
+
+.tbl-wrap{overflow-x:auto;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius)}
+.dtbl{width:100%;border-collapse:collapse;font-size:12px}
+.dtbl thead th{text-align:left;padding:8px 10px;color:var(--text2);border-bottom:1px solid var(--border);font-weight:500;white-space:nowrap;background:var(--bg3)}
+.dtbl tbody tr{border-bottom:1px solid var(--border)}
+.dtbl tbody tr:hover td{background:var(--bg3)}
+.dtbl tbody td{padding:7px 10px;vertical-align:middle}
+.dtbl td.r{text-align:right;font-variant-numeric:tabular-nums}
+
+.msg-box{margin:0 0 1rem;padding:10px 14px;border-radius:var(--radius-sm);font-size:13px;display:none}
+.msg-box.show{display:block}
+.msg-box.err{background:var(--red-dim);color:var(--red)}
+.msg-box.ok{background:var(--green-dim);color:var(--green)}
+
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);align-items:center;justify-content:center;z-index:200;padding:20px}
+.overlay.show{display:flex}
+.modal{background:var(--bg2);border-radius:var(--radius);padding:1.5rem;width:100%;max-width:480px}
+.modal h3{font-size:16px;margin-bottom:.25rem}
+.modal .modal-sub{font-size:12px;color:var(--text2);margin-bottom:1rem}
+.modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:1.25rem}
+.err-box{background:var(--red-dim);color:var(--red);padding:9px 12px;border-radius:var(--radius-sm);font-size:12px;margin-bottom:12px;display:none}
+.err-box.show{display:block}
+
+.breadcrumb{font-size:12px;color:var(--text2);margin-bottom:14px}
+.breadcrumb a{color:var(--blue);cursor:pointer;text-decoration:none}
+.breadcrumb a:hover{text-decoration:underline}
+.card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-bottom:1.5rem}
+.card-item{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;cursor:pointer}
+.card-item:hover{border-color:var(--blue)}
+.card-item h4{font-size:14px;margin-bottom:4px}
+.card-item .sub{font-size:12px;color:var(--text2)}
+.card-item .badge-ok{display:inline-block;margin-top:6px;font-size:11px;color:var(--green);font-weight:600}
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <div class="top-bar-brand">
+    <div class="icon-wrap">📐</div>
+    <div><h1>Engenharia</h1><span>Upload de desenhos (DWG) — área de teste</span></div>
+  </div>
+  <div class="top-bar-right">
+    <span>Logado como <strong id="userNome" style="color:#fff">...</strong></span>
+    <div id="sininhoWrap"></div>
+    <button class="btn" onclick="window.location.href='index.html'">Início</button>
+    <button class="btn" onclick="logout()">Sair</button>
+  </div>
+</div>
+
+<div class="notice">⚠ Módulo em teste — separado do Cadastro (PCP) de propósito, pra não interferir no que já está aprovado. A lógica aqui ainda pode mudar.</div>
+
+<div class="wrap">
+  <div class="msg-box" id="msgBox"></div>
+
+  <!-- NÍVEL 1: lista de pedidos -->
+  <div id="viewPedidos">
+    <div class="section-title">Pedidos</div>
+    <div class="search-row"><input id="filtroPedidos" placeholder="Filtrar por número do pedido ou cliente..." oninput="aplicarFiltroCards('filtroPedidos','pedidosWrap')"></div>
+    <div id="pedidosWrap" class="card-grid"><div class="empty">Carregando...</div></div>
+  </div>
+
+  <!-- NÍVEL 2: remessas do pedido -->
+  <div id="viewRemessas" style="display:none">
+    <div class="breadcrumb"><a onclick="voltarPedidos()">Pedidos</a> / <strong id="remessasBreadcrumb"></strong></div>
+    <div class="section-title" id="remessasTitulo">Remessas</div>
+    <div style="margin-bottom:1rem"><button class="btn btn-primary" onclick="gerarNovaRemessa()">+ Gerar nova remessa</button></div>
+    <div id="remessasWrap" class="card-grid"><div class="empty">Carregando...</div></div>
+  </div>
+
+  <!-- NÍVEL 3: desenhos da remessa (upload + lista filtrada) -->
+  <div id="viewRemessa" style="display:none">
+    <div class="breadcrumb"><a onclick="voltarPedidos()">Pedidos</a> / <a onclick="voltarRemessas()" id="remessaBreadcrumbPedido"></a> / <strong id="remessaBreadcrumbNumero"></strong></div>
+
+  <div class="form-box">
+    <div class="section-title" id="formTitulo">Novo Desenho</div>
+    <div id="bannerConfirmarLeitura" style="display:none;background:var(--amber-dim);border:2px solid var(--amber);border-radius:var(--radius-sm);padding:16px;margin-bottom:14px;text-align:center">
+      <div style="color:var(--amber);font-weight:700;font-size:15px;margin-bottom:4px">⚠ Confira os campos destacados em amarelo abaixo antes de salvar</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:14px;max-width:640px;margin-left:auto;margin-right:auto">O sistema preencheu esses campos lendo o arquivo automaticamente, e pode ter lido errado — nem todo desenho segue o mesmo padrão. Confira Desenho MDE, Desenho Cliente, Revisão e Peso do desenho antes de confirmar.</div>
+      <button type="button" class="btn btn-primary" onclick="confirmarELerSalvar()" style="font-size:16px;padding:14px 40px;font-weight:700">✓ Já conferi, pode salvar</button>
+      <div style="margin-top:8px"><button type="button" class="btn" onclick="document.getElementById('bannerConfirmarLeitura').style.display='none'">Cancelar</button></div>
+    </div>
+    <form id="formDesenho">
+      <div class="field-row">
+        <div class="field" id="fieldTags" style="grid-column:1/-1">
+          <label>Tag(s) *</label>
+          <div style="display:flex;gap:8px;align-items:flex-start">
+            <div id="fdTagsBox" style="flex:1;display:flex;flex-wrap:wrap;gap:8px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);background:var(--bg3);padding:10px;min-height:20px"></div>
+            <button type="button" class="btn" onclick="cadastrarTag()" title="Cadastrar tag novo pro pedido selecionado">+ tag</button>
+          </div>
+          <div style="font-size:11px;color:var(--text2);margin-top:4px">1 tag marcado: a quantidade pode ser qualquer valor. Mais de 1 tag marcado: um tag por unidade (a quantidade precisa bater com o nº de tags). Se não se aplica (pedido seco), marque "Não aplica".</div>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field" id="fieldDesenhoMde"><label>Desenho MDE *</label><input id="fdDesenhoMde" required placeholder="ex: T-072382-1"></div>
+        <div class="field" id="fieldDesenhoCliente"><label>Desenho Cliente</label><input id="fdDesenhoCliente" placeholder="ex: 0701-MDE-0110-DT-00005"></div>
+        <div class="field" id="fieldRevisao"><label>Revisão *</label><input id="fdRevisao" required placeholder="ex: 0"></div>
+        <div class="field" id="fieldQtdFabricar"><label>Quantidade a fabricar</label><input id="fdQtdFabricar" type="number" step="1" min="0" value="0" title="Obrigatório (mínimo 1) quando o desenho é classificado como Fabricação. Pode ficar 0 se for só Conhecimento/Compra. ex: FABRICAR 3x CONFORME DESENHO — multiplica a quantidade de cada posição lida do desenho"></div>
+        <div class="field" id="fieldPesoDesenho"><label>Peso do desenho, unitário (kg) *</label><input id="fdPesoDesenho" type="number" step="0.001" min="0" required title="Peso de UMA unidade do conjunto completo (ex: um chute pesa 200kg) — não confundir com o peso de cada item interno, que vem automático na leitura"></div>
+        <div class="field"><label>Setor de produção *</label>
+          <select id="fdSetor" required><option value="">— selecione —</option></select>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field" id="fieldEquipamento" style="grid-column:1/-1;position:relative">
+          <label>Nome do equipamento *</label>
+          <input id="fdNomeEquipamento" required autocomplete="off" placeholder="Digite pra buscar (ex: Tambor de acionamento)..." oninput="filtrarEquipamentos()" onfocus="filtrarEquipamentos()">
+          <input type="hidden" id="fdEquipamentoId">
+          <div id="equipDropdown" class="equip-dropdown"></div>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field" id="fieldClassificacao" style="grid-column:1/-1">
+          <label>Classificação do desenho</label>
+          <div class="classificacao-row" style="display:flex;gap:12px;flex-wrap:wrap;align-items:stretch;margin-top:6px;padding:6px;border:1px solid transparent;border-radius:var(--radius-sm)">
+            <label class="classif-btn classif-fabricacao"><input type="checkbox" id="fdFabricacao" onchange="if(this.checked) document.getElementById('fdConhecimento').checked=false"> 🏭 Fabricação</label>
+            <label class="classif-btn classif-conhecimento"><input type="checkbox" id="fdConhecimento" onchange="if(this.checked) document.getElementById('fdFabricacao').checked=false"> 📄 Conhecimento <span>(não fabricar — ex: arranjo geral)</span></label>
+            <label class="classif-btn classif-compra"><input type="checkbox" id="fdCompra"> 🛒 Compra <span>(gerar solicitação de itens, ex: fixação)</span></label>
+          </div>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field" style="grid-column:1/-1">
+          <label>Observação (opcional)</label>
+          <input id="fdObservacao" placeholder="ex: fabricar o desenho, porém não vai precisar da fixação">
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field" style="grid-column:1/-1">
+          <label>Arquivo do desenho (DWG/DXF/PDF)</label>
+          <input id="fdArquivo" type="file" accept=".dwg,.dxf,.pdf">
+          <div id="fdArquivoAtual" style="font-size:11px;color:var(--text2);margin-top:5px"></div>
+          <div id="fdLeituraStatus" style="font-size:11px;margin-top:5px"></div>
+        </div>
+      </div>
+
+      <div style="margin-top:1.25rem;display:flex;justify-content:flex-end;gap:10px">
+        <button type="button" class="btn" id="btnCancelarEdicao" onclick="cancelarEdicao()" style="display:none">Cancelar edição</button>
+        <button type="submit" class="btn btn-primary" id="btnSalvarDesenho">Salvar Desenho</button>
+      </div>
+    </form>
+  </div>
+
+  <div id="avisoEmailBanner" style="background:var(--amber-dim);border:2px solid var(--amber);border-radius:var(--radius-sm);padding:14px 18px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap">
+    <div>
+      <div class="section-title" style="margin-bottom:3px">Desenhos desta remessa</div>
+      <div id="avisoEmailTexto" style="font-size:12px;color:var(--amber);font-weight:600">⚠ O PCP só vai ver esta remessa depois que você disparar o email abaixo — até lá, os desenhos ficam parados só aqui na Engenharia.</div>
+    </div>
+    <button class="btn btn-primary" id="btnEnviarEmail" onclick="dispararRemessaPorEmail()" style="font-size:14px;padding:12px 24px;font-weight:700;flex-shrink:0">📧 Disparar remessa por email</button>
+  </div>
+  <div class="search-row"><input id="filtroDesenhos" placeholder="Filtrar por código, desenho MDE ou desenho cliente..." oninput="aplicarFiltro('filtroDesenhos','listaWrap')"></div>
+  <div class="tbl-wrap" id="listaWrap"><div class="empty">Carregando...</div></div>
+  </div>
+</div>
+
+<!-- MODAL: substituir só o arquivo (ação rápida, não mexe em mais nada do desenho) -->
+<div class="overlay" id="ovSubstituir">
+  <div class="modal">
+    <h3 id="substTitulo">Substituir arquivo</h3>
+    <div class="modal-sub" id="substSub"></div>
+    <div class="err-box" id="errSubstituir"></div>
+    <form id="formSubstituir">
+      <div class="field" style="margin-bottom:12px"><label>Novo arquivo (DWG/DXF/PDF) *</label><input id="subArquivo" type="file" accept=".dwg,.dxf,.pdf" required></div>
+      <div class="field"><label>Revisão</label><input id="subRevisao"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn" onclick="fecharModal('ovSubstituir')">Cancelar</button>
+        <button type="submit" class="btn btn-primary" id="btnSubstituir">Substituir</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- MODAL: paralisar desenho -->
+<div class="overlay" id="ovParalisar">
+  <div class="modal">
+    <h3>⏸ Paralisar desenho</h3>
+    <div class="modal-sub" id="paralisarSub"></div>
+    <div class="err-box" id="errParalisar"></div>
+    <form id="formParalisar">
+      <div class="field"><label>Motivo (aparece pra todo mundo que abrir esse desenho)</label>
+        <textarea id="paralisarMotivo" rows="3" placeholder="ex: Chute mal dimensionado, precisa revisar antes de continuar a fabricação"></textarea>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn" onclick="fecharModal('ovParalisar')">Cancelar</button>
+        <button type="submit" class="btn btn-primary" id="btnParalisar" style="background:var(--red);border-color:var(--red)">Paralisar desenho</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- MODAL: email da remessa — sempre mostra assunto/corpo pra copiar, porque o
+     mailto: nem sempre abre sozinho (depende de ter um app de email padrão
+     configurado no Windows/Chrome) -->
+<div class="overlay" id="ovEmailRemessa">
+  <div class="modal" style="max-width:640px">
+    <h3 id="emailModalTitulo">Email da remessa</h3>
+    <div class="modal-sub">O Outlook deveria ter aberto sozinho com esse conteúdo. Se não abriu, copie e cole manualmente num email novo.</div>
+    <div class="field" style="margin-bottom:12px">
+      <label>Assunto</label>
+      <div style="display:flex;gap:6px">
+        <input id="emailAssuntoPreview" readonly style="flex:1">
+        <button type="button" class="btn" onclick="copiarCampo('emailAssuntoPreview')">Copiar</button>
+      </div>
+    </div>
+    <div class="field" style="margin-bottom:12px">
+      <label>Corpo</label>
+      <textarea id="emailCorpoPreview" readonly rows="12" style="width:100%;padding:9px 11px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);background:var(--bg3);color:var(--text);font-size:13px;font-family:inherit"></textarea>
+      <button type="button" class="btn" style="margin-top:6px" onclick="copiarCampo('emailCorpoPreview')">Copiar corpo</button>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn" onclick="fecharModal('ovEmailRemessa')">Fechar</button>
+      <button type="button" class="btn btn-primary" id="btnAbrirOutlookDeNovo">Tentar abrir no Outlook de novo</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/supabase-client.js"></script>
+<script>
+let AUTH = null;
+let desenhoEditandoId = null;
+let pedidoAtual = null;
+let remessaAtual = null;
+let confirmacaoLeituraOk = false;
+
+function confirmarELerSalvar(){
+  confirmacaoLeituraOk = true;
+  document.getElementById('bannerConfirmarLeitura').style.display = 'none';
+  document.getElementById('formDesenho').requestSubmit();
+}
+
+function showMsg(text, ok){
+  const box = document.getElementById('msgBox');
+  box.textContent = text;
+  box.className = 'msg-box show ' + (ok ? 'ok' : 'err');
+}
+function clearMsg(){ document.getElementById('msgBox').classList.remove('show'); }
+function abrirModal(id){ document.getElementById(id).classList.add('show'); }
+function fecharModal(id){ document.getElementById(id).classList.remove('show'); }
+function parseNum(str){
+  const v = parseFloat(String(str).replace(',', '.'));
+  return Number.isFinite(v) ? v : null;
+}
+
+// ── LEITURA AUTOMÁTICA DE METADADOS (Desenho MDE, Desenho Cliente, Revisão,
+// Peso do desenho) — só esses 4 campos, direto do carimbo/legenda do desenho,
+// usando o mesmo serviço local de leitura que o PCP usa. NÃO lê a lista de
+// material/posições aqui — isso continua sendo trabalho exclusivo do PCP.
+const DWG_SERVICE_URL = 'http://localhost:8000';
+
+function limparCamposAutoLidos(){
+  document.querySelectorAll('.campo-auto-lido').forEach(el => el.classList.remove('campo-auto-lido'));
+  confirmacaoLeituraOk = false;
+  document.getElementById('bannerConfirmarLeitura').style.display = 'none';
+}
+
+async function lerMetadadosDoArquivo(file){
+  const status = document.getElementById('fdLeituraStatus');
+  status.style.color = 'var(--text2)';
+  status.textContent = 'Lendo dados do arquivo...';
+  limparCamposAutoLidos();
+
+  try {
+    const fd = new FormData();
+    fd.append('file', file, file.name);
+    const res = await fetch(`${DWG_SERVICE_URL}/extract`, { method: 'POST', body: fd });
+    if (!res.ok){
+      const t = await res.text().catch(() => '');
+      throw new Error(`serviço respondeu ${res.status}${t ? ': ' + t.slice(0, 200) : ''}`);
+    }
+    const data = await res.json();
+    const campos = data.campos || {};
+    const lista = data.lista_material || [];
+
+    const chaveMde = Object.keys(campos).find(k => /N[ºo°].*MDE/i.test(k));
+    const chaveCliente = Object.keys(campos).find(k => /N[ºo°]/i.test(k) && !/MDE/i.test(k));
+    const chaveRevisao = Object.keys(campos).find(k => /REVIS/i.test(k));
+    const chavePeso = Object.keys(campos).find(k => /PESO/i.test(k));
+
+    let achou = [];
+    if (chaveMde && campos[chaveMde]){
+      document.getElementById('fdDesenhoMde').value = campos[chaveMde];
+      document.getElementById('fieldDesenhoMde').classList.add('campo-auto-lido');
+      achou.push('Desenho MDE');
+    }
+    if (chaveCliente && campos[chaveCliente]){
+      document.getElementById('fdDesenhoCliente').value = campos[chaveCliente];
+      document.getElementById('fieldDesenhoCliente').classList.add('campo-auto-lido');
+      achou.push('Desenho Cliente');
+    }
+    if (chaveRevisao && campos[chaveRevisao]){
+      document.getElementById('fdRevisao').value = campos[chaveRevisao];
+      document.getElementById('fieldRevisao').classList.add('campo-auto-lido');
+      achou.push('Revisão');
+    }
+
+    let peso = chavePeso ? parseNum(campos[chavePeso]) : null;
+    if (peso == null){
+      const primeiraPosicao = lista.find(row => row.provavel_posicao);
+      if (primeiraPosicao) peso = parseNum(primeiraPosicao.sugestao?.peso_total ?? primeiraPosicao.sugestao?.peso_unitario);
+    }
+    if (peso != null){
+      document.getElementById('fdPesoDesenho').value = peso;
+      document.getElementById('fieldPesoDesenho').classList.add('campo-auto-lido');
+      achou.push('Peso do desenho');
+    }
+
+    if (achou.length){
+      status.style.color = 'var(--green)';
+      status.textContent = `✓ Lido automaticamente do arquivo: ${achou.join(', ')}. Confira antes de salvar.`;
+    } else {
+      status.style.color = 'var(--red)';
+      status.textContent = 'Não consegui identificar os dados automaticamente — preencha manualmente.';
+    }
+  } catch (err) {
+    status.style.color = 'var(--text2)';
+    status.textContent = 'Não foi possível ler o arquivo automaticamente (serviço local de leitura indisponível) — preencha manualmente.';
+  }
+}
+
+function aplicarFiltro(inputId, wrapId){
+  const termo = (document.getElementById(inputId)?.value || '').trim().toLowerCase();
+  document.querySelectorAll(`#${wrapId} tbody tr`).forEach(tr => {
+    const alvo = tr.dataset.search || '';
+    tr.style.display = (!termo || alvo.includes(termo)) ? '' : 'none';
+  });
+}
+
+function aplicarFiltroCards(inputId, wrapId){
+  const termo = (document.getElementById(inputId)?.value || '').trim().toLowerCase();
+  document.querySelectorAll(`#${wrapId} .card-item`).forEach(card => {
+    const alvo = card.dataset.search || '';
+    card.style.display = (!termo || alvo.includes(termo)) ? '' : 'none';
+  });
+}
+
+function mostrarView(id){
+  ['viewPedidos', 'viewRemessas', 'viewRemessa'].forEach(v => {
+    document.getElementById(v).style.display = (v === id) ? '' : 'none';
+  });
+}
+
+async function init(){
+  AUTH = await exigirLogin(['engenharia', 'admin']);
+  if (!AUTH) return;
+  document.getElementById('userNome').textContent = AUTH.nome;
+  iniciarSininho('sininhoWrap');
+
+  const selSetor = document.getElementById('fdSetor');
+  SETORES.forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s;
+    opt.textContent = s;
+    selSetor.appendChild(opt);
+  });
+
+  await renderPedidos();
+
+  document.getElementById('fdArquivo').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) lerMetadadosDoArquivo(file);
+  });
+}
+
+// ── NÍVEL 1: PEDIDOS ────────────────────────────────────────────────────────
+async function renderPedidos(){
+  mostrarView('viewPedidos');
+  pedidoAtual = null;
+  remessaAtual = null;
+  const wrap = document.getElementById('pedidosWrap');
+  wrap.innerHTML = `<div class="empty">Carregando...</div>`;
+
+  const { data, error } = await sb.from('pedidos').select('id, numero_pedido, cliente, equipamento').order('numero_pedido');
+  if (error){ wrap.innerHTML = `<div class="empty">Erro: ${esc(error.message)}</div>`; return; }
+  if (!data.length){ wrap.innerHTML = `<div class="empty">Nenhum pedido cadastrado ainda.</div>`; return; }
+
+  wrap.innerHTML = data.map(p => `
+    <div class="card-item" data-search="${esc((p.numero_pedido + ' ' + (p.cliente||'')).toLowerCase())}" onclick='abrirPedidoEng(${JSON.stringify(p).replace(/'/g, "&#39;")})'>
+      <h4>${esc(p.numero_pedido)}</h4>
+      <div class="sub">${esc(p.cliente || '—')}${p.equipamento ? ' · ' + esc(p.equipamento) : ''}</div>
+    </div>`).join('');
+}
+
+function voltarPedidos(){ renderPedidos(); }
+
+async function abrirPedidoEng(pedido){
+  pedidoAtual = pedido;
+  document.getElementById('remessasBreadcrumb').textContent = pedido.cliente ? `${pedido.numero_pedido} — ${pedido.cliente}` : pedido.numero_pedido;
+  mostrarView('viewRemessas');
+  await renderRemessas();
+}
+
+// ── NÍVEL 2: REMESSAS DO PEDIDO ─────────────────────────────────────────────
+async function renderRemessas(){
+  const wrap = document.getElementById('remessasWrap');
+  wrap.innerHTML = `<div class="empty">Carregando...</div>`;
+
+  const { data, error } = await sb
+    .from('remessas')
+    .select('*, desenhos_engenharia(id)')
+    .eq('pedido_id', pedidoAtual.id)
+    .order('numero', { ascending: false });
+
+  if (error){ wrap.innerHTML = `<div class="empty">Erro: ${esc(error.message)}</div>`; return; }
+  if (!data.length){ wrap.innerHTML = `<div class="empty">Nenhuma remessa criada ainda pra esse pedido — clique em "Gerar nova remessa".</div>`; return; }
+
+  wrap.innerHTML = data.map(r => `
+    <div class="card-item" onclick='abrirRemessa(${JSON.stringify({ id: r.id, numero: r.numero, pedido_id: r.pedido_id, enviada_email_em: r.enviada_email_em }).replace(/'/g, "&#39;")})'>
+      <h4>Remessa ${r.numero}</h4>
+      <div class="sub">${(r.desenhos_engenharia || []).length} desenho(s) · criada em ${new Date(r.created_at).toLocaleDateString('pt-BR')}</div>
+      ${r.enviada_email_em ? `<div class="badge-ok">✓ Enviada por email em ${new Date(r.enviada_email_em).toLocaleDateString('pt-BR')}</div>` : ''}
+    </div>`).join('');
+}
+
+async function gerarNovaRemessa(){
+  const { data: existentes } = await sb.from('remessas').select('numero').eq('pedido_id', pedidoAtual.id).order('numero', { ascending: false }).limit(1);
+  const proximoNumero = (existentes && existentes[0]?.numero || 0) + 1;
+
+  const { data, error } = await sb.from('remessas').insert({ pedido_id: pedidoAtual.id, numero: proximoNumero }).select().single();
+  if (error){ showMsg('Erro ao gerar remessa: ' + error.message, false); return; }
+
+  await abrirRemessa(data);
+}
+
+function voltarRemessas(){
+  remessaAtual = null;
+  mostrarView('viewRemessas');
+  renderRemessas();
+}
+
+// ── NÍVEL 3: DESENHOS DA REMESSA ────────────────────────────────────────────
+async function abrirRemessa(remessa){
+  remessaAtual = remessa;
+  document.getElementById('remessaBreadcrumbPedido').textContent = pedidoAtual.cliente ? `${pedidoAtual.numero_pedido} — ${pedidoAtual.cliente}` : pedidoAtual.numero_pedido;
+  document.getElementById('remessaBreadcrumbNumero').textContent = `Remessa ${remessa.numero}`;
+  mostrarView('viewRemessa');
+  cancelarEdicao();
+  atualizarAvisoEmail();
+  await carregarLista();
+}
+
+function atualizarAvisoEmail(){
+  const banner = document.getElementById('avisoEmailBanner');
+  const texto = document.getElementById('avisoEmailTexto');
+  const btn = document.getElementById('btnEnviarEmail');
+  if (remessaAtual.enviada_email_em){
+    banner.style.background = 'var(--green-dim)';
+    banner.style.borderColor = 'var(--green)';
+    texto.style.color = 'var(--green)';
+    texto.textContent = `✓ Remessa já enviada por email em ${new Date(remessaAtual.enviada_email_em).toLocaleString('pt-BR')} — o PCP já tem acesso. Pode disparar de novo se precisar reenviar.`;
+  } else {
+    banner.style.background = 'var(--amber-dim)';
+    banner.style.borderColor = 'var(--amber)';
+    texto.style.color = 'var(--amber)';
+    texto.textContent = '⚠ O PCP só vai ver esta remessa depois que você disparar o email abaixo — até lá, os desenhos ficam parados só aqui na Engenharia.';
+  }
+}
+
+// ── TAGS (cadastradas por pedido — distingue unidades/destinos idênticos
+// dentro do mesmo pedido, ex: dois transportadores iguais em partes diferentes
+// da obra) ─────────────────────────────────────────────────────────────────
+function getTagsSelecionadas(){
+  return Array.from(document.querySelectorAll('#fdTagsBox .tag-checkbox:checked')).map(cb => Number(cb.value));
+}
+
+function getNaoAplica(){
+  return document.getElementById('fdTagNaoAplica')?.checked || false;
+}
+
+function tagCheckboxMudou(){
+  // "Não aplica" é exclusivo com os tags de verdade — marcar um desmarca o outro
+  if (getTagsSelecionadas().length) document.getElementById('fdTagNaoAplica').checked = false;
+}
+
+function naoAplicaMudou(){
+  if (getNaoAplica()) document.querySelectorAll('#fdTagsBox .tag-checkbox').forEach(cb => cb.checked = false);
+}
+
+// ── EQUIPAMENTO PADRÃO (catálogo, evita "Tambor de Acionamento" vs "Tambor
+// Acionamento") — busca com autocomplete, agrupado por categoria, com opção
+// de cadastrar um novo direto no dropdown quando não encontra o que precisa.
+let EQUIPAMENTOS_CACHE = null;
+const CATEGORIAS_EQUIP_LABEL = {
+  CABECA: '🔵 Cabeça', TRONCO: '🟢 Tronco', CAUDA: '🔴 Cauda',
+  TAMBORES_DIVERSOS: '⚙️ Tambores Diversos',
+  ELETRICO_INSTRUMENTACAO: '⚡ Sistema Elétrico e Instrumentação',
+  SEGURANCA_PROTECOES: '🛡️ Segurança e Proteções', OUTROS: '🧰 Outros',
+};
+const ORDEM_CATEGORIAS_EQUIP = Object.keys(CATEGORIAS_EQUIP_LABEL);
+
+async function carregarEquipamentosPadrao(forcar){
+  if (EQUIPAMENTOS_CACHE && !forcar) return EQUIPAMENTOS_CACHE;
+  const { data } = await sb.from('equipamentos_padrao').select('id, nome, categoria').order('nome');
+  EQUIPAMENTOS_CACHE = data || [];
+  return EQUIPAMENTOS_CACHE;
+}
+
+function fecharDropdownEquip(){
+  document.getElementById('equipDropdown').classList.remove('show');
+}
+
+async function filtrarEquipamentos(){
+  document.getElementById('fdEquipamentoId').value = ''; // digitar de novo invalida a seleção anterior
+  const inputEl = document.getElementById('fdNomeEquipamento');
+  const termo = inputEl.value.trim().toLowerCase();
+  const lista = await carregarEquipamentosPadrao();
+  const filtrados = termo ? lista.filter(eq => eq.nome.toLowerCase().includes(termo)) : lista;
+
+  const porCategoria = {};
+  filtrados.forEach(eq => { (porCategoria[eq.categoria] ??= []).push(eq); });
+
+  let html = ORDEM_CATEGORIAS_EQUIP.filter(c => porCategoria[c]?.length).map(c => `
+    <div class="equip-cat-label">${CATEGORIAS_EQUIP_LABEL[c]}</div>
+    ${porCategoria[c].map(eq => `<div class="equip-opt" onclick="selecionarEquipamento(${eq.id})">${esc(eq.nome)}</div>`).join('')}
+  `).join('');
+
+  if (!filtrados.length) html += `<div class="equip-empty">Nenhum equipamento encontrado.</div>`;
+  if (termo && !lista.some(eq => eq.nome.toLowerCase() === termo)){
+    html += `<div class="equip-opt equip-novo" onclick="abrirNovoEquipamento()">+ Cadastrar novo equipamento: "${esc(inputEl.value.trim())}"</div>`;
+  }
+
+  document.getElementById('equipDropdown').innerHTML = html;
+  document.getElementById('equipDropdown').classList.add('show');
+}
+
+function selecionarEquipamento(id){
+  const eq = (EQUIPAMENTOS_CACHE || []).find(e => e.id === id);
+  if (!eq) return;
+  document.getElementById('fdEquipamentoId').value = eq.id;
+  document.getElementById('fdNomeEquipamento').value = eq.nome;
+  fecharDropdownEquip();
+}
+
+function abrirNovoEquipamento(){
+  const nome = document.getElementById('fdNomeEquipamento').value.trim();
+  document.getElementById('equipDropdown').innerHTML = `
+    <div class="equip-novo-form">
+      <div style="font-size:12px">Cadastrar "<strong>${esc(nome)}</strong>" como novo equipamento padrão. Categoria:</div>
+      <select id="novaEquipCategoria">${ORDEM_CATEGORIAS_EQUIP.map(c => `<option value="${c}">${CATEGORIAS_EQUIP_LABEL[c]}</option>`).join('')}</select>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button type="button" class="btn" onclick="filtrarEquipamentos()">Cancelar</button>
+        <button type="button" class="btn btn-primary" onclick="salvarNovoEquipamento()">Cadastrar e usar</button>
+      </div>
+    </div>`;
+}
+
+async function salvarNovoEquipamento(){
+  const nome = document.getElementById('fdNomeEquipamento').value.trim();
+  const categoria = document.getElementById('novaEquipCategoria').value;
+  const { data, error } = await sb.from('equipamentos_padrao').insert({ nome, categoria }).select().single();
+  if (error){
+    showMsg('Erro ao cadastrar equipamento: ' + (error.message.includes('duplicate') ? 'Esse equipamento já existe na lista.' : error.message), false);
+    return;
+  }
+  await carregarEquipamentosPadrao(true);
+  selecionarEquipamento(data.id);
+  showMsg(`Equipamento "${nome}" cadastrado na lista padrão.`, true);
+}
+
+document.addEventListener('click', e => {
+  const wrap = document.getElementById('fieldEquipamento');
+  if (wrap && !wrap.contains(e.target)) fecharDropdownEquip();
+});
+// clique dentro do dropdown (mesmo depois de reescrever o innerHTML, ex: ao
+// abrir o formulário de "novo equipamento") não deve contar como "clique
+// fora" — o elemento clicado original já não está mais no DOM nesse ponto,
+// então `wrap.contains(e.target)` acima daria falso e fecharia na hora.
+document.getElementById('equipDropdown').addEventListener('click', e => e.stopPropagation());
+
+async function carregarTagsDoPedido(manterSelecionadas, naoAplicaForcar){
+  const box = document.getElementById('fdTagsBox');
+  const marcarIds = manterSelecionadas ?? getTagsSelecionadas();
+  const naoAplicaAntes = naoAplicaForcar ?? getNaoAplica();
+
+  const naoAplicaHtml = `
+    <label class="tag-chip nao-aplica">
+      <input type="checkbox" id="fdTagNaoAplica" onchange="naoAplicaMudou()" ${naoAplicaAntes ? 'checked' : ''}> Não aplica
+    </label>`;
+
+  if (!pedidoAtual){ box.innerHTML = naoAplicaHtml; return; }
+
+  const { data } = await sb.from('tags').select('id, nome').eq('pedido_id', pedidoAtual.id).order('nome');
+  if (!data || !data.length){
+    box.innerHTML = naoAplicaHtml + '<span style="color:var(--text3);align-self:center">— nenhum tag cadastrado nesse pedido —</span>';
+    return;
+  }
+
+  box.innerHTML = naoAplicaHtml + data.map(t => `
+    <span class="tag-chip">
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:0">
+        <input type="checkbox" class="tag-checkbox" value="${t.id}" onchange="tagCheckboxMudou()" ${marcarIds.includes(t.id) ? 'checked' : ''}> ${esc(t.nome)}
+      </label>
+      <span class="tag-chip-actions">
+        <span onclick="event.preventDefault();event.stopPropagation();editarTag(${t.id})" title="Editar tag">✏️</span>
+        <span onclick="event.preventDefault();event.stopPropagation();excluirTag(${t.id})" title="Excluir tag">🗑</span>
+      </span>
+    </span>`).join('');
+}
+
+async function editarTag(tagId){
+  const { data: tag } = await sb.from('tags').select('nome').eq('id', tagId).single();
+  if (!tag) return;
+  const novoNome = (prompt('Novo nome do tag:', tag.nome) || '').trim();
+  if (!novoNome || novoNome === tag.nome) return;
+
+  const { error } = await sb.from('tags').update({ nome: novoNome }).eq('id', tagId);
+  if (error){
+    showMsg('Erro ao editar tag: ' + (error.message.includes('duplicate') ? 'Já existe um tag com esse nome nesse pedido.' : error.message), false);
+    return;
+  }
+  await carregarTagsDoPedido();
+  showMsg(`Tag renomeado pra "${novoNome}".`, true);
+}
+
+async function excluirTag(tagId){
+  const { data: tag } = await sb.from('tags').select('nome').eq('id', tagId).single();
+  if (!tag) return;
+  if (!confirm(`Excluir o tag "${tag.nome}"?\n\nSó funciona se nenhum desenho estiver usando esse tag ainda.`)) return;
+
+  const { error } = await sb.from('tags').delete().eq('id', tagId);
+  if (error){
+    showMsg('Erro ao excluir tag: ' + (error.message.includes('foreign key') || error.code === '23503'
+      ? 'Esse tag já está sendo usado por algum desenho — não dá pra excluir.'
+      : error.message), false);
+    return;
+  }
+  await carregarTagsDoPedido();
+  showMsg(`Tag "${tag.nome}" excluído.`, true);
+}
+
+async function cadastrarTag(){
+  const nome = (prompt('Nome do tag novo (ex: 1073-TC-006):') || '').trim();
+  if (!nome) return;
+
+  const { data, error } = await sb.from('tags').insert({ pedido_id: pedidoAtual.id, nome }).select().single();
+  if (error){
+    showMsg('Erro ao cadastrar tag: ' + (error.message.includes('duplicate') ? 'Esse tag já existe nesse pedido.' : error.message), false);
+    return;
+  }
+  await carregarTagsDoPedido([...getTagsSelecionadas(), data.id]);
+  showMsg(`Tag "${nome}" cadastrado.`, true);
+}
+
+let substituindoId = null;
+
+function abrirSubstituirArquivo(id){
+  const d = (window.__desenhosLista || []).find(x => x.id === id);
+  if (!d) return;
+  substituindoId = id;
+  document.getElementById('substTitulo').textContent = `Substituir arquivo — Cód. MDE ${d.codigo_mde}`;
+  document.getElementById('substSub').textContent = `Desenho ${d.desenho_mde}${d.arquivo_nome ? ' — arquivo atual: ' + d.arquivo_nome : ' — nenhum arquivo enviado ainda'}. Só o arquivo (e a revisão, se você quiser) mudam aqui — o resto do desenho não é alterado.`;
+  document.getElementById('formSubstituir').reset();
+  document.getElementById('subRevisao').value = d.revisao || '';
+  document.getElementById('errSubstituir').classList.remove('show');
+  abrirModal('ovSubstituir');
+}
+
+document.getElementById('formSubstituir').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errBox = document.getElementById('errSubstituir');
+  errBox.classList.remove('show');
+
+  const fileInput = document.getElementById('subArquivo');
+  if (!fileInput.files.length){
+    errBox.textContent = 'Escolha o arquivo novo.';
+    errBox.classList.add('show');
+    return;
+  }
+
+  const d = (window.__desenhosLista || []).find(x => x.id === substituindoId);
+  const btn = document.getElementById('btnSubstituir');
+  btn.disabled = true; btn.textContent = 'Enviando...';
+
+  const file = fileInput.files[0];
+  const arquivoPath = `${Date.now()}_${file.name}`.replace(/[^\w.\-]/g, '_');
+  const { error: upErr } = await sb.storage.from('desenhos').upload(arquivoPath, file);
+  if (upErr){
+    errBox.textContent = 'Erro ao subir o arquivo: ' + upErr.message;
+    errBox.classList.add('show');
+    btn.disabled = false; btn.textContent = 'Substituir';
+    return;
+  }
+
+  const { error } = await sb.from('desenhos_engenharia').update({
+    arquivo_nome: file.name,
+    arquivo_path: arquivoPath,
+    revisao: document.getElementById('subRevisao').value.trim() || null,
+  }).eq('id', substituindoId);
+
+  btn.disabled = false; btn.textContent = 'Substituir';
+
+  if (error){
+    errBox.textContent = 'Erro ao salvar: ' + error.message;
+    errBox.classList.add('show');
+    return;
+  }
+
+  if (d?.arquivo_path) await sb.storage.from('desenhos').remove([d.arquivo_path]);
+
+  // subir um arquivo novo é sinal claro de que a revisão pedida chegou —
+  // libera automaticamente se esse desenho estava paralisado, sem precisar
+  // de um segundo clique em "Liberar".
+  let avisoLiberado = '';
+  if (d?.paralisado){
+    const { error: errLib } = await sb.rpc('liberar_desenho', { p_desenho_id: substituindoId });
+    if (!errLib) avisoLiberado = ' — desenho liberado automaticamente (estava paralisado).';
+  }
+
+  fecharModal('ovSubstituir');
+  showMsg(`Arquivo substituído com sucesso — Cód. MDE ${d?.codigo_mde ?? ''}${avisoLiberado}`, true);
+  await carregarLista();
+});
+
+// ── PARALISAR / LIBERAR DESENHO ─────────────────────────────────────────────
+let paralisandoId = null;
+
+let paralisandoDesenho = null;
+
+function abrirParalisar(id){
+  const d = (window.__desenhosLista || []).find(x => x.id === id);
+  if (!d) return;
+  paralisandoId = id;
+  paralisandoDesenho = d;
+  document.getElementById('paralisarSub').textContent = `Desenho ${d.desenho_mde} — Cód. MDE ${d.codigo_mde}. Enquanto paralisado, ninguém consegue dar avanço nem baixar o arquivo em nenhum módulo do sistema.`;
+  document.getElementById('paralisarMotivo').value = '';
+  document.getElementById('errParalisar').classList.remove('show');
+  abrirModal('ovParalisar');
+}
+
+document.getElementById('formParalisar').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('btnParalisar');
+  btn.disabled = true; btn.textContent = 'Paralisando...';
+
+  const motivo = document.getElementById('paralisarMotivo').value;
+  const { error } = await sb.rpc('paralisar_desenho', {
+    p_desenho_id: paralisandoId,
+    p_motivo: motivo,
+  });
+
+  btn.disabled = false; btn.textContent = 'Paralisar desenho';
+
+  if (error){
+    const errBox = document.getElementById('errParalisar');
+    errBox.textContent = 'Erro ao paralisar: ' + error.message;
+    errBox.classList.add('show');
+    return;
+  }
+
+  fecharModal('ovParalisar');
+  showMsg('Desenho paralisado — bloqueado em todo o sistema até ser liberado.', true);
+  dispararEmailParalisacao(paralisandoDesenho, motivo);
+  await carregarLista();
+});
+
+// ── EMAIL DE REGISTRO DA PARALISAÇÃO — mesmo padrão do email de remessa: só
+// monta assunto/corpo e tenta abrir o Outlook, pra ficar registrado no email
+// de quem parou o desenho e por quê (não depende de servidor de email).
+function dispararEmailParalisacao(d, motivo){
+  const assunto = `PARALISADO — Desenho ${d.desenho_mde} — Pedido ${pedidoAtual.numero_pedido}${pedidoAtual.cliente ? ' – ' + pedidoAtual.cliente : ''}`;
+  const corpo = [
+    `O desenho abaixo foi PARALISADO e está bloqueado em todo o sistema (apontamento e download) até ser liberado.`,
+    ``,
+    `Pedido: ${pedidoAtual.numero_pedido}${pedidoAtual.cliente ? ' — ' + pedidoAtual.cliente : ''}`,
+    `Tag: ${d.tags?.nome || '—'}`,
+    `Desenho MDE: ${d.desenho_mde}`,
+    `Desenho Cliente: ${d.desenho_cliente || '—'}`,
+    `Data/hora: ${new Date().toLocaleString('pt-BR')}`,
+    ``,
+    `Observação: ${motivo || '—'}`,
+  ].join('\n');
+
+  const mailtoUrl = `mailto:?subject=${encodeURIComponent(assunto)}&body=${encodeURIComponent(corpo)}`;
+  function tentarAbrirOutlook(){
+    const a = document.createElement('a');
+    a.href = mailtoUrl;
+    a.click();
+  }
+
+  document.getElementById('emailModalTitulo').textContent = 'Email de paralisação';
+  document.getElementById('emailAssuntoPreview').value = assunto;
+  document.getElementById('emailCorpoPreview').value = corpo;
+  document.getElementById('btnAbrirOutlookDeNovo').onclick = tentarAbrirOutlook;
+  abrirModal('ovEmailRemessa');
+  tentarAbrirOutlook();
+}
+
+async function liberarDesenho(id){
+  const d = (window.__desenhosLista || []).find(x => x.id === id);
+  if (!d) return;
+  const { error } = await sb.rpc('liberar_desenho', { p_desenho_id: id });
+  if (error){ alert('Erro ao liberar: ' + error.message); return; }
+  showMsg(`Desenho ${d.desenho_mde} liberado — voltou ao normal em todo o sistema.`, true);
+  await carregarLista();
+}
+
+async function excluirDesenho(id){
+  const d = (window.__desenhosLista || []).find(x => x.id === id);
+  if (!d) return;
+  if (!confirm(`Excluir o desenho Cód. MDE ${d.codigo_mde} (${d.desenho_mde})?\n\nIsso apaga o cadastro, as posições e o arquivo enviado. Não tem como desfazer.`)) return;
+
+  const { error } = await sb.from('desenhos_engenharia').delete().eq('id', id);
+  if (error){ alert('Erro ao excluir: ' + error.message); return; }
+
+  if (d.arquivo_path) await sb.storage.from('desenhos').remove([d.arquivo_path]);
+
+  if (desenhoEditandoId === id) cancelarEdicao();
+  showMsg(`Desenho Cód. MDE ${d.codigo_mde} excluído.`, true);
+  await carregarLista();
+}
+
+function cancelarEdicao(){
+  desenhoEditandoId = null;
+  document.getElementById('formTitulo').textContent = 'Novo Desenho';
+  document.getElementById('btnSalvarDesenho').textContent = 'Salvar Desenho';
+  document.getElementById('btnSalvarDesenho').disabled = false;
+  document.getElementById('btnCancelarEdicao').style.display = 'none';
+  document.getElementById('fdArquivoAtual').textContent = '';
+  document.getElementById('fdLeituraStatus').textContent = '';
+  document.getElementById('formDesenho').reset();
+  carregarTagsDoPedido([], false);
+  limparCamposAutoLidos();
+}
+
+async function editarDesenho(id){
+  const d = (window.__desenhosLista || []).find(x => x.id === id);
+  if (!d) return;
+
+  desenhoEditandoId = id;
+  document.getElementById('formTitulo').textContent = `Revisar Desenho — Cód. MDE ${d.codigo_mde}`;
+  document.getElementById('btnSalvarDesenho').textContent = 'Salvar Alterações';
+  document.getElementById('btnCancelarEdicao').style.display = '';
+
+  await carregarTagsDoPedido(d.tag_id ? [d.tag_id] : [], !d.tag_id);
+  document.getElementById('fdDesenhoMde').value = d.desenho_mde || '';
+  document.getElementById('fdDesenhoCliente').value = d.desenho_cliente || '';
+  document.getElementById('fdRevisao').value = d.revisao || '';
+  document.getElementById('fdQtdFabricar').value = d.quantidade_fabricar ?? '0';
+  document.getElementById('fdPesoDesenho').value = d.peso_unitario_desenho ?? '';
+  document.getElementById('fdSetor').value = d.setor || '';
+  document.getElementById('fdFabricacao').checked = !!d.is_fabricacao;
+  document.getElementById('fdConhecimento').checked = !!d.is_conhecimento;
+  document.getElementById('fdCompra').checked = !!d.is_compra;
+  document.getElementById('fdNomeEquipamento').value = d.nome_equipamento || '';
+  document.getElementById('fdEquipamentoId').value = d.equipamento_id ?? '';
+  document.getElementById('fdObservacao').value = d.observacao || '';
+  document.getElementById('fdArquivo').value = '';
+  document.getElementById('fdArquivoAtual').textContent = d.arquivo_nome
+    ? `Arquivo atual: ${d.arquivo_nome} — selecione um novo arquivo acima só se for substituí-lo.`
+    : 'Nenhum arquivo enviado ainda.';
+
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function marcarErro(...fieldIds){
+  fieldIds.forEach(id => document.getElementById(id)?.classList.add('field-erro'));
+}
+function limparErros(){
+  document.querySelectorAll('.field-erro').forEach(el => el.classList.remove('field-erro'));
+}
+
+document.getElementById('formDesenho').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  clearMsg();
+  limparErros();
+
+  const desenhoMde = document.getElementById('fdDesenhoMde').value.trim();
+  if (!desenhoMde){ showMsg('Informe o número do Desenho MDE.', false); marcarErro('fieldDesenhoMde'); return; }
+
+  const nomeEquipamento = document.getElementById('fdNomeEquipamento').value.trim();
+  if (!nomeEquipamento){ showMsg('Informe o nome do equipamento.', false); marcarErro('fieldEquipamento'); return; }
+  if (!document.getElementById('fdEquipamentoId').value){
+    showMsg('Selecione um equipamento da lista (ou use "+ Cadastrar novo equipamento") antes de salvar.', false);
+    marcarErro('fieldEquipamento');
+    return;
+  }
+
+  const fabricacao = document.getElementById('fdFabricacao').checked;
+  const temClassificacao = fabricacao
+    || document.getElementById('fdConhecimento').checked
+    || document.getElementById('fdCompra').checked;
+  if (!temClassificacao){ showMsg('Marque ao menos uma Classificação do desenho (Fabricação, Conhecimento ou Compra).', false); marcarErro('fieldClassificacao'); return; }
+
+  const qtdFabricar = parseNum(document.getElementById('fdQtdFabricar').value) ?? 0;
+  if (fabricacao && qtdFabricar < 1){ showMsg('Informe a Quantidade a fabricar (mínimo 1) — o desenho está marcado como Fabricação.', false); marcarErro('fieldQtdFabricar'); return; }
+
+  const editando = !!desenhoEditandoId;
+
+  const tagsSelecionadas = getTagsSelecionadas();
+  const naoAplica = getNaoAplica();
+  if (!naoAplica && !tagsSelecionadas.length){
+    showMsg('Marque pelo menos um tag, ou "Não aplica" se esse desenho não pertence a nenhum tag específico.', false);
+    marcarErro('fieldTags');
+    return;
+  }
+  if (!editando && !naoAplica && tagsSelecionadas.length > 1 && tagsSelecionadas.length !== qtdFabricar){
+    showMsg(`A Quantidade a fabricar (${qtdFabricar}) precisa ser igual à quantidade de tags marcados (${tagsSelecionadas.length}) quando marca mais de um tag — um tag por unidade nesse caso.`, false);
+    marcarErro('fieldTags', 'fieldQtdFabricar');
+    return;
+  }
+
+  // nem todo desenho segue o mesmo padrão de carimbo — o que veio da leitura
+  // automática (campos em amarelo) pode ter sido lido errado. Antes de salvar
+  // de verdade, obriga a pessoa a confirmar que conferiu campo por campo —
+  // com um banner FIXO acima do formulário (não usa confirm() nativo, que
+  // tampa a tela bem em cima dos campos que a pessoa precisa olhar).
+  if (document.querySelectorAll('.campo-auto-lido').length && !confirmacaoLeituraOk){
+    document.getElementById('bannerConfirmarLeitura').style.display = '';
+    document.getElementById('bannerConfirmarLeitura').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
+  }
+
+  const btn = document.getElementById('btnSalvarDesenho');
+  btn.disabled = true; btn.textContent = 'Salvando...';
+
+  // upload do arquivo (se um novo foi selecionado — na edição, se não escolher nada, mantém o arquivo atual)
+  let arquivoPath, arquivoNome;
+  const fileInput = document.getElementById('fdArquivo');
+  const trocouArquivo = fileInput.files.length > 0;
+  if (trocouArquivo){
+    const file = fileInput.files[0];
+    arquivoNome = file.name;
+    arquivoPath = `${Date.now()}_${file.name}`.replace(/[^\w.\-]/g, '_');
+    const { error: upErr } = await sb.storage.from('desenhos').upload(arquivoPath, file);
+    if (upErr){
+      showMsg('Erro ao subir o arquivo: ' + upErr.message, false);
+      btn.disabled = false; btn.textContent = editando ? 'Salvar Alterações' : 'Salvar Desenho';
+      return;
+    }
+  }
+
+  // quando marca vários tags no MESMO desenho (ex: 3 tags = 3 unidades), não
+  // sobe o arquivo 3 vezes — lança um desenho/linha separada por tag no PCP,
+  // 1 unidade cada (cada tag tem prazo/progresso próprio, não pode ficar
+  // tudo junto). A validação acima já garante tags.length === qtdFabricar.
+  const tagsParaGravar = editando
+    ? [tagsSelecionadas[0] ?? null]
+    : (tagsSelecionadas.length ? tagsSelecionadas : [null]);
+  const qtdPorTag = tagsParaGravar.length > 1 ? 1 : qtdFabricar;
+
+  const payloadBase = {
+    pedido_id: pedidoAtual.id,
+    remessa_id: remessaAtual.id,
+    desenho_mde: desenhoMde,
+    desenho_cliente: document.getElementById('fdDesenhoCliente').value.trim() || null,
+    revisao: document.getElementById('fdRevisao').value.trim() || null,
+    remessa: String(remessaAtual.numero),
+    peso_unitario_desenho: parseNum(document.getElementById('fdPesoDesenho').value),
+    setor: document.getElementById('fdSetor').value || null,
+    is_fabricacao: document.getElementById('fdFabricacao').checked,
+    is_conhecimento: document.getElementById('fdConhecimento').checked,
+    is_compra: document.getElementById('fdCompra').checked,
+    nome_equipamento: document.getElementById('fdNomeEquipamento').value.trim() || null,
+    equipamento_id: document.getElementById('fdEquipamentoId').value ? Number(document.getElementById('fdEquipamentoId').value) : null,
+    observacao: document.getElementById('fdObservacao').value.trim() || null,
+  };
+  if (trocouArquivo){ payloadBase.arquivo_nome = arquivoNome; payloadBase.arquivo_path = arquivoPath; }
+
+  let desenho, desenhosCriados, error, arquivoAntigo;
+  if (editando){
+    const payload = { ...payloadBase, quantidade_fabricar: qtdFabricar, tag_id: tagsParaGravar[0], updated_at: new Date().toISOString() };
+    arquivoAntigo = (window.__desenhosLista || []).find(x => x.id === desenhoEditandoId)?.arquivo_path;
+    ({ data: desenho, error } = await sb.from('desenhos_engenharia').update(payload).eq('id', desenhoEditandoId).select().single());
+  } else {
+    const payloads = tagsParaGravar.map(tagId => ({ ...payloadBase, quantidade_fabricar: qtdPorTag, tag_id: tagId }));
+    ({ data: desenhosCriados, error } = await sb.from('desenhos_engenharia').insert(payloads).select());
+    desenho = desenhosCriados?.[0];
+  }
+
+  if (error){
+    showMsg('Erro ao salvar desenho: ' + error.message, false);
+    btn.disabled = false; btn.textContent = editando ? 'Salvar Alterações' : 'Salvar Desenho';
+    return;
+  }
+
+  // remove o arquivo antigo do Storage se foi substituído por um novo
+  if (editando && trocouArquivo && arquivoAntigo){
+    await sb.storage.from('desenhos').remove([arquivoAntigo]);
+  }
+
+  if (!editando && desenhosCriados.length > 1){
+    showMsg(`${desenhosCriados.length} desenhos salvos com sucesso (um por tag) — Códigos MDE: ${desenhosCriados.map(d => d.codigo_mde).join(', ')}. Já aparecem pro PCP ler e transcrever.`, true);
+    cancelarEdicao();
+    await carregarLista();
+    return;
+  }
+
+  showMsg(editando
+    ? `Desenho revisado com sucesso — Cód. MDE ${desenho.codigo_mde}`
+    : `Desenho salvo com sucesso — Código MDE gerado: ${desenho.codigo_mde}. Ele já aparece pro PCP ler e transcrever.`, true);
+  cancelarEdicao();
+  await carregarLista();
+});
+
+async function carregarLista(){
+  const wrap = document.getElementById('listaWrap');
+  wrap.innerHTML = `<div class="empty">Carregando...</div>`;
+
+  const { data, error } = await sb
+    .from('desenhos_engenharia')
+    .select('*, tags(nome)')
+    .eq('remessa_id', remessaAtual.id)
+    .order('created_at', { ascending: false });
+
+  if (error){ wrap.innerHTML = `<div class="empty">Erro: ${esc(error.message)}</div>`; return; }
+  window.__desenhosLista = data;
+  if (!data.length){ wrap.innerHTML = `<div class="empty">Nenhum desenho cadastrado nesta remessa ainda.</div>`; return; }
+
+  const linhas = [];
+  for (const d of data){
+    let arquivoUrl = null;
+    if (d.arquivo_path){
+      const { data: signed } = await sb.storage.from('desenhos').createSignedUrl(d.arquivo_path, 3600, { download: d.arquivo_nome || true });
+      arquivoUrl = signed?.signedUrl || null;
+    }
+    const badges = [
+      d.is_fabricacao ? '<span class="classif-badge" style="background:var(--green-dim);color:var(--green)">🏭 Fabricação</span>' : '',
+      d.is_conhecimento ? '<span class="classif-badge" style="background:var(--red-dim);color:var(--red)">📄 Conhecimento</span>' : '',
+      d.is_compra ? '<span class="classif-badge" style="background:var(--blue-dim);color:var(--blue)">🛒 Compra</span>' : '',
+    ].filter(Boolean).join(' ') || '<span style="color:var(--text3)">—</span>';
+    const chave = `${d.codigo_mde} ${d.desenho_mde||''} ${d.desenho_cliente||''} ${d.nome_equipamento||''} ${d.tags?.nome||''}`.toLowerCase();
+    linhas.push(`<tr data-search="${esc(chave)}">
+      <td>${d.codigo_mde}</td>
+      <td>${esc(d.desenho_mde)}</td>
+      <td>${esc(d.desenho_cliente || '—')}</td>
+      <td style="max-width:260px;white-space:normal">${esc(d.nome_equipamento || '—')}</td>
+      <td>${esc(d.revisao || '—')}</td>
+      <td>${esc(d.tags?.nome || '—')}</td>
+      <td>${esc(d.setor || '—')}</td>
+      <td>${badges}</td>
+      <td class="r">${d.quantidade_fabricar || 1}x</td>
+      <td class="r">${d.peso_unitario_desenho != null ? Number(d.peso_unitario_desenho).toLocaleString('pt-BR') : '—'}</td>
+      <td>${arquivoUrl ? `<a href="${arquivoUrl}" target="_blank" class="btn" style="text-decoration:none;display:inline-block">📎 ${esc(d.arquivo_nome||'arquivo')}</a>` : '—'}</td>
+      <td>${d.paralisado
+        ? `<span class="classif-badge" style="background:var(--red-dim);color:var(--red)" title="${esc(d.paralisado_motivo || '')}">⏸ PARALISADO</span><div style="font-size:10px;color:var(--text3);margin-top:3px">${new Date(d.paralisado_em).toLocaleString('pt-BR')}</div>`
+        : '<span style="color:var(--text3)">—</span>'}</td>
+      <td style="white-space:nowrap">
+        <span class="btn" style="cursor:pointer" onclick="abrirSubstituirArquivo(${d.id})">📎 Substituir arquivo</span>
+        <span class="btn" style="cursor:pointer;margin-left:6px" onclick="editarDesenho(${d.id})">✏️ Editar tudo</span>
+        ${d.paralisado
+          ? `<span class="btn" style="cursor:pointer;margin-left:6px;color:var(--green);border-color:var(--green-dim)" onclick="liberarDesenho(${d.id})">▶️ Liberar</span>`
+          : `<span class="btn" style="cursor:pointer;margin-left:6px;color:var(--red);border-color:var(--red-dim)" onclick="abrirParalisar(${d.id})">⏸ Paralisar</span>`}
+        <span class="btn" style="cursor:pointer;margin-left:6px;color:var(--red);border-color:var(--red-dim)" onclick="excluirDesenho(${d.id})">🗑 Excluir</span>
+      </td>
+    </tr>`);
+  }
+
+  wrap.innerHTML = `
+    <table class="dtbl">
+      <thead><tr>
+        <th>Cód. MDE</th><th>Desenho MDE</th><th>Desenho Cliente</th><th>Nome do equipamento</th><th>Revisão</th><th>Tag</th><th>Setor</th>
+        <th>Classificação</th><th class="r">Qtd. fabricar</th><th class="r">Peso desenho (kg)</th><th>Arquivo</th><th>Status</th><th></th>
+      </tr></thead>
+      <tbody>${linhas.join('')}</tbody>
+    </table>`;
+}
+
+// ── DISPARO DE REMESSA POR EMAIL (mailto — a pessoa confere e envia pelo
+// próprio Outlook/cliente de email, com a assinatura pessoal dela aplicada
+// automaticamente. É só um email informativo, pra ficar registrado.) ───────
+async function dispararRemessaPorEmail(){
+  await carregarLista();
+  const desenhos = window.__desenhosLista || [];
+  if (!desenhos.length){ showMsg('Não tem desenho nenhum cadastrado nesta remessa ainda.', false); return; }
+
+  // busca o enviada_email_em fresco do banco (não confia no que está em
+  // memória em remessaAtual — pode ficar desatualizado, ex: se um disparo
+  // anterior atualizou o banco mas o navegador recarregou/perdeu estado no
+  // meio do caminho tentando abrir o mailto:).
+  const { data: remessaFresca } = await sb.from('remessas').select('enviada_email_em').eq('id', remessaAtual.id).single();
+  remessaAtual.enviada_email_em = remessaFresca?.enviada_email_em ?? null;
+
+  // se a remessa já tinha sido enviada antes, qualquer desenho editado DEPOIS
+  // daquele envio é uma revisão de verdade — precisa ficar bem claro no
+  // assunto e marcado no corpo do email, pra quem recebe não confundir com
+  // um envio novo/duplicado.
+  const envioAnterior = remessaAtual.enviada_email_em ? new Date(remessaAtual.enviada_email_em) : null;
+  const revisados = envioAnterior
+    ? desenhos.filter(d => d.updated_at && new Date(d.updated_at) > envioAnterior)
+    : [];
+  const ehRevisao = revisados.length > 0;
+
+  const assuntoBase = `Remessa ${remessaAtual.numero} - Pedido ${pedidoAtual.numero_pedido}${pedidoAtual.cliente ? ' – ' + pedidoAtual.cliente : ''}`;
+  const assunto = ehRevisao
+    ? `REVISÃO - ${assuntoBase} - Desenho(s) revisado(s): ${revisados.map(d => d.desenho_mde).join(', ')}`
+    : assuntoBase;
+
+  const linhas = desenhos.map(d => {
+    const pesoTotal = (d.peso_unitario_desenho != null)
+      ? (Number(d.peso_unitario_desenho) * Number(d.quantidade_fabricar || 1)).toLocaleString('pt-BR')
+      : '—';
+    const revisado = ehRevisao && revisados.includes(d);
+    return [
+      revisado ? `⚠ REVISADO NESTE ENVIO` : null,
+      `Nº MDE: ${d.desenho_mde}`,
+      `Nº Cliente: ${d.desenho_cliente || '—'}`,
+      `Título/Equipamento: ${d.nome_equipamento || '—'}`,
+      `Revisão: ${d.revisao || '—'}`,
+      `Qtd: ${d.quantidade_fabricar || 1}`,
+      `Peso: ${pesoTotal} kg`,
+      `Observação: ${d.observacao || '—'}`,
+    ].filter(Boolean).join('\n');
+  }).join('\n\n');
+
+  const cabecalho = ehRevisao
+    ? `ATENÇÃO: esta é uma REVISÃO da remessa ${remessaAtual.numero} do pedido ${pedidoAtual.numero_pedido}${pedidoAtual.cliente ? ' (' + pedidoAtual.cliente + ')' : ''}. Desenho(s) revisado(s) nesta remessa: ${revisados.map(d => d.desenho_mde).join(', ')} (marcado(s) abaixo).`
+    : `Segue remessa ${remessaAtual.numero} do pedido ${pedidoAtual.numero_pedido}${pedidoAtual.cliente ? ' (' + pedidoAtual.cliente + ')' : ''}.`;
+
+  const corpo = `${cabecalho}\n\nDADOS DO DOCUMENTO\n\n${linhas}\n\n\n`;
+
+  const mailtoUrl = `mailto:?subject=${encodeURIComponent(assunto)}&body=${encodeURIComponent(corpo)}`;
+
+  // NÃO usa window.location.href = mailtoUrl — em algumas máquinas (sem app
+  // de email padrão configurado) isso recarrega a página inteira ANTES do
+  // resto do código rodar, e o modal/salvamento abaixo nunca chegam a
+  // acontecer. Um link <a mailto:> clicado por código não recarrega a
+  // página, então é o jeito seguro de tentar abrir o Outlook.
+  function tentarAbrirOutlook(){
+    const a = document.createElement('a');
+    a.href = mailtoUrl;
+    a.click();
+  }
+
+  // primeiro salva e mostra o conteúdo pra copiar — isso sempre acontece,
+  // não depende do mailto: funcionar. Só DEPOIS tenta abrir o Outlook.
+  document.getElementById('emailModalTitulo').textContent = 'Email da remessa';
+  document.getElementById('emailAssuntoPreview').value = assunto;
+  document.getElementById('emailCorpoPreview').value = corpo;
+  document.getElementById('btnAbrirOutlookDeNovo').onclick = tentarAbrirOutlook;
+  abrirModal('ovEmailRemessa');
+
+  const agora = new Date().toISOString();
+  const { error } = await sb.from('remessas').update({ enviada_email_em: agora }).eq('id', remessaAtual.id);
+  if (!error){
+    remessaAtual.enviada_email_em = agora;
+    atualizarAvisoEmail();
+    showMsg('Remessa marcada como enviada. O PCP já tem acesso a essa remessa.', true);
+  }
+
+  tentarAbrirOutlook();
+}
+
+function copiarCampo(id){
+  const el = document.getElementById(id);
+  el.select();
+  navigator.clipboard.writeText(el.value).then(() => {
+    showMsg('Copiado.', true);
+  }).catch(() => {
+    document.execCommand('copy');
+  });
+}
+
+init().catch(err => {
+  document.body.innerHTML += `<div class="empty">Erro ao iniciar a página: ${esc(err.message || err)}</div>`;
+  console.error('Erro no init():', err);
+});
+</script>
+</body>
+</html>

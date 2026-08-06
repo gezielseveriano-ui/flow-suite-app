@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flow Suite — Apontamento</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<style>
+:root{
+  --bg:#dcded9; --bg2:#ffffff; --bg3:#eceeea; --bg4:#dfe1dc;
+  --border:#cfd1cc; --text:#16181d; --text2:#5b5f68; --text3:#9a9da5;
+  --blue:#149c76; --blue-dim:#d7f0e6; --blue-hover:#0e7c5c; --header-bg:#059669;
+  --green:#158a52; --green-dim:#e3f5eb;
+  --amber:#b5690a; --red:#c0392b; --red-dim:#fbe6e4;
+  --radius:14px; --radius-sm:10px;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:15px}
+
+.top-bar{display:flex;align-items:center;justify-content:space-between;padding:1rem 1.25rem;background:var(--bg2);border-bottom:1px solid var(--border);flex-wrap:wrap;gap:10px}
+.top-bar-brand{display:flex;align-items:center;gap:10px}
+.top-bar-brand .icon-wrap{width:40px;height:40px;border-radius:var(--radius-sm);background:linear-gradient(135deg,#4f8ef7,#a78bfa);display:flex;align-items:center;justify-content:center;font-size:20px;color:#fff}
+.top-bar-brand h1{font-size:16px;font-weight:600}
+.top-bar-brand span{font-size:12px;color:var(--text2);display:block;margin-top:1px}
+.top-bar-right{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text2)}
+.btn{padding:10px 16px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg3);color:var(--text);font-size:14px;cursor:pointer;font-weight:500;min-height:44px}
+.btn:hover{border-color:var(--blue)}
+.btn-primary{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:700}
+.btn-primary:hover{background:var(--blue-hover);border-color:var(--blue-hover)}
+
+.nav-bar{display:flex;align-items:center;gap:6px;padding:.9rem 1.25rem;background:var(--bg2);border-bottom:1px solid var(--border);font-size:14px;flex-wrap:wrap}
+.nav-crumb{color:var(--text2);cursor:pointer;padding:6px 10px;border-radius:8px}
+.nav-crumb:hover{background:var(--bg3);color:var(--text)}
+.nav-crumb.active{color:var(--blue);font-weight:600}
+.top-bar,.nav-bar{background:var(--header-bg);border-bottom:1px solid rgba(255,255,255,.1)}
+.top-bar-brand h1{color:#fff}
+.top-bar-brand span{color:rgba(255,255,255,.75)}
+.top-bar-right{color:rgba(255,255,255,.9)}
+.top-bar .btn{background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.25);color:#fff}
+.top-bar .btn:hover{background:rgba(255,255,255,.24);border-color:rgba(255,255,255,.4)}
+.nav-crumb{color:rgba(255,255,255,.75)}
+.nav-crumb:hover{background:rgba(255,255,255,.14);color:#fff}
+.nav-crumb.active{color:#fff!important;font-weight:700}
+.nav-sep{color:var(--text3)}
+
+.wrap{padding:1.25rem}
+.search-row{display:flex;gap:10px;margin-bottom:1.25rem;flex-wrap:wrap}
+.search-row input{flex:1;min-width:220px;padding:13px 16px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg3);color:var(--text);font-size:16px}
+.search-row input:focus{outline:none;border-color:var(--blue)}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:1.1rem;cursor:pointer;transition:all .12s;min-height:44px;box-shadow:0 1px 3px rgba(16,24,40,.07),0 1px 2px rgba(16,24,40,.04)}
+.card:hover{border-color:var(--blue);background:var(--blue-dim);box-shadow:0 4px 10px rgba(16,24,40,.09),0 2px 4px rgba(16,24,40,.06)}
+.card-title{font-size:15px;font-weight:700;margin-bottom:4px;color:var(--text)}
+.card-sub{font-size:13px;color:var(--blue)}
+.card-sub2{font-size:12px;color:var(--text3);margin-top:4px}
+
+.empty{text-align:center;padding:3rem 2rem;color:var(--text2);font-size:14px}
+
+/* ── GRADE ESTILO PLANILHA ── */
+.filter-row{display:flex;gap:10px;margin-bottom:1rem;flex-wrap:wrap;align-items:center}
+.filter-row input{flex:1;min-width:200px;padding:11px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg3);color:var(--text);font-size:14px}
+.filter-row input:focus{outline:none;border-color:var(--blue)}
+.filter-count{font-size:12px;color:var(--text2);white-space:nowrap}
+
+.grid-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg2)}
+.gtbl{width:100%;border-collapse:collapse;font-size:12.5px}
+.gtbl thead th{
+  text-align:left;padding:10px 10px;color:var(--text2);font-weight:600;white-space:nowrap;
+  background:var(--bg3);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:2;
+}
+.gtbl thead th.etapa-th{text-align:center;min-width:92px}
+.gtbl thead th.fixed-col{position:sticky;left:0;z-index:3;background:var(--bg3)}
+.gtbl tbody td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:middle;white-space:nowrap}
+.gtbl tbody tr:hover td{background:rgba(0,0,0,0.025)}
+.gtbl tbody td.fixed-col{position:sticky;left:0;background:var(--bg2);z-index:1}
+.gtbl tbody tr:hover td.fixed-col{background:var(--bg4)}
+.col-desenho{font-weight:700;min-width:130px}
+.col-desc{color:var(--text2);min-width:160px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.col-tag{color:var(--blue);min-width:80px}
+.col-qtd{text-align:right;font-variant-numeric:tabular-nums;min-width:60px}
+.etapa-td{text-align:center;padding:6px}
+.etapa-select{
+  width:80px;padding:6px 4px;border:1px solid var(--border);border-radius:6px;
+  background:var(--bg3);color:var(--text);font-size:12px;text-align:center;cursor:pointer;
+}
+.etapa-select:focus{outline:none;border-color:var(--blue)}
+.etapa-select.pct-0{color:var(--text3)}
+.etapa-select.pct-mid{color:var(--amber);border-color:rgba(181,105,10,.4)}
+.etapa-select.pct-full{color:var(--green);border-color:rgba(21,138,82,.4);font-weight:700}
+.etapa-select.saving{opacity:.5}
+.etapa-select.modo-revisao{border:1px dashed var(--red);background:var(--red-dim);color:var(--red)}
+.btn-revisar{border:none;background:transparent;cursor:pointer;font-size:11px;padding:2px 4px;border-radius:4px;opacity:.55;vertical-align:middle;margin-left:2px}
+.btn-revisar:hover{opacity:1;background:var(--bg4)}
+.etapa-readonly{
+  display:inline-block;width:80px;padding:6px 4px;border:1px dashed var(--border);border-radius:6px;
+  font-size:12px;cursor:not-allowed;
+}
+.etapa-readonly.pct-0{color:var(--text3)}
+.etapa-readonly.pct-mid{color:var(--amber);border-color:rgba(181,105,10,.4)}
+.etapa-readonly.pct-full{color:var(--green);border-color:rgba(21,138,82,.4);font-weight:700}
+.flash-ok{animation:flashOk .8s ease}
+@keyframes flashOk{ 0%{background:var(--green-dim)} 100%{background:var(--bg3)} }
+.flash-err{animation:flashErr .8s ease}
+@keyframes flashErr{ 0%{background:var(--red-dim)} 100%{background:var(--bg3)} }
+.btn-sm{padding:6px 10px;font-size:12px;min-height:auto}
+.row-paralisada td{background:var(--red-dim)!important}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:300;padding:20px}
+.overlay.show{display:flex}
+.modal{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:1.4rem;width:100%;max-width:480px;max-height:90vh;overflow-y:auto}
+.modal h3{font-size:17px;font-weight:700;margin-bottom:14px}
+.instr-row{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-top:1px solid var(--border);font-size:14px}
+.instr-row:first-child{border-top:none}
+.instr-row .k{color:var(--text2)}
+.instr-row .v{font-weight:600;text-align:right}
+.instr-obs{margin-top:10px;padding:12px;background:var(--bg3);border-radius:var(--radius-sm);font-size:13px;color:var(--text2);font-style:italic}
+.modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <div class="top-bar-brand">
+    <div class="icon-wrap">📱</div>
+    <div><h1>Apontamento</h1><span>Avanço de produção</span></div>
+  </div>
+  <div class="top-bar-right">
+    <span>Logado como <strong id="userNome" style="color:#fff">...</strong></span>
+    <div id="sininhoWrap"></div>
+    <button class="btn" onclick="window.location.href='index.html'">Início</button>
+    <button class="btn" onclick="logout()">Sair</button>
+  </div>
+</div>
+
+<div class="nav-bar" id="navBar"></div>
+<div class="wrap" id="content"></div>
+
+<!-- MODAL: instruções da Engenharia (remessa, tag, quantidade a fabricar,
+     observação) -- não vem no DWG, é o que hoje só existe no corpo do email. -->
+<div class="overlay" id="ovInstrucoes">
+  <div class="modal">
+    <h3>📋 Instruções de fabricação</h3>
+    <div id="instrucoesBody"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn" onclick="fecharModal('ovInstrucoes')">Fechar</button>
+      <button type="button" class="btn btn-primary" id="btnBaixarInstrucoesPdf">📄 Baixar instruções (PDF)</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/supabase-client.js"></script>
+<script>
+let AUTH = null;
+let ctx = { pedido: null, produto: null };
+let gridItens = [];          // itens carregados para o pedido+produto atual
+let etapasAtuais = {};       // itemId -> { etapaKey: percentualAtual }
+const OPCOES_PCT = Array.from({length: 21}, (_, i) => i * 5); // 0,5,...,100
+// Expedição e Finalizado são fechadas automaticamente quando o item entra num romaneio
+const ETAPAS_AUTOMATICAS = ['expedicao', 'finalizado'];
+
+function abrirModal(id){ document.getElementById(id).classList.add('show'); }
+function fecharModal(id){ document.getElementById(id).classList.remove('show'); }
+
+// ── INSTRUÇÕES DA ENGENHARIA (remessa, tag, quantidade a fabricar, observação)
+// — hoje só existe no corpo do email; aqui mostra na tela e deixa baixar um
+// PDF limpo (gerado do zero, sem passar pelo conversor de DWG — não tem
+// risco de marca d'água da versão gratuita do Aspose).
+function abrirInstrucoes(itemId){
+  const it = gridItens.find(i => i.id === itemId);
+  if (!it) return;
+  const d = it.desenhos_engenharia || {};
+  const linhas = [
+    ['Pedido', `${ctx.pedido?.numero_pedido || '—'}${ctx.pedido?.cliente ? ' — ' + ctx.pedido.cliente : ''}`],
+    ['Remessa', it.remessa || '—'],
+    ['Cód. MDE', it.codigo_mde ?? '—'],
+    ['Desenho MDE', it.desenho || '—'],
+    ['Desenho Cliente', it.desenho_cliente || d.desenho_cliente || '—'],
+    ['Equipamento', d.nome_equipamento || '—'],
+    ['Revisão', d.revisao || '—'],
+    ['Tag', it.tag || '—'],
+    ['Descrição', it.descricao || '—'],
+    ['Fabricar (conforme desenho)', `${d.quantidade_fabricar || 1}x`],
+    ['Qtd. deste item', Number(it.quantidade).toLocaleString('pt-BR')],
+  ];
+  document.getElementById('instrucoesBody').innerHTML =
+    linhas.map(([k, v]) => `<div class="instr-row"><span class="k">${esc(k)}</span><span class="v">${esc(v)}</span></div>`).join('')
+    + `<div class="instr-obs"><strong>Observação da Engenharia:</strong><br>${esc(d.observacao || 'Nenhuma observação.')}</div>`;
+  document.getElementById('btnBaixarInstrucoesPdf').onclick = () => baixarInstrucoesPDF(it);
+  abrirModal('ovInstrucoes');
+}
+
+function baixarInstrucoesPDF(it){
+  const d = it.desenhos_engenharia || {};
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  let y = 20;
+
+  doc.setFontSize(16); doc.setFont(undefined, 'bold');
+  doc.text('Instruções de Fabricação', 14, y); y += 12;
+  doc.setFontSize(11); doc.setFont(undefined, 'normal');
+
+  const campos = [
+    ['Pedido', `${ctx.pedido?.numero_pedido || '—'}${ctx.pedido?.cliente ? ' — ' + ctx.pedido.cliente : ''}`],
+    ['Remessa', it.remessa || '—'],
+    ['Cód. MDE', String(it.codigo_mde ?? '—')],
+    ['Desenho MDE', it.desenho || '—'],
+    ['Desenho Cliente', it.desenho_cliente || d.desenho_cliente || '—'],
+    ['Equipamento', d.nome_equipamento || '—'],
+    ['Revisão', d.revisao || '—'],
+    ['Tag', it.tag || '—'],
+    ['Descrição', it.descricao || '—'],
+    ['Fabricar (conforme desenho)', `${d.quantidade_fabricar || 1}x`],
+    ['Qtd. deste item', Number(it.quantidade).toLocaleString('pt-BR')],
+  ];
+  campos.forEach(([k, v]) => {
+    doc.setFont(undefined, 'bold');
+    doc.text(`${k}:`, 14, y);
+    doc.setFont(undefined, 'normal');
+    const linha = doc.splitTextToSize(String(v), 130);
+    doc.text(linha, 70, y);
+    y += 7 * linha.length;
+  });
+
+  y += 4;
+  doc.setFont(undefined, 'bold');
+  doc.text('Observação da Engenharia:', 14, y); y += 7;
+  doc.setFont(undefined, 'normal');
+  const obs = doc.splitTextToSize(d.observacao || 'Nenhuma observação.', 180);
+  doc.text(obs, 14, y); y += 7 * obs.length + 8;
+
+  doc.setFontSize(9); doc.setTextColor(120);
+  doc.text(`Gerado em ${new Date().toLocaleString('pt-BR')}`, 14, y);
+
+  doc.save(`Instrucoes_${(it.desenho || it.codigo_mde || 'item').replace(/[^\w.\-]/g, '_')}.pdf`);
+}
+
+async function init(){
+  AUTH = await exigirLogin(['producao', 'admin']);
+  if (!AUTH) return;
+  document.getElementById('userNome').textContent = AUTH.nome;
+  iniciarSininho('sininhoWrap');
+  renderHome();
+}
+
+function renderNav(){
+  const nav = document.getElementById('navBar');
+  const parts = [`<span class="nav-crumb${!ctx.pedido ? ' active' : ''}" onclick="renderHome()">Pedidos em carteira</span>`];
+  if (ctx.pedido){
+    parts.push(`<span class="nav-sep">/</span><span class="nav-crumb${!ctx.produto ? ' active' : ''}" onclick="browseProdutos()">${esc(ctx.pedido.numero_pedido)}</span>`);
+  }
+  if (ctx.produto){
+    parts.push(`<span class="nav-sep">/</span><span class="nav-crumb active">${esc(ctx.produto)}</span>`);
+  }
+  nav.innerHTML = parts.join('');
+}
+
+// ── HOME: busca por desenho ou pedidos em carteira ──────────────────────────
+function renderHome(){
+  ctx = { pedido: null, produto: null };
+  renderNav();
+  document.getElementById('content').innerHTML = `
+    <div class="search-row">
+      <input id="buscaDesenho" placeholder="Buscar por número do desenho, tag ou pedido..." autocomplete="off">
+      <button class="btn btn-primary" onclick="buscarPorDesenho()">Buscar</button>
+    </div>
+    <div id="resultadosBusca"></div>
+    <div id="pedidosArea"><div class="empty">Carregando pedidos em carteira...</div></div>`;
+  document.getElementById('buscaDesenho').addEventListener('keydown', e => {
+    if (e.key === 'Enter') buscarPorDesenho();
+  });
+  renderPedidosEmCarteira();
+}
+
+async function renderPedidosEmCarteira(){
+  const area = document.getElementById('pedidosArea');
+  const { data, error } = await sb.from('pedidos').select('*').order('numero_pedido');
+  if (error){ area.innerHTML = `<div class="empty">Erro: ${esc(error.message)}</div>`; return; }
+  if (!data.length){ area.innerHTML = `<div class="empty">Nenhum pedido em carteira.</div>`; return; }
+  area.innerHTML = `
+    <div style="font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--text2);margin:1rem 0 .75rem">Pedidos em carteira</div>
+    <div class="grid">${data.map(p => `
+      <div class="card" onclick='selecionarPedido(${JSON.stringify(p).replace(/'/g, "&#39;")})'>
+        <div class="card-title">${esc(p.numero_pedido)}</div>
+        <div class="card-sub">${esc(p.cliente || '')}</div>
+        <div class="card-sub2">${esc(p.equipamento || '')}</div>
+      </div>`).join('')}</div>`;
+}
+
+async function buscarPorDesenho(){
+  const termo = document.getElementById('buscaDesenho').value.trim();
+  const res = document.getElementById('resultadosBusca');
+  if (!termo){ res.innerHTML = ''; return; }
+  res.innerHTML = `<div class="empty">Buscando...</div>`;
+
+  const { data, error } = await sb
+    .from('itens')
+    .select('*, pedidos(id, numero_pedido, cliente, equipamento)')
+    .or(`desenho.ilike.%${termo}%,desenho_cliente.ilike.%${termo}%,tag.ilike.%${termo}%,remessa.ilike.%${termo}%`)
+    .order('created_at', { ascending: false })
+    .limit(30);
+
+  if (error){ res.innerHTML = `<div class="empty">Erro: ${esc(error.message)}</div>`; return; }
+  if (!data.length){ res.innerHTML = `<div class="empty">Nenhum item encontrado.</div>`; return; }
+
+  res.innerHTML = `
+    <div style="font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--text2);margin-bottom:.75rem">Resultados da busca</div>
+    <div class="grid" style="margin-bottom:1.5rem">${data.map(it => `
+    <div class="card" onclick='abrirResultadoBusca(${JSON.stringify(it).replace(/'/g, "&#39;")})'>
+      <div class="card-title">${esc(it.desenho || '(sem desenho)')}</div>
+      <div class="card-sub">${esc(it.descricao || '')}${it.desenho_cliente ? ' · Cliente: ' + esc(it.desenho_cliente) : ''}</div>
+      <div class="card-sub2">Pedido ${esc(it.pedidos?.numero_pedido)} · ${esc(it.tag)}${it.remessa ? ' · Remessa ' + esc(it.remessa) : ''} · ${esc(it.produto)}</div>
+    </div>`).join('')}</div>`;
+}
+
+function abrirResultadoBusca(item){
+  ctx.pedido = item.pedidos;
+  ctx.produto = item.produto;
+  renderGrid(item.desenho);
+}
+
+function selecionarPedido(p){
+  ctx.pedido = p;
+  ctx.produto = null;
+  browseProdutos();
+}
+
+// ── PRODUTOS/SETORES DO PEDIDO ───────────────────────────────────────────────
+async function browseProdutos(){
+  ctx.produto = null;
+  renderNav();
+  const content = document.getElementById('content');
+  content.innerHTML = `<div class="grid" id="grid"><div class="empty">Carregando...</div></div>`;
+
+  const { data, error } = await sb.from('itens').select('produto').eq('pedido_id', ctx.pedido.id);
+  const grid = document.getElementById('grid');
+  if (error){ grid.innerHTML = `<div class="empty">Erro: ${esc(error.message)}</div>`; return; }
+  const produtos = [...new Set(data.map(r => r.produto))].sort();
+  if (!produtos.length){ grid.innerHTML = `<div class="empty">Nenhum item cadastrado neste pedido.</div>`; return; }
+
+  grid.innerHTML = produtos.map(pr => `
+    <div class="card" onclick="selecionarProduto('${esc(pr)}')">
+      <div class="card-title">${esc(pr)}</div>
+    </div>`).join('');
+}
+
+function selecionarProduto(pr){
+  ctx.produto = pr;
+  renderGrid();
+}
+
+// ── GRADE ESTILO PLANILHA: desenhos x etapas ────────────────────────────────
+/* Busca todos os lançamentos de etapa dos itens informados, paginando
+   (o Supabase limita a 1000 linhas por consulta por padrão). */
+async function buscarTodasEtapas(itemIds){
+  const PAGE = 1000;
+  let todas = [];
+  let offset = 0;
+  while (true){
+    const { data, error } = await sb
+      .from('etapas_avanco')
+      .select('item_id, etapa, percentual')
+      .in('item_id', itemIds)
+      .range(offset, offset + PAGE - 1);
+    if (error || !data || !data.length) break;
+    todas = todas.concat(data);
+    if (data.length < PAGE) break;
+    offset += PAGE;
+  }
+  return todas;
+}
+
+async function renderGrid(destacarDesenho){
+  renderNav();
+  const content = document.getElementById('content');
+  content.innerHTML = `
+    <div class="filter-row">
+      <input id="filtroGrid" placeholder="Filtrar por desenho, tag ou descrição..." autocomplete="off" oninput="aplicarFiltroGrid()">
+      <span class="filter-count" id="filterCount"></span>
+    </div>
+    <div class="grid-wrap"><div class="empty">Carregando itens...</div></div>`;
+
+  const { data: itensData, error } = await sb
+    .from('itens')
+    .select('*, desenhos_engenharia(paralisado, paralisado_em, paralisado_motivo, desenho_cliente, nome_equipamento, revisao, quantidade_fabricar, observacao)')
+    .eq('pedido_id', ctx.pedido.id)
+    .eq('produto', ctx.produto)
+    .order('tag')
+    .order('desenho');
+
+  if (error){
+    document.querySelector('.grid-wrap').innerHTML = `<div class="empty">Erro: ${esc(error.message)}</div>`;
+    return;
+  }
+  if (!itensData.length){
+    document.querySelector('.grid-wrap').innerHTML = `<div class="empty">Nenhum item encontrado.</div>`;
+    return;
+  }
+
+  const itemIds = itensData.map(it => it.id);
+  const etapasData = await buscarTodasEtapas(itemIds);
+
+  etapasAtuais = {};
+  itensData.forEach(it => {
+    etapasAtuais[it.id] = {};
+    ETAPAS.forEach(e => etapasAtuais[it.id][e.key] = 0);
+  });
+  etapasData.forEach(row => {
+    if (row.percentual > (etapasAtuais[row.item_id]?.[row.etapa] || 0)) {
+      etapasAtuais[row.item_id][row.etapa] = row.percentual;
+    }
+  });
+
+  gridItens = itensData;
+  desenharGrid();
+  if (destacarDesenho){
+    document.getElementById('filtroGrid').value = destacarDesenho;
+    aplicarFiltroGrid();
+  }
+}
+
+function pctClass(v){
+  if (v >= 100) return 'pct-full';
+  if (v > 0) return 'pct-mid';
+  return 'pct-0';
+}
+
+function opcoesSelect(itemId, etapaKey){
+  const atual = etapasAtuais[itemId][etapaKey];
+  return OPCOES_PCT.map(v =>
+    `<option value="${v}" ${v === atual ? 'selected' : ''} ${v < atual ? 'disabled' : ''}>${v}%</option>`
+  ).join('');
+}
+
+function desenharGrid(){
+  const wrap = document.querySelector('.grid-wrap');
+  wrap.innerHTML = `
+    <table class="gtbl" id="gridTable">
+      <thead><tr>
+        <th>Cód. MDE</th>
+        <th class="fixed-col">Desenho MDE</th>
+        <th>Desenho Cliente</th>
+        <th>Descrição</th>
+        <th>Tag</th>
+        <th>Remessa</th>
+        <th class="r">Qtd.</th>
+        <th>Arquivo</th>
+        ${ETAPAS.map(e => `<th class="etapa-th">${esc(e.label)}</th>`).join('')}
+      </tr></thead>
+      <tbody id="gridBody">
+        ${gridItens.map(it => {
+          const d = it.desenhos_engenharia;
+          const paralisado = !!d?.paralisado;
+          const motivoTitle = paralisado
+            ? `PARALISADO em ${new Date(d.paralisado_em).toLocaleString('pt-BR')}${d.paralisado_motivo ? ' — ' + d.paralisado_motivo : ''}`
+            : '';
+          return `
+        <tr class="${paralisado ? 'row-paralisada' : ''}" data-desenho="${esc((it.desenho||'').toLowerCase())}" data-desenho-cliente="${esc((it.desenho_cliente||'').toLowerCase())}" data-tag="${esc((it.tag||'').toLowerCase())}" data-desc="${esc((it.descricao||'').toLowerCase())}" data-remessa="${esc((it.remessa||'').toLowerCase())}">
+          <td>${esc(it.codigo_mde ?? '—')}</td>
+          <td class="fixed-col col-desenho" title="${esc(motivoTitle)}">${paralisado ? '⏸ ' : ''}${esc(it.desenho || '(sem desenho)')}</td>
+          <td class="col-desc">${esc(it.desenho_cliente || '—')}</td>
+          <td class="col-desc" title="${esc(it.descricao || '')}">${esc(it.descricao || '')}</td>
+          <td class="col-tag">${esc(it.tag || '—')}</td>
+          <td class="col-tag">${esc(it.remessa || '—')}</td>
+          <td class="col-qtd">${Number(it.quantidade).toLocaleString('pt-BR')}</td>
+          <td style="white-space:nowrap">${paralisado
+            ? `<span class="etapa-readonly" style="color:var(--red);border-color:var(--red)" title="${esc(motivoTitle)}">⏸ Paralisado</span>`
+            : (it.desenho_engenharia_id ? `<span class="btn btn-sm" onclick="baixarDesenho(${it.desenho_engenharia_id}, this)">📎 Baixar</span>` : '<span style="color:var(--text3)">—</span>')}
+            <span class="btn btn-sm" onclick="abrirInstrucoes(${it.id})" title="Remessa, tag, quantidade a fabricar e observação da Engenharia">📋 Instruções</span></td>
+          ${ETAPAS.map(e => `
+            <td class="etapa-td">
+              ${paralisado
+                ? `<span class="etapa-readonly" style="color:var(--red);border-color:var(--red)" title="${esc(motivoTitle)}">⏸</span>`
+                : (ETAPAS_AUTOMATICAS.includes(e.key)
+                ? `<span class="etapa-readonly ${pctClass(etapasAtuais[it.id][e.key])}" title="Atualizado automaticamente pelo Romaneio">${etapasAtuais[it.id][e.key]}%</span>`
+                : `<select class="etapa-select ${pctClass(etapasAtuais[it.id][e.key])}"
+                      id="sel-${it.id}-${e.key}"
+                      onchange="alterarEtapa(${it.id}, '${e.key}', this)">
+                ${opcoesSelect(it.id, e.key)}
+              </select><button type="button" class="btn-revisar" title="Revisar (corrigir um apontamento errado, inclusive pra baixo)" onclick="toggleRevisao(${it.id}, '${e.key}')">✏️</button>`)}
+            </td>`).join('')}
+        </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+  document.getElementById('filterCount').textContent = `${gridItens.length} desenho${gridItens.length !== 1 ? 's' : ''}`;
+}
+
+function aplicarFiltroGrid(){
+  const termo = document.getElementById('filtroGrid').value.trim().toLowerCase();
+  const rows = document.querySelectorAll('#gridBody tr');
+  let visiveis = 0;
+  rows.forEach(row => {
+    const match = !termo ||
+      row.dataset.desenho.includes(termo) ||
+      row.dataset.desenhoCliente.includes(termo) ||
+      row.dataset.tag.includes(termo) ||
+      row.dataset.remessa.includes(termo) ||
+      row.dataset.desc.includes(termo);
+    row.style.display = match ? '' : 'none';
+    if (match) visiveis++;
+  });
+  document.getElementById('filterCount').textContent = `${visiveis} de ${gridItens.length} desenhos`;
+}
+
+function toggleRevisao(itemId, etapaKey){
+  const sel = document.getElementById(`sel-${itemId}-${etapaKey}`);
+  const emRevisao = sel.dataset.revisao === '1';
+  if (emRevisao){
+    delete sel.dataset.revisao;
+    sel.innerHTML = opcoesSelect(itemId, etapaKey);
+    sel.className = 'etapa-select ' + pctClass(etapasAtuais[itemId][etapaKey]);
+  } else {
+    sel.dataset.revisao = '1';
+    sel.classList.add('modo-revisao');
+    const atual = etapasAtuais[itemId][etapaKey];
+    sel.innerHTML = OPCOES_PCT.map(v => `<option value="${v}" ${v === atual ? 'selected' : ''}>${v}%</option>`).join('');
+  }
+}
+
+async function alterarEtapa(itemId, etapaKey, selectEl){
+  const novoValor = parseInt(selectEl.value, 10);
+  const valorAnterior = etapasAtuais[itemId][etapaKey];
+  const cell = selectEl.closest('td');
+  const emRevisao = selectEl.dataset.revisao === '1';
+
+  if (emRevisao){
+    if (novoValor === valorAnterior){
+      toggleRevisao(itemId, etapaKey);
+      return;
+    }
+    if (!confirm(`Revisar "${ETAPAS.find(e=>e.key===etapaKey)?.label || etapaKey}" de ${valorAnterior}% para ${novoValor}%?\n\nUse isso só para corrigir um apontamento lançado errado — o valor anterior será substituído.`)){
+      selectEl.value = valorAnterior;
+      return;
+    }
+  }
+
+  selectEl.disabled = true;
+  selectEl.classList.add('saving');
+
+  const { error } = emRevisao
+    ? await sb.rpc('revisar_etapa', { p_item_id: itemId, p_etapa: etapaKey, p_percentual: novoValor })
+    : await sb.from('etapas_avanco').insert({ item_id: itemId, etapa: etapaKey, percentual: novoValor });
+
+  selectEl.disabled = false;
+  selectEl.classList.remove('saving');
+
+  if (error){
+    selectEl.value = valorAnterior;
+    cell.classList.add('flash-err');
+    setTimeout(() => cell.classList.remove('flash-err'), 800);
+    alert('Não foi possível salvar: ' + error.message);
+    return;
+  }
+
+  delete selectEl.dataset.revisao;
+  etapasAtuais[itemId][etapaKey] = novoValor;
+  selectEl.className = 'etapa-select ' + pctClass(novoValor);
+  selectEl.innerHTML = opcoesSelect(itemId, etapaKey);
+  cell.classList.add('flash-ok');
+  setTimeout(() => cell.classList.remove('flash-ok'), 800);
+}
+
+async function baixarDesenho(desenhoEngenhariaId, btnEl){
+  const textoOriginal = btnEl.textContent;
+  btnEl.textContent = 'Abrindo...'; btnEl.style.pointerEvents = 'none';
+  try {
+    const { data: d, error } = await sb.from('desenhos_engenharia').select('arquivo_path, arquivo_nome').eq('id', desenhoEngenhariaId).single();
+    if (error) throw error;
+    if (!d.arquivo_path){ alert('Esse desenho ainda não tem arquivo enviado.'); return; }
+    const { data: signed, error: errSign } = await sb.storage.from('desenhos').createSignedUrl(d.arquivo_path, 3600, { download: d.arquivo_nome || true });
+    if (errSign) throw errSign;
+    window.open(signed.signedUrl, '_blank');
+  } catch (err) {
+    alert('Não foi possível baixar o desenho: ' + (err.message || err));
+  } finally {
+    btnEl.textContent = textoOriginal; btnEl.style.pointerEvents = '';
+  }
+}
+
+init().catch(err => {
+  document.getElementById('content').innerHTML =
+    `<div class="empty">Erro ao iniciar a página: ${esc(err.message || err)}</div>`;
+  console.error('Erro no init():', err);
+});
+</script>
+</body>
+</html>
