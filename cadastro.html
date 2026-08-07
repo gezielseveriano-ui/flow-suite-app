@@ -453,10 +453,11 @@ async function renderDesenhosEngenharia(){
       <td>${esc(d.observacao || '—')}</td>
       <td class="r">${d.quantidade_fabricar || 1}x</td>
       <td class="r">${d.peso_unitario_desenho != null ? Number(d.peso_unitario_desenho).toLocaleString('pt-BR') : '—'}</td>
-      <td>${nPos ? `<span class="btn" onclick="abrirPosicoesModal(${d.id})">${nPos} posição(ões)</span>` : '<span style="color:var(--text3)">ainda não lido</span>'}</td>
+      <td>${nPos ? `<span class="btn" onclick="abrirPosicoesModal(${d.id})">${nPos} posição(ões)</span>` : `<span class="btn" onclick="abrirPosicoesModal(${d.id})" style="color:var(--text2)" title="A leitura automática não achou posições — clique pra digitar manualmente">ainda não lido</span>`}</td>
       <td>${arquivoUrl ? `<a href="${arquivoUrl}" target="_blank" class="btn" style="text-decoration:none;display:inline-block">📎 Baixar</a>` : '<span style="color:var(--text3)">—</span>'}</td>
       <td style="white-space:nowrap">
         <span class="btn btn-primary" id="btnLer-${d.id}" onclick="lerDesenho(${d.id})">${nPos ? 'Reler' : 'Ler'}</span>
+        <span class="btn" onclick="abrirPosicoesModal(${d.id})" title="Revisar ou digitar posições manualmente">✏️</span>
         <span class="btn" onclick="abrirInstrucoesDesenho(${d.id})" title="Remessa, tag, quantidade a fabricar e observação da Engenharia">📋 Instruções</span>
       </td>
     </tr>`);
