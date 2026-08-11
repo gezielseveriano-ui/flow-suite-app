@@ -746,10 +746,11 @@ async function baixarDesenho(desenhoEngenhariaId, btnEl){
     const { data: d, error } = await sb.from('desenhos_engenharia').select('arquivo_path, arquivo_nome').eq('id', desenhoEngenhariaId).single();
     if (error) throw error;
     if (!d.arquivo_path){ alert('Esse desenho ainda não tem arquivo enviado.'); return; }
-    // sem "download" aqui de propósito -- isso força o navegador a só salvar o
-    // arquivo (Content-Disposition: attachment). Sem essa opção, no Android o
-    // sistema abre o seletor "Abrir com..." (AutoCAD, etc.) em vez de só baixar.
-    const { data: signed, error: errSign } = await sb.storage.from('desenhos').createSignedUrl(d.arquivo_path, 3600);
+    // com "download" mesmo: sem isso, o Safari (iPhone/iPad) trava tentando
+    // exibir o arquivo direto na aba, em vez de baixar. O seletor "Abrir
+    // com..." (AutoCAD etc.) aparece depois, ao tocar no arquivo baixado --
+    // isso funciona igual no Android e no iOS, é o navegador que decide.
+    const { data: signed, error: errSign } = await sb.storage.from('desenhos').createSignedUrl(d.arquivo_path, 3600, { download: d.arquivo_nome || true });
     if (errSign) throw errSign;
     window.open(signed.signedUrl, '_blank');
   } catch (err) {
