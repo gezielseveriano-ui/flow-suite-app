@@ -1,0 +1,912 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flow Suite — Contratos</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<style>
+:root{
+  --navy:#0b1e33; --navy2:#102A43; --navy3:#173a5e;
+  --bg:#F8FAFC; --bg2:#ffffff; --bg3:#F1F5F9; --bg4:#E9EDF3;
+  --border:#E5E7EB; --border-strong:#CBD5E1; --text:#111827; --text2:#6B7280; --text3:#9CA3AF;
+  --blue:#1D4ED8; --blue-dim:#DBEAFE; --blue-hover:#1E40AF; --header-bg:#102A43;
+  --green:#10B981; --green-dim:#D1FAE5;
+  --amber:#b5690a; --amber-dim:#faedd9;
+  --red:#DC2626; --red-dim:#FEE2E2;
+  --radius:16px; --radius-sm:10px;
+  --shadow-sm:0 1px 2px rgba(16,24,40,.04), 0 1px 3px rgba(16,24,40,.06);
+  --shadow-md:0 8px 20px rgba(16,24,40,.10), 0 2px 6px rgba(16,24,40,.05);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:14px;-webkit-font-smoothing:antialiased}
+
+/* ── APP SHELL: header + sidebar + content (mesmo padrão das outras páginas) ── */
+.app-shell{min-height:100vh;display:flex;flex-direction:column}
+.app-header{display:flex;align-items:center;justify-content:space-between;height:60px;padding:0 22px;background:var(--header-bg);border-bottom:1px solid var(--border);flex-shrink:0;position:sticky;top:0;z-index:100}
+.app-header-brand{display:flex;align-items:center;gap:10px}
+.app-header-brand .logo-full{height:42px;width:auto;flex-shrink:0;display:block}
+.app-header-right{display:flex;align-items:center;gap:12px}
+.header-user{font-size:12px;color:rgba(255,255,255,.6);text-align:right;line-height:1.3}
+.header-user strong{color:#fff;font-weight:600;display:block;font-size:12.5px}
+.icon-btn{width:32px;height:32px;border-radius:9px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:#fff;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+.icon-btn:hover{background:rgba(255,255,255,.16)}
+.icon-btn svg{width:15px;height:15px}
+.avatar{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#4f8ef7,#7c6cf0);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;flex-shrink:0}
+
+.app-body{flex:1;display:flex;min-height:0}
+.sidebar{width:222px;flex-shrink:0;background:var(--navy2);border-right:1px solid var(--border);display:flex;flex-direction:column;justify-content:space-between;padding:16px 10px;transition:width .15s ease}
+.app-shell.sidebar-collapsed .sidebar{width:68px}
+.app-shell.sidebar-collapsed .nav-label,.app-shell.sidebar-collapsed .collapse-label{display:none}
+.sidebar-nav{display:flex;flex-direction:column;gap:2px}
+.nav-item{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:10px;color:rgba(255,255,255,.66);text-decoration:none;font-size:13.5px;font-weight:500;white-space:nowrap;overflow:hidden}
+.nav-item svg{width:17px;height:17px;flex-shrink:0}
+.nav-item:hover{background:rgba(255,255,255,.07);color:#fff}
+.nav-item.active{background:var(--blue);color:#fff;font-weight:600}
+.collapse-btn{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;color:rgba(255,255,255,.45);background:none;border:none;cursor:pointer;font-size:12.5px;width:100%;font-family:inherit}
+.collapse-btn:hover{background:rgba(255,255,255,.07);color:#fff}
+.collapse-btn svg{width:15px;height:15px;transition:transform .15s;flex-shrink:0}
+.app-shell.sidebar-collapsed .collapse-btn svg{transform:rotate(180deg)}
+
+.sidebar-fab{position:fixed;bottom:20px;left:16px;z-index:260;width:46px;height:46px;border-radius:50%;background:var(--navy2);border:1px solid rgba(255,255,255,.15);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:var(--shadow-md);transition:background .12s,transform .12s}
+.sidebar-fab:hover{background:var(--navy3);transform:scale(1.06)}
+.sidebar-fab svg{width:20px;height:20px;transition:transform .2s;flex-shrink:0}
+.app-shell.sidebar-collapsed .sidebar-fab svg{transform:rotate(180deg)}
+
+.content{flex:1;min-width:0;padding:1.75rem 2rem;overflow-y:auto}
+
+.btn{display:inline-block;padding:8px 15px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg2);color:var(--text);font-size:12.5px;cursor:pointer;font-weight:500;transition:border-color .12s,color .12s}
+.btn:hover{border-color:var(--blue);color:var(--blue)}
+.btn-primary{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}
+.btn-primary:hover{background:var(--blue-hover);border-color:var(--blue-hover);color:#fff}
+.btn-primary:disabled{opacity:.5;cursor:default}
+.btn-danger{color:var(--red);border-color:var(--red-dim)}
+.btn-danger:hover{background:var(--red-dim);border-color:var(--red)}
+.btn-sm{padding:4px 10px;font-size:11.5px}
+
+.nav-bar{display:flex;align-items:center;gap:6px;padding:0 0 14px;font-size:12px}
+.nav-crumb{color:var(--text2);cursor:pointer;padding:3px 8px;border-radius:6px}
+.nav-crumb:hover{background:var(--bg3);color:var(--text)}
+.nav-crumb.active{color:var(--blue);font-weight:500}
+.nav-sep{color:var(--text3)}
+
+.toolbar{display:flex;align-items:center;justify-content:space-between;padding:.25rem 0 1.25rem;gap:10px;flex-wrap:wrap}
+.toolbar h2{font-size:14px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.05em}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:14px}
+.card-item{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:1.1rem;cursor:pointer;transition:all .15s;box-shadow:var(--shadow-sm)}
+.card-item:hover{border-color:var(--blue);background:var(--blue-dim);box-shadow:var(--shadow-md);transform:translateY(-2px)}
+.ci-title{font-size:15px;font-weight:700;margin-bottom:4px;color:var(--text)}
+.ci-sub{font-size:12px;color:var(--blue);font-weight:600;margin-bottom:6px}
+.ci-line{font-size:12px;color:var(--text2);margin-bottom:3px}
+.ci-badge{display:inline-block;margin-top:8px;font-size:10.5px;font-weight:700;padding:2px 9px;border-radius:20px;background:var(--bg3);color:var(--text2)}
+
+.empty{text-align:center;padding:3rem 2rem;color:var(--text2);font-size:13px}
+
+/* modal */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:200;padding:20px}
+.overlay.show{display:flex}
+.modal{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:1.5rem;width:100%;max-width:520px;max-height:90vh;overflow-y:auto}
+.modal h3{font-size:15px;font-weight:600;margin-bottom:1.1rem}
+.field{margin-bottom:12px}
+.field label{font-size:11px;color:var(--text2);display:block;margin-bottom:5px;font-weight:600;text-transform:uppercase;letter-spacing:.03em}
+.field input,.field select,.field textarea{width:100%;padding:8px 11px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg3);color:var(--text);font-size:13px;font-family:inherit}
+.field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--blue)}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.input-prefix-group{display:flex;align-items:stretch}
+.input-prefix-group .input-prefix{display:flex;align-items:center;padding:0 10px;border:1px solid var(--border);border-right:none;border-radius:var(--radius-sm) 0 0 var(--radius-sm);background:var(--bg4);color:var(--text2);font-size:13px;font-weight:600}
+.input-prefix-group input{border-radius:0 var(--radius-sm) var(--radius-sm) 0}
+.field-row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+.err-box{background:var(--red-dim);color:var(--red);font-size:12px;padding:8px 12px;border-radius:var(--radius-sm);margin-bottom:12px;display:none}
+.err-box.show{display:block}
+.msg-box{margin:0 0 1rem;padding:11px 16px;border-radius:var(--radius-sm);font-size:13px;font-weight:600;display:none;position:sticky;top:0;z-index:150;box-shadow:var(--shadow-md)}
+.msg-box.show{display:block}
+.msg-box.ok{background:var(--green-dim);color:var(--green)}
+.msg-box.err{background:var(--red-dim);color:var(--red)}
+
+/* radio pills (natureza da operação / CIF-FOT) */
+.radio-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.radio-pill{display:flex;align-items:center;gap:8px;padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg3);cursor:pointer;font-size:12.5px}
+.radio-pill:has(input:checked){border-color:var(--blue);background:var(--blue-dim);font-weight:600;color:var(--blue-hover)}
+.radio-pill input{margin:0;flex-shrink:0}
+
+/* formulário do pedido */
+.form-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-sm);margin-bottom:1.25rem;overflow:hidden}
+.form-card-title{padding:.85rem 1.25rem;background:var(--bg3);border-bottom:1px solid var(--border);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text2)}
+.form-card-body{padding:1.25rem}
+
+.itens-tbl{width:100%;border-collapse:collapse;font-size:12.5px}
+.itens-tbl th{text-align:left;padding:6px 8px;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--text2);border-bottom:1px solid var(--border)}
+.itens-tbl td{padding:5px 8px;vertical-align:middle}
+.itens-tbl input{width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--bg3);color:var(--text);font-size:12.5px;font-family:inherit}
+.itens-tbl input:focus{outline:none;border-color:var(--blue)}
+.itens-tbl td.num{text-align:right;font-variant-numeric:tabular-nums}
+.itens-tbl tfoot td{font-weight:700;padding:10px 8px;border-top:2px solid var(--border-strong)}
+.item-rm{width:26px;height:26px;border-radius:8px;border:1px solid var(--red-dim);background:var(--red-dim);color:var(--red);cursor:pointer;font-size:14px;line-height:1}
+.item-rm:hover{background:var(--red);color:#fff}
+
+.form-actions{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:1rem;flex-wrap:wrap}
+.pc-num{font-size:16px;font-weight:700;color:var(--text)}
+</style>
+</head>
+<body>
+
+<div class="app-shell" id="appShell">
+  <header class="app-header">
+    <div class="app-header-brand">
+      <img class="logo-full" src="assets/logo.png" alt="Flow Suite">
+    </div>
+    <div class="app-header-right">
+      <span class="header-user">Logado como<strong id="userNome">...</strong></span>
+      <div id="sininhoWrap"></div>
+      <button class="icon-btn" title="Início" onclick="window.location.href='index.html'">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 9.5 10 3l7 6.5M5 8v8h10V8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <button class="icon-btn" title="Sair" onclick="logout()">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 3H4v14h4M13 6l4 4-4 4M6.5 10H17" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="avatar" id="userAvatar">··</div>
+    </div>
+  </header>
+  <div class="app-body">
+    <aside class="sidebar">
+      <nav class="sidebar-nav">
+        <a class="nav-item" href="index.html">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 9.5 10 3l7 6.5M5 8v8h10V8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="nav-label">Início</span>
+        </a>
+        <a class="nav-item active" href="contratos.html">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 2.5h6l3 3v12h-9z" stroke-linejoin="round"/><path d="M12 2.5V6h3M8 10h4M8 13h4M8 7h1.5" stroke-linecap="round"/></svg>
+          <span class="nav-label">Contratos</span>
+        </a>
+        <a class="nav-item" href="engenharia.html">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m3 17 8-8m0 0 4-4 2 2-4 4m-4-4 4 4M6 14l-1 3 3-1" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="nav-label">Engenharia</span>
+        </a>
+        <a class="nav-item" href="cadastro.html">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M7 3h6a1 1 0 0 1 1 1v1H6V4a1 1 0 0 1 1-1Z" stroke-linejoin="round"/><path d="M6 4H5a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1h-1M7 10h6M7 13h4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="nav-label">PCP</span>
+        </a>
+        <a class="nav-item" href="apontamento.html">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 17V9l4-3 4 3v8M11 17V6l3-2 3 2v11" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="nav-label">Produção</span>
+        </a>
+        <a class="nav-item" href="expedicao.html">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 6h9v8H2zM11 9h4l3 3v2h-7z" stroke-linejoin="round"/><circle cx="6" cy="15.5" r="1.4"/><circle cx="14" cy="15.5" r="1.4"/></svg>
+          <span class="nav-label">Expedição</span>
+        </a>
+        <a class="nav-item" href="industrializacao.html">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m10 2 7 3.5v9L10 18l-7-3.5v-9L10 2Z" stroke-linejoin="round"/><path d="M10 2v16M3 5.5 10 9l7-3.5M10 9v9" stroke-linejoin="round"/></svg>
+          <span class="nav-label">Industrialização</span>
+        </a>
+        <a class="nav-item" href="dashboard.html">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 15V9M10 15V4M16 15v-6" stroke-linecap="round"/></svg>
+          <span class="nav-label">Dashboard</span>
+        </a>
+      </nav>
+      <button class="collapse-btn" onclick="alternarSidebar(true)">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12.5 4 7 10l5.5 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span class="collapse-label">Recolher menu</span>
+      </button>
+    </aside>
+    <button class="sidebar-fab" id="sidebarFab" onclick="alternarSidebar(true)" title="Mostrar/ocultar menu">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12.5 4 7 10l5.5 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <main class="content">
+      <div class="nav-bar" id="navBar"></div>
+      <div class="msg-box" id="msgBox"></div>
+      <div id="content"></div>
+    </main>
+  </div>
+</div>
+
+<!-- MODAL: novo/editar contrato -->
+<div class="overlay" id="ovContrato">
+  <div class="modal">
+    <h3 id="contratoModalTitulo">Novo Contrato</h3>
+    <div class="err-box" id="errContrato"></div>
+    <form id="formContrato">
+      <div class="field"><label>Cliente *</label><input id="ctCliente" required placeholder="Razão social do cliente"></div>
+      <div class="field-row">
+        <div class="field"><label>CNPJ</label><input id="ctCnpj" placeholder="00.000.000/0000-00"></div>
+        <div class="field"><label>Inscrição Estadual</label><input id="ctIe"></div>
+      </div>
+      <div class="field"><label>Endereço</label><input id="ctEndereco"></div>
+      <div class="field-row">
+        <div class="field"><label>Município</label><input id="ctMunicipio" placeholder="Cidade - UF"></div>
+        <div class="field"><label>CEP</label><input id="ctCep"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Telefone</label><input id="ctTelefone"></div>
+        <div class="field"><label>E-mail</label><input id="ctEmail" type="email"></div>
+      </div>
+      <div class="field"><label>Comprador</label><input id="ctComprador" placeholder="Nome do responsável pela compra"></div>
+      <div class="field-row">
+        <div class="field"><label>Nº do contrato</label><input id="ctNumeroContrato" placeholder="Ex: 20250812_WA_MDE"></div>
+        <div class="field"><label>Data do contrato</label><input id="ctDataContrato" type="date"></div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn" onclick="fecharModal('ovContrato')">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Salvar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="js/supabase-client.js"></script>
+<script>
+// ── MENU LATERAL: fecha sozinho e tem botão flutuante sempre alcançável ────
+let sidebarMexidoManualmente = false;
+function alternarSidebar(manual){
+  document.getElementById('appShell').classList.toggle('sidebar-collapsed');
+  if (manual) sidebarMexidoManualmente = true;
+}
+setTimeout(() => { if (!sidebarMexidoManualmente) document.getElementById('appShell').classList.add('sidebar-collapsed'); }, 5000);
+
+let AUTH = null;
+let contratoAtual = null;   // linha de `contratos` selecionada
+let pedidoAtual = null;     // linha de `pedidos` selecionada (com contrato_id = contratoAtual.id)
+let dadosComerciaisAtual = null;
+let logoDataUrl = null;
+
+let msgBoxTimeout = null;
+function showMsg(text, ok){
+  const box = document.getElementById('msgBox');
+  box.textContent = (ok ? '✓ ' : '✕ ') + text;
+  box.className = 'msg-box show ' + (ok ? 'ok' : 'err');
+  box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  clearTimeout(msgBoxTimeout);
+  if (ok) msgBoxTimeout = setTimeout(() => box.classList.remove('show'), 4000);
+}
+function abrirModal(id){ document.getElementById(id).classList.add('show'); }
+function fecharModal(id){
+  document.getElementById(id).classList.remove('show');
+  document.querySelectorAll(`#${id} .err-box`).forEach(e => e.classList.remove('show'));
+}
+
+async function init(){
+  AUTH = await exigirLogin(['admin', 'contratos']);
+  if (!AUTH) return;
+  document.getElementById('userNome').textContent = AUTH.nome;
+  document.getElementById('userAvatar').textContent = (AUTH.nome || '').trim().split(/\s+/).map(p => p[0]).slice(0, 2).join('').toUpperCase() || '··';
+  iniciarSininho('sininhoWrap');
+  carregarLogoParaPdf();
+  renderListaContratos();
+}
+
+/* Carrega a logo oficial da MDE (não a do Flow Suite) como data URL, pra
+   poder embutir no PDF via doc.addImage() -- jsPDF não aceita URL direta,
+   só base64/Uint8Array. */
+function carregarLogoParaPdf(){
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+    canvas.getContext('2d').drawImage(img, 0, 0);
+    try { logoDataUrl = canvas.toDataURL('image/png'); } catch { logoDataUrl = null; }
+  };
+  img.onerror = () => { logoDataUrl = null; };
+  img.src = 'assets/logo-mde.png';
+}
+
+function renderNav(){
+  const nav = document.getElementById('navBar');
+  if (!contratoAtual){
+    nav.innerHTML = `<span class="nav-crumb active">Contratos</span>`;
+    return;
+  }
+  if (!pedidoAtual){
+    nav.innerHTML = `
+      <span class="nav-crumb" onclick="voltarContratos()">Contratos</span>
+      <span class="nav-sep">/</span>
+      <span class="nav-crumb active">${esc(contratoAtual.cliente)}</span>`;
+    return;
+  }
+  nav.innerHTML = `
+    <span class="nav-crumb" onclick="voltarContratos()">Contratos</span>
+    <span class="nav-sep">/</span>
+    <span class="nav-crumb" onclick="voltarPedidos()">${esc(contratoAtual.cliente)}</span>
+    <span class="nav-sep">/</span>
+    <span class="nav-crumb active">Pedido ${esc(pedidoAtual.numero_pedido)}</span>`;
+}
+
+function voltarContratos(){ contratoAtual = null; pedidoAtual = null; renderListaContratos(); }
+function voltarPedidos(){ pedidoAtual = null; renderListaPedidosDoContrato(); }
+
+/* ═══════════════════════ NÍVEL 1: lista de contratos ═══════════════════════ */
+
+async function renderListaContratos(){
+  contratoAtual = null; pedidoAtual = null;
+  renderNav();
+  const content = document.getElementById('content');
+  content.innerHTML = `
+    <div class="toolbar">
+      <h2>Contratos</h2>
+      <button class="btn btn-primary" onclick="abrirModalNovoContrato()">+ Novo Contrato</button>
+    </div>
+    <div class="grid" id="contratosGrid"><div class="empty">Carregando...</div></div>`;
+
+  const { data, error } = await sb.from('contratos').select('*').eq('ativo', true).order('created_at', { ascending: false });
+  const grid = document.getElementById('contratosGrid');
+  if (error){ grid.innerHTML = `<div class="empty">Erro: ${esc(error.message)}</div>`; return; }
+  if (!data.length){ grid.innerHTML = `<div class="empty">Nenhum contrato cadastrado ainda. Clique em "+ Novo Contrato" pra começar.</div>`; return; }
+
+  grid.innerHTML = data.map(c => `
+    <div class="card-item" onclick='abrirContrato(${c.id})'>
+      <div class="ci-title">${esc(c.cliente)}</div>
+      ${c.cnpj ? `<div class="ci-sub">${esc(c.cnpj)}</div>` : ''}
+      ${c.municipio ? `<div class="ci-line">📍 ${esc(c.municipio)}</div>` : ''}
+      ${c.numero_contrato ? `<div class="ci-badge">Contrato ${esc(c.numero_contrato)}</div>` : ''}
+    </div>`).join('');
+}
+
+function abrirModalNovoContrato(){
+  document.getElementById('contratoModalTitulo').textContent = 'Novo Contrato';
+  document.getElementById('formContrato').reset();
+  document.getElementById('formContrato').dataset.editId = '';
+  abrirModal('ovContrato');
+}
+
+document.getElementById('formContrato').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errBox = document.getElementById('errContrato');
+  errBox.classList.remove('show');
+
+  const payload = {
+    cliente: document.getElementById('ctCliente').value.trim(),
+    cnpj: document.getElementById('ctCnpj').value.trim() || null,
+    inscricao_estadual: document.getElementById('ctIe').value.trim() || null,
+    endereco: document.getElementById('ctEndereco').value.trim() || null,
+    municipio: document.getElementById('ctMunicipio').value.trim() || null,
+    cep: document.getElementById('ctCep').value.trim() || null,
+    telefone: document.getElementById('ctTelefone').value.trim() || null,
+    email: document.getElementById('ctEmail').value.trim() || null,
+    comprador: document.getElementById('ctComprador').value.trim() || null,
+    numero_contrato: document.getElementById('ctNumeroContrato').value.trim() || null,
+    data_contrato: document.getElementById('ctDataContrato').value || null,
+  };
+
+  const editId = e.target.dataset.editId;
+  const { error } = editId
+    ? await sb.from('contratos').update(payload).eq('id', editId)
+    : await sb.from('contratos').insert(payload);
+
+  if (error){ errBox.textContent = error.message; errBox.classList.add('show'); return; }
+  fecharModal('ovContrato');
+  showMsg(editId ? 'Contrato atualizado.' : 'Contrato cadastrado.', true);
+  renderListaContratos();
+});
+
+/* ═══════════════════ NÍVEL 2: pedidos de um contrato ═══════════════════ */
+
+async function abrirContrato(id){
+  const { data, error } = await sb.from('contratos').select('*').eq('id', id).single();
+  if (error){ showMsg('Erro ao abrir contrato: ' + error.message, false); return; }
+  contratoAtual = data;
+  pedidoAtual = null;
+  renderListaPedidosDoContrato();
+}
+
+async function renderListaPedidosDoContrato(){
+  renderNav();
+  const content = document.getElementById('content');
+  content.innerHTML = `
+    <div class="toolbar">
+      <h2>Pedidos — ${esc(contratoAtual.cliente)}</h2>
+      <button class="btn" onclick="abrirModalEditarContrato()">✏️ Editar contrato</button>
+      <button class="btn btn-primary" onclick="abrirNovoPedido()" style="margin-left:auto">+ Novo Pedido</button>
+    </div>
+    <div class="grid" id="pedidosGrid"><div class="empty">Carregando...</div></div>`;
+
+  const { data, error } = await sb
+    .from('pedidos')
+    .select('*, pedidos_dados_comerciais(*)')
+    .eq('contrato_id', contratoAtual.id)
+    .order('created_at', { ascending: false });
+
+  const grid = document.getElementById('pedidosGrid');
+  if (error){ grid.innerHTML = `<div class="empty">Erro: ${esc(error.message)}</div>`; return; }
+  if (!data.length){ grid.innerHTML = `<div class="empty">Nenhum pedido nesse contrato ainda. Clique em "+ Novo Pedido" pra criar.</div>`; return; }
+
+  grid.innerHTML = data.map(p => {
+    const dc = p.pedidos_dados_comerciais?.[0];
+    return `
+    <div class="card-item" onclick='abrirPedido(${p.id})'>
+      <div class="pc-num">Pedido ${esc(p.numero_pedido)}</div>
+      ${p.equipamento ? `<div class="ci-sub">${esc(p.equipamento)}</div>` : ''}
+      <div class="ci-line">Criado em ${new Date(p.created_at).toLocaleDateString('pt-BR')}</div>
+      ${dc ? `<div class="ci-badge">Rev. ${esc(dc.revisao)}</div>` : `<div class="ci-badge">Sem dados comerciais</div>`}
+    </div>`;
+  }).join('');
+}
+
+function abrirModalEditarContrato(){
+  document.getElementById('contratoModalTitulo').textContent = 'Editar Contrato';
+  const c = contratoAtual;
+  document.getElementById('ctCliente').value = c.cliente || '';
+  document.getElementById('ctCnpj').value = c.cnpj || '';
+  document.getElementById('ctIe').value = c.inscricao_estadual || '';
+  document.getElementById('ctEndereco').value = c.endereco || '';
+  document.getElementById('ctMunicipio').value = c.municipio || '';
+  document.getElementById('ctCep').value = c.cep || '';
+  document.getElementById('ctTelefone').value = c.telefone || '';
+  document.getElementById('ctEmail').value = c.email || '';
+  document.getElementById('ctComprador').value = c.comprador || '';
+  document.getElementById('ctNumeroContrato').value = c.numero_contrato || '';
+  document.getElementById('ctDataContrato').value = c.data_contrato || '';
+  document.getElementById('formContrato').dataset.editId = c.id;
+  abrirModal('ovContrato');
+}
+
+/* ═══════════════════ NÍVEL 3: formulário do pedido ═══════════════════ */
+
+const NATUREZA_OPCOES = [
+  { key: 'venda_produto', label: 'Venda de Produto' },
+  { key: 'revenda', label: 'Revenda' },
+  { key: 'industrializacao_encomenda', label: 'Industrialização por Encomenda' },
+  { key: 'venda_servico', label: 'Venda de Serviço' },
+];
+
+function abrirNovoPedido(){
+  pedidoAtual = null;
+  dadosComerciaisAtual = null;
+  renderFormPedido([]);
+}
+
+async function abrirPedido(id){
+  const [{ data: pedido, error: e1 }, { data: dc, error: e2 }, { data: itens, error: e3 }] = await Promise.all([
+    sb.from('pedidos').select('*').eq('id', id).single(),
+    sb.from('pedidos_dados_comerciais').select('*').eq('pedido_id', id).maybeSingle(),
+    sb.from('pedidos_itens_comerciais').select('*').eq('pedido_id', id).order('numero_item'),
+  ]);
+  if (e1 || e2 || e3){ showMsg('Erro ao abrir pedido: ' + (e1 || e2 || e3).message, false); return; }
+  pedidoAtual = pedido;
+  dadosComerciaisAtual = dc;
+  renderNav();
+  renderFormPedido(itens || []);
+}
+
+function renderFormPedido(itensIniciais){
+  renderNav();
+  const p = pedidoAtual;
+  const dc = dadosComerciaisAtual;
+  const content = document.getElementById('content');
+
+  content.innerHTML = `
+    <div class="toolbar">
+      <h2>${p ? 'Pedido ' + esc(p.numero_pedido) : 'Novo Pedido — ' + esc(contratoAtual.cliente)}</h2>
+      <button class="btn" onclick="voltarPedidos()">← Voltar</button>
+    </div>
+    <div class="err-box" id="errPedido"></div>
+
+    <div class="form-card">
+      <div class="form-card-title">Identificação</div>
+      <div class="form-card-body">
+        <div class="field-row3">
+          <div class="field"><label>Número do pedido *</label>
+            <div class="input-prefix-group">
+              <span class="input-prefix">P-</span>
+              <input id="pdNumero" required placeholder="Ex: 128" value="${esc((p?.numero_pedido || '').replace(/^P-/i, ''))}">
+            </div>
+          </div>
+          <div class="field"><label>Data</label><input id="pdData" type="date" value="${dc?.data_pedido || new Date().toISOString().slice(0,10)}"></div>
+          <div class="field"><label>Revisão</label><input id="pdRevisao" value="${esc(dc?.revisao ?? '0')}"></div>
+        </div>
+        <div class="field"><label>Equipamento <span style="text-transform:none;font-weight:400">(uso interno — aparece na Engenharia/PCP/Dashboard)</span></label><input id="pdEquipamento" value="${esc(p?.equipamento || '')}"></div>
+      </div>
+    </div>
+
+    <div class="form-card">
+      <div class="form-card-title">Dados comerciais</div>
+      <div class="form-card-body">
+        <div class="field-row">
+          <div class="field"><label>Nº Proposta MDE</label><input id="pdNumeroProposta" value="${esc(dc?.numero_proposta_mde || '')}"></div>
+          <div class="field"><label>Data da proposta</label><input id="pdDataProposta" type="date" value="${dc?.data_proposta || ''}"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-card">
+      <div class="form-card-title">Natureza da operação</div>
+      <div class="form-card-body">
+        <div class="radio-grid">
+          ${NATUREZA_OPCOES.map(o => `
+            <label class="radio-pill">
+              <input type="radio" name="natureza" value="${o.key}" ${dc?.natureza_operacao === o.key ? 'checked' : ''}>
+              ${esc(o.label)}
+            </label>`).join('')}
+        </div>
+      </div>
+    </div>
+
+    <div class="form-card">
+      <div class="form-card-title">Objeto</div>
+      <div class="form-card-body"><textarea id="pdObjeto" rows="2" style="width:100%;padding:8px 11px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg3);color:var(--text);font-size:13px;font-family:inherit">${esc(dc?.objeto || '')}</textarea></div>
+    </div>
+
+    <div class="form-card">
+      <div class="form-card-title">Condições de pagamento</div>
+      <div class="form-card-body"><textarea id="pdCondicoes" rows="3" style="width:100%;padding:8px 11px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg3);color:var(--text);font-size:13px;font-family:inherit">${esc(dc?.condicoes_pagamento || '')}</textarea></div>
+    </div>
+
+    <div class="form-card">
+      <div class="form-card-title">Entrega</div>
+      <div class="form-card-body">
+        <div class="field-row">
+          <div class="field"><label>Prazo de entrega</label><input id="pdPrazoEntrega" placeholder="Ex: 60 dias após aprovação" value="${esc(dc?.prazo_entrega || '')}"></div>
+          <div class="field"><label>Data de entrega</label><input id="pdDataEntrega" type="date" value="${dc?.data_entrega || ''}"></div>
+        </div>
+        <div class="field">
+          <label>Entrega</label>
+          <div class="radio-grid" style="grid-template-columns:1fr 1fr;max-width:260px">
+            <label class="radio-pill"><input type="radio" name="entregaTipo" value="CIF" ${dc?.entrega_tipo === 'CIF' || !dc ? 'checked' : ''}> CIF</label>
+            <label class="radio-pill"><input type="radio" name="entregaTipo" value="FOT" ${dc?.entrega_tipo === 'FOT' ? 'checked' : ''}> FOT</label>
+          </div>
+        </div>
+        <div class="field"><label>Transportadora</label><input id="pdTransportadora" value="${esc(dc?.transportadora || '')}"></div>
+        <div class="field"><label>Local de entrega</label><input id="pdLocalEntrega" value="${esc(dc?.local_entrega || '')}"></div>
+        <div class="field"><label>Endereço de cobrança</label><textarea id="pdEnderecoCobranca" rows="2" style="width:100%;padding:8px 11px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg3);color:var(--text);font-size:13px;font-family:inherit">${esc(dc?.endereco_cobranca || '')}</textarea></div>
+      </div>
+    </div>
+
+    <div class="form-card">
+      <div class="form-card-title">Itens do pedido</div>
+      <div class="form-card-body">
+        <table class="itens-tbl">
+          <thead><tr><th style="width:36px">#</th><th style="width:110px">TAG</th><th>Descrição</th><th style="width:80px">Quant.</th><th style="width:110px">Valor unit.</th><th style="width:110px">Valor total</th><th style="width:30px"></th></tr></thead>
+          <tbody id="itensBody"></tbody>
+          <tfoot><tr><td colspan="5" style="text-align:right">Valor total do pedido:</td><td class="num" id="itensTotalGeral">R$ 0,00</td><td></td></tr></tfoot>
+        </table>
+        <button type="button" class="btn btn-sm" style="margin-top:10px" onclick="adicionarLinhaItem()">+ Adicionar item</button>
+      </div>
+    </div>
+
+    <div class="form-card">
+      <div class="form-card-title">Dados fiscais</div>
+      <div class="form-card-body">
+        <div class="field"><label>Classificação fiscal</label><input id="pdClassificacaoFiscal" value="${esc(dc?.classificacao_fiscal || '')}"></div>
+        <div class="field"><label>Impostos</label><textarea id="pdImpostos" rows="3" style="width:100%;padding:8px 11px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg3);color:var(--text);font-size:13px;font-family:inherit">${esc(dc?.impostos || '')}</textarea></div>
+      </div>
+    </div>
+
+    <div class="form-card">
+      <div class="form-card-title">Observações importantes</div>
+      <div class="form-card-body"><textarea id="pdObservacoes" rows="3" style="width:100%;padding:8px 11px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg3);color:var(--text);font-size:13px;font-family:inherit">${esc(dc?.observacoes_importantes || '')}</textarea></div>
+    </div>
+
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="salvarPedido()">💾 Salvar Pedido</button>
+      <button class="btn" id="btnGerarFolha" onclick="gerarFolhaDeRostoPDF()" ${p ? '' : 'disabled title="Salve o pedido primeiro"'}>📄 Gerar Folha de Rosto</button>
+    </div>
+  `;
+
+  (itensIniciais.length ? itensIniciais : [null]).forEach(it => adicionarLinhaItem(it));
+  document.getElementById('itensBody').addEventListener('input', recalcularItens);
+  recalcularItens();
+}
+
+function adicionarLinhaItem(item){
+  const tbody = document.getElementById('itensBody');
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td class="num item-idx"></td>
+    <td><input class="it-tag" value="${esc(item?.tag || '')}"></td>
+    <td><input class="it-desc" value="${esc(item?.descricao || '')}" placeholder="Descrição do produto/serviço"></td>
+    <td><input class="it-qtd" type="number" step="0.001" min="0" value="${item?.quantidade ?? 1}"></td>
+    <td><input class="it-valor" type="number" step="0.01" min="0" value="${item?.valor_unitario ?? 0}"></td>
+    <td class="num it-total">R$ 0,00</td>
+    <td><button type="button" class="item-rm" onclick="this.closest('tr').remove(); recalcularItens()">×</button></td>`;
+  tbody.appendChild(tr);
+  recalcularItens();
+}
+
+function recalcularItens(){
+  const linhas = [...document.querySelectorAll('#itensBody tr')];
+  let totalGeral = 0;
+  linhas.forEach((tr, i) => {
+    tr.querySelector('.item-idx').textContent = i + 1;
+    const qtd = Number(tr.querySelector('.it-qtd').value) || 0;
+    const valor = Number(tr.querySelector('.it-valor').value) || 0;
+    const total = qtd * valor;
+    totalGeral += total;
+    tr.querySelector('.it-total').textContent = total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  });
+  const totalEl = document.getElementById('itensTotalGeral');
+  if (totalEl) totalEl.textContent = totalGeral.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+function coletarItensDoForm(){
+  return [...document.querySelectorAll('#itensBody tr')].map((tr, i) => ({
+    numero_item: i + 1,
+    tag: tr.querySelector('.it-tag').value.trim() || null,
+    descricao: tr.querySelector('.it-desc').value.trim(),
+    quantidade: Number(tr.querySelector('.it-qtd').value) || 0,
+    valor_unitario: Number(tr.querySelector('.it-valor').value) || 0,
+  })).filter(it => it.descricao);
+}
+
+async function salvarPedido(){
+  const errBox = document.getElementById('errPedido');
+  errBox.classList.remove('show');
+
+  const numeroDigitado = document.getElementById('pdNumero').value.trim().replace(/^P-/i, '');
+  if (!numeroDigitado){ errBox.textContent = 'Informe o número do pedido.'; errBox.classList.add('show'); return; }
+  const numero = 'P-' + numeroDigitado;
+
+  const equipamento = document.getElementById('pdEquipamento').value.trim() || null;
+
+  let pedidoId = pedidoAtual?.id;
+  if (!pedidoId){
+    const { data, error } = await sb.from('pedidos').insert({
+      numero_pedido: numero,
+      contrato_id: contratoAtual.id,
+      cliente: contratoAtual.cliente,
+      equipamento,
+    }).select().single();
+    if (error){
+      errBox.textContent = error.message.includes('duplicate') ? 'Já existe um pedido com esse número.' : error.message;
+      errBox.classList.add('show');
+      return;
+    }
+    pedidoAtual = data;
+    pedidoId = data.id;
+  } else {
+    const { error } = await sb.from('pedidos').update({ numero_pedido: numero, equipamento }).eq('id', pedidoId);
+    if (error){
+      errBox.textContent = error.message.includes('duplicate') ? 'Já existe um pedido com esse número.' : error.message;
+      errBox.classList.add('show');
+      return;
+    }
+  }
+
+  const natureza = document.querySelector('input[name="natureza"]:checked')?.value || null;
+  const entregaTipo = document.querySelector('input[name="entregaTipo"]:checked')?.value || null;
+  const dcPayload = {
+    pedido_id: pedidoId,
+    data_pedido: document.getElementById('pdData').value || new Date().toISOString().slice(0,10),
+    revisao: document.getElementById('pdRevisao').value.trim() || '0',
+    numero_proposta_mde: document.getElementById('pdNumeroProposta').value.trim() || null,
+    data_proposta: document.getElementById('pdDataProposta').value || null,
+    natureza_operacao: natureza,
+    objeto: document.getElementById('pdObjeto').value.trim() || null,
+    condicoes_pagamento: document.getElementById('pdCondicoes').value.trim() || null,
+    entrega_tipo: entregaTipo,
+    prazo_entrega: document.getElementById('pdPrazoEntrega').value.trim() || null,
+    data_entrega: document.getElementById('pdDataEntrega').value || null,
+    transportadora: document.getElementById('pdTransportadora').value.trim() || null,
+    local_entrega: document.getElementById('pdLocalEntrega').value.trim() || null,
+    endereco_cobranca: document.getElementById('pdEnderecoCobranca').value.trim() || null,
+    classificacao_fiscal: document.getElementById('pdClassificacaoFiscal').value.trim() || null,
+    impostos: document.getElementById('pdImpostos').value.trim() || null,
+    observacoes_importantes: document.getElementById('pdObservacoes').value.trim() || null,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data: dcSalvo, error: errDc } = await sb
+    .from('pedidos_dados_comerciais')
+    .upsert(dcPayload, { onConflict: 'pedido_id' })
+    .select()
+    .single();
+  if (errDc){ errBox.textContent = 'Pedido salvo, mas houve erro nos dados comerciais: ' + errDc.message; errBox.classList.add('show'); return; }
+  dadosComerciaisAtual = dcSalvo;
+
+  // itens: apaga tudo e reinsere (forma mais simples de sincronizar add/remove/edit numa lista curta)
+  const { error: errDelItens } = await sb.from('pedidos_itens_comerciais').delete().eq('pedido_id', pedidoId);
+  if (errDelItens){ errBox.textContent = 'Erro ao atualizar itens: ' + errDelItens.message; errBox.classList.add('show'); return; }
+
+  const itens = coletarItensDoForm().map(it => ({ ...it, pedido_id: pedidoId }));
+  if (itens.length){
+    const { error: errIns } = await sb.from('pedidos_itens_comerciais').insert(itens);
+    if (errIns){ errBox.textContent = 'Erro ao salvar itens: ' + errIns.message; errBox.classList.add('show'); return; }
+  }
+
+  // tag nasce aqui: toda TAG usada nos itens vira uma tag do pedido, pra
+  // Engenharia só escolher (não cria mais tag nova por lá)
+  const tagsUnicas = [...new Set(itens.map(it => it.tag).filter(Boolean))];
+  if (tagsUnicas.length){
+    const { error: errTags } = await sb
+      .from('tags')
+      .upsert(tagsUnicas.map(nome => ({ pedido_id: pedidoId, nome })), { onConflict: 'pedido_id,nome', ignoreDuplicates: true });
+    if (errTags) console.error('Erro ao sincronizar tags:', errTags.message);
+  }
+
+  showMsg('Pedido salvo com sucesso.', true);
+  renderNav();
+  document.getElementById('btnGerarFolha').disabled = false;
+  document.getElementById('btnGerarFolha').removeAttribute('title');
+}
+
+/* ═══════════════════════ GERAÇÃO DO PDF (Folha de Rosto) ═══════════════════════ */
+
+function caixa(doc, x, y, w, h, opts){
+  opts = opts || {};
+  if (opts.fill){ doc.setFillColor(opts.fill[0], opts.fill[1], opts.fill[2]); doc.rect(x, y, w, h, 'F'); }
+  doc.setDrawColor(90); doc.setLineWidth(0.25);
+  doc.rect(x, y, w, h);
+}
+
+function tituloSecao(doc, x, y, w, texto){
+  caixa(doc, x, y, w, 6, { fill: [225,225,225] });
+  doc.setFont(undefined, 'bold'); doc.setFontSize(8.5); doc.setTextColor(20);
+  doc.text(texto, x + w/2, y + 4.2, { align: 'center' });
+  return y + 6;
+}
+
+/* uma linha de campos lado a lado, cada um com rótulo pequeno em cima e valor embaixo */
+function linhaCampos(doc, x, y, campos, h){
+  h = h || 9;
+  let cx = x;
+  campos.forEach(c => {
+    caixa(doc, cx, y, c.w, h);
+    doc.setFont(undefined, 'normal'); doc.setFontSize(6.3); doc.setTextColor(90);
+    doc.text(c.label.toUpperCase(), cx + 2, y + 3);
+    doc.setFont(undefined, 'bold'); doc.setFontSize(8.5); doc.setTextColor(15);
+    const valorTxt = doc.splitTextToSize(String(c.valor ?? '') || '—', c.w - 4);
+    doc.text(valorTxt[0] || '—', cx + 2, y + Math.min(h - 2.5, 8));
+    cx += c.w;
+  });
+  return y + h;
+}
+
+/* caixa de texto livre (Objeto, Condições, Observações...) */
+function boxTexto(doc, x, y, w, h, texto){
+  caixa(doc, x, y, w, h);
+  doc.setFont(undefined, 'normal'); doc.setFontSize(8.5); doc.setTextColor(15);
+  const linhas = doc.splitTextToSize(texto || '', w - 6);
+  doc.text(linhas.slice(0, Math.max(1, Math.floor((h - 3) / 3.8))), x + 3, y + 5.5);
+  return y + h;
+}
+
+function checkboxLinha(doc, x, y, w, label, marcado){
+  doc.setDrawColor(60); doc.setLineWidth(0.3);
+  doc.rect(x, y + 1.2, 3.2, 3.2);
+  if (marcado){ doc.setFont(undefined,'bold'); doc.setFontSize(8); doc.text('X', x + 0.65, y + 3.7); }
+  doc.setFont(undefined, 'normal'); doc.setFontSize(8); doc.setTextColor(15);
+  doc.text(label, x + 5.5, y + 3.6);
+}
+
+function fmtData(iso){
+  if (!iso) return '—';
+  const [a,m,d] = iso.split('-');
+  return `${d}/${m}/${a}`;
+}
+function fmtMoeda(v){
+  return Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+async function gerarFolhaDeRostoPDF(){
+  if (!pedidoAtual){ showMsg('Salve o pedido antes de gerar a Folha de Rosto.', false); return; }
+
+  const { data: itens } = await sb.from('pedidos_itens_comerciais').select('*').eq('pedido_id', pedidoAtual.id).order('numero_item');
+  const c = contratoAtual, p = pedidoAtual, dc = dadosComerciaisAtual || {};
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const M = 14, PW = 210, CW = PW - 2*M;
+  const agora = new Date();
+  const rodape = () => {
+    doc.setFont(undefined, 'normal'); doc.setFontSize(6.5); doc.setTextColor(120);
+    doc.text(`RVPE120.GER (Contratos) - ${agora.toLocaleDateString('pt-BR')} - ${agora.toLocaleTimeString('pt-BR').slice(0,5)}  Usuário: ${AUTH.nome}`, M, 292);
+  };
+
+  function cabecalho(folhaNum){
+    let y = 10;
+    caixa(doc, M, y, 32, 25);
+    if (logoDataUrl){ try { doc.addImage(logoDataUrl, 'PNG', M+3, y+6.6, 26, 11.7); } catch {} }
+    else { doc.setFont(undefined,'bold'); doc.setFontSize(11); doc.text('MDE', M+16, y+14, { align: 'center' }); }
+
+    const x2 = M + 32, w2 = CW - 32 - 20, x3 = M + CW - 20;
+    caixa(doc, x2, y, w2, 7, { fill: [225,225,225] });
+    doc.setFont(undefined,'bold'); doc.setFontSize(9.5); doc.setTextColor(20);
+    doc.text('SISTEMA DE GESTÃO DA QUALIDADE (SGQ)', x2 + w2/2, y + 4.7, { align: 'center' });
+    caixa(doc, x3, y, 20, 7);
+    doc.setFontSize(6.5); doc.setFont(undefined,'normal'); doc.text('FOLHA', x3+2, y+3);
+    doc.setFont(undefined,'bold'); doc.setFontSize(9); doc.text(String(folhaNum), x3+2, y+6.2);
+
+    linhaCampos(doc, x2, y+7, [
+      { label: 'Tipo', valor: 'Formulário', w: w2*0.42 },
+      { label: 'Título', valor: 'Confirmação de Encomenda', w: w2*0.58 },
+    ], 9);
+    linhaCampos(doc, x2, y+16, [
+      { label: 'Data', valor: fmtData(dc.data_pedido), w: w2*0.55 },
+      { label: 'Rev.', valor: dc.revisao ?? '0', w: w2*0.45 },
+    ], 9);
+    linhaCampos(doc, x3, y+7, [ { label: 'Pedido', valor: p.numero_pedido, w: 20 } ], 18);
+    return y + 25;
+  }
+
+  // ── PÁGINA 1 ──────────────────────────────────────────────────────────
+  let y = cabecalho(1);
+  y = tituloSecao(doc, M, y+2, CW, 'DADOS DO CLIENTE');
+  y = linhaCampos(doc, M, y, [ { label: 'Cliente', valor: c.cliente, w: CW } ]);
+  y = linhaCampos(doc, M, y, [ { label: 'CNPJ', valor: c.cnpj, w: CW*0.5 }, { label: 'I.E.', valor: c.inscricao_estadual, w: CW*0.5 } ]);
+  y = linhaCampos(doc, M, y, [ { label: 'Endereço', valor: c.endereco, w: CW*0.7 }, { label: 'CEP', valor: c.cep, w: CW*0.3 } ]);
+  y = linhaCampos(doc, M, y, [ { label: 'Município', valor: c.municipio, w: CW*0.5 }, { label: 'Telefone', valor: c.telefone, w: CW*0.5 } ]);
+  y = linhaCampos(doc, M, y, [ { label: 'Comprador', valor: c.comprador, w: CW*0.5 }, { label: 'E-mail', valor: c.email, w: CW*0.5 } ]);
+
+  y = tituloSecao(doc, M, y+2, CW, 'DADOS COMERCIAIS');
+  y = linhaCampos(doc, M, y, [ { label: 'Nº Contrato Cliente', valor: c.numero_contrato, w: CW*0.5 }, { label: 'Data Contrato', valor: fmtData(c.data_contrato), w: CW*0.5 } ]);
+  y = linhaCampos(doc, M, y, [ { label: 'Nº Proposta MDE', valor: dc.numero_proposta_mde, w: CW*0.5 }, { label: 'Data Proposta', valor: fmtData(dc.data_proposta), w: CW*0.5 } ]);
+
+  y = tituloSecao(doc, M, y+2, CW, 'NATUREZA DA OPERAÇÃO');
+  caixa(doc, M, y, CW, 12);
+  checkboxLinha(doc, M+3, y+1, CW/2, 'VENDA DE PRODUTO', dc.natureza_operacao === 'venda_produto');
+  checkboxLinha(doc, M+CW/2+3, y+1, CW/2, 'INDUSTRIALIZAÇÃO POR ENCOMENDA', dc.natureza_operacao === 'industrializacao_encomenda');
+  checkboxLinha(doc, M+3, y+7, CW/2, 'REVENDA', dc.natureza_operacao === 'revenda');
+  checkboxLinha(doc, M+CW/2+3, y+7, CW/2, 'VENDA DE SERVIÇO', dc.natureza_operacao === 'venda_servico');
+  y += 12;
+
+  y = tituloSecao(doc, M, y+2, CW, 'OBJETO');
+  y = boxTexto(doc, M, y, CW, 12, dc.objeto);
+
+  y = tituloSecao(doc, M, y+2, CW, 'CONDIÇÕES DE PAGAMENTO');
+  y = boxTexto(doc, M, y, CW, 24, dc.condicoes_pagamento);
+
+  y = tituloSecao(doc, M, y+2, CW, 'PRAZO DE ENTREGA / ENTREGA');
+  const yEntregaTop = y;
+  y = linhaCampos(doc, M, y, [ { label: 'Prazo', valor: dc.prazo_entrega, w: CW*0.35 }, { label: 'Data de entrega', valor: fmtData(dc.data_entrega), w: CW*0.35 } ]);
+  caixa(doc, M+CW*0.7, yEntregaTop, CW*0.3, 9);
+  checkboxLinha(doc, M+CW*0.7+2, yEntregaTop+0.2, CW*0.15, 'CIF', dc.entrega_tipo === 'CIF');
+  checkboxLinha(doc, M+CW*0.7+2, yEntregaTop+4.3, CW*0.15, 'FOT', dc.entrega_tipo === 'FOT');
+  y = linhaCampos(doc, M, y, [ { label: 'Transportadora', valor: dc.transportadora, w: CW } ]);
+  y = tituloSecao(doc, M, y+2, CW, 'LOCAL DE ENTREGA');
+  y = boxTexto(doc, M, y, CW, 12, dc.local_entrega);
+  y = tituloSecao(doc, M, y+2, CW, 'ENDEREÇO DE COBRANÇA');
+  y = boxTexto(doc, M, y, CW, 14, dc.endereco_cobranca);
+
+  // ── tabela de produtos ──
+  if (y + 2 + 6 + 6 > 265){ rodape(); doc.addPage(); y = cabecalho(doc.internal.getNumberOfPages()); }
+  y = tituloSecao(doc, M, y+2, CW, 'PRODUTOS');
+  const colW = [12, 26, 78, 18, 24, 24];
+  const colLabel = ['Item', 'TAG', 'Descrição', 'Quant.', 'Vlr Unit.', 'Vlr Total'];
+  let cx = M;
+  colLabel.forEach((lbl, i) => { caixa(doc, cx, y, colW[i], 6, { fill: [235,235,235] }); doc.setFont(undefined,'bold'); doc.setFontSize(7); doc.setTextColor(20); doc.text(lbl, cx + colW[i]/2, y+4, { align: 'center' }); cx += colW[i]; });
+  y += 6;
+
+  let totalPedido = 0;
+  (itens || []).forEach(it => {
+    if (y > 265){ rodape(); doc.addPage(); y = cabecalho(doc.internal.getNumberOfPages()); y = tituloSecao(doc, M, y+2, CW, 'PRODUTOS (continuação)'); }
+    const linha = doc.splitTextToSize(it.descricao || '', colW[2] - 4);
+    const h = Math.max(6, linha.length * 3.6 + 2);
+    cx = M;
+    const vals = [String(it.numero_item), it.tag || '—', null, String(it.quantidade), fmtMoeda(it.valor_unitario), fmtMoeda(it.valor_total)];
+    colW.forEach((w, i) => {
+      caixa(doc, cx, y, w, h);
+      doc.setFont(undefined,'normal'); doc.setFontSize(7.5); doc.setTextColor(15);
+      if (i === 2) doc.text(linha, cx+2, y+4);
+      else doc.text(String(vals[i]), cx + w/2, y + h/2 + 1.3, { align: 'center' });
+      cx += w;
+    });
+    totalPedido += Number(it.valor_total || 0);
+    y += h;
+  });
+  caixa(doc, M, y, colW[0]+colW[1]+colW[2]+colW[3]+colW[4], 7);
+  doc.setFont(undefined,'bold'); doc.setFontSize(8); doc.text('VALOR TOTAL DO PEDIDO', M+3, y+4.6);
+  caixa(doc, M+colW[0]+colW[1]+colW[2]+colW[3]+colW[4], y, colW[5], 7);
+  doc.text(fmtMoeda(totalPedido), M+colW[0]+colW[1]+colW[2]+colW[3]+colW[4]+colW[5]/2, y+4.6, { align: 'center' });
+  y += 7;
+
+  // ── fiscal/observações: só pula pra página nova se não couber o resto ──
+  if (y + 99 > 270){ rodape(); doc.addPage(); y = cabecalho(doc.internal.getNumberOfPages()); }
+  y = tituloSecao(doc, M, y+2, CW, 'CLASSIFICAÇÃO FISCAL');
+  y = boxTexto(doc, M, y, CW, 9, dc.classificacao_fiscal);
+  y = tituloSecao(doc, M, y+2, CW, 'IMPOSTOS');
+  y = boxTexto(doc, M, y, CW, 26, dc.impostos);
+  y = tituloSecao(doc, M, y+2, CW, 'OBSERVAÇÕES IMPORTANTES');
+  y = boxTexto(doc, M, y, CW, 40, dc.observacoes_importantes);
+  rodape();
+
+  doc.save(`Folha de Rosto - Pedido ${p.numero_pedido} - ${agora.toLocaleDateString('pt-BR').replace(/\//g,'-')}.pdf`);
+}
+
+init().catch(err => {
+  document.getElementById('content').innerHTML =
+    `<div class="empty">Erro ao iniciar a página: ${esc(err.message || err)}</div>`;
+  console.error('Erro no init():', err);
+});
+</script>
+</body>
+</html>

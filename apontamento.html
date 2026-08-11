@@ -181,6 +181,10 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
           <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 9.5 10 3l7 6.5M5 8v8h10V8" stroke-linecap="round" stroke-linejoin="round"/></svg>
           <span class="nav-label">Início</span>
         </a>
+        <a class="nav-item" href="contratos.html">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 2.5h6l3 3v12h-9z" stroke-linejoin="round"/><path d="M12 2.5V6h3M8 10h4M8 13h4M8 7h1.5" stroke-linecap="round"/></svg>
+          <span class="nav-label">Contratos</span>
+        </a>
         <a class="nav-item" href="engenharia.html">
           <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m3 17 8-8m0 0 4-4 2 2-4 4m-4-4 4 4M6 14l-1 3 3-1" stroke-linecap="round" stroke-linejoin="round"/></svg>
           <span class="nav-label">Engenharia</span>
@@ -638,7 +642,7 @@ function desenharGrid(){
           <td class="col-qtd">${Number(it.quantidade).toLocaleString('pt-BR')}</td>
           <td style="white-space:nowrap">${paralisado
             ? `<span class="etapa-readonly" style="color:var(--red);border-color:var(--red)" title="${esc(motivoTitle)}">⏸ Paralisado</span>`
-            : (it.desenho_engenharia_id ? `<span class="btn btn-sm" onclick="baixarDesenho(${it.desenho_engenharia_id}, this)">📎 Baixar</span>` : '<span style="color:var(--text3)">—</span>')}
+            : (it.desenho_engenharia_id ? `<span class="btn btn-sm" onclick="baixarDesenho(${it.desenho_engenharia_id}, this)">📐 Abrir desenho</span>` : '<span style="color:var(--text3)">—</span>')}
             <span class="btn btn-sm" onclick="abrirInstrucoes(${it.id})" title="Remessa, tag, quantidade a fabricar e observação da Engenharia">📋 Instruções</span></td>
           ${ETAPAS.map(e => `
             <td class="etapa-td">
@@ -742,7 +746,10 @@ async function baixarDesenho(desenhoEngenhariaId, btnEl){
     const { data: d, error } = await sb.from('desenhos_engenharia').select('arquivo_path, arquivo_nome').eq('id', desenhoEngenhariaId).single();
     if (error) throw error;
     if (!d.arquivo_path){ alert('Esse desenho ainda não tem arquivo enviado.'); return; }
-    const { data: signed, error: errSign } = await sb.storage.from('desenhos').createSignedUrl(d.arquivo_path, 3600, { download: d.arquivo_nome || true });
+    // sem "download" aqui de propósito -- isso força o navegador a só salvar o
+    // arquivo (Content-Disposition: attachment). Sem essa opção, no Android o
+    // sistema abre o seletor "Abrir com..." (AutoCAD, etc.) em vez de só baixar.
+    const { data: signed, error: errSign } = await sb.storage.from('desenhos').createSignedUrl(d.arquivo_path, 3600);
     if (errSign) throw errSign;
     window.open(signed.signedUrl, '_blank');
   } catch (err) {
