@@ -51,9 +51,18 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 .collapse-btn svg{width:15px;height:15px;transition:transform .15s;flex-shrink:0}
 .app-shell.sidebar-collapsed .collapse-btn svg{transform:rotate(180deg)}
 
+/* botão flutuante pra abrir/fechar o menu lateral — ver explicação nas outras
+   páginas: o botão original fica preso embaixo da sidebar, que estica com o
+   conteúdo. Esse é fixo na viewport, e o menu fecha sozinho alguns segundos
+   depois de carregar, a não ser que a pessoa já tenha mexido nele antes. */
+.sidebar-fab{position:fixed;bottom:20px;left:16px;z-index:260;width:46px;height:46px;border-radius:50%;background:var(--navy2);border:1px solid rgba(255,255,255,.15);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 8px 20px rgba(0,0,0,.35);transition:background .12s,transform .12s}
+.sidebar-fab:hover{background:var(--blue);transform:scale(1.06)}
+.sidebar-fab svg{width:20px;height:20px;transition:transform .2s;flex-shrink:0}
+.app-shell.sidebar-collapsed .sidebar-fab svg{transform:rotate(180deg)}
+
 .content{flex:1;min-width:0;overflow-y:auto}
 
-.btn{padding:7px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg3);color:var(--text);font-size:12px;cursor:pointer;font-weight:500}
+.btn{display:inline-block;padding:7px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg3);color:var(--text);font-size:12px;cursor:pointer;font-weight:500}
 .btn:hover{border-color:var(--blue)}
 
 .nav-bar{display:flex;align-items:center;gap:6px;padding:.6rem 1.5rem;background:var(--bg2);border-bottom:1px solid var(--border);font-size:12px;flex-wrap:wrap}
@@ -304,11 +313,14 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
           <span class="nav-label">Dashboard</span>
         </a>
       </nav>
-      <button class="collapse-btn" onclick="document.getElementById('appShell').classList.toggle('sidebar-collapsed')">
+      <button class="collapse-btn" onclick="alternarSidebar(true)">
         <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12.5 4 7 10l5.5 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span class="collapse-label">Recolher menu</span>
       </button>
     </aside>
+    <button class="sidebar-fab" id="sidebarFab" onclick="alternarSidebar(true)" title="Mostrar/ocultar menu">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12.5 4 7 10l5.5 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
     <main class="content">
       <!-- Botão flutuante de sair da tela cheia -->
       <button id="btnSairFullscreen" onclick="alternarTelaCheia()" style="display:none;position:fixed;top:12px;right:12px;z-index:9999;padding:8px 16px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg3);color:var(--text);font-size:13px;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.4);align-items:center;gap:6px">
@@ -347,6 +359,19 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 
 <script src="js/supabase-client.js"></script>
 <script>
+// ── MENU LATERAL: fecha sozinho e tem botão flutuante sempre alcançável ────
+let sidebarMexidoManualmente = false;
+function alternarSidebar(manual){
+  document.getElementById('appShell').classList.toggle('sidebar-collapsed');
+  if (manual) sidebarMexidoManualmente = true;
+  if (typeof posicionarBarraFlutuante === 'function') setTimeout(posicionarBarraFlutuante, 180);
+}
+setTimeout(() => {
+  if (sidebarMexidoManualmente) return;
+  document.getElementById('appShell').classList.add('sidebar-collapsed');
+  if (typeof posicionarBarraFlutuante === 'function') setTimeout(posicionarBarraFlutuante, 180);
+}, 5000);
+
 let AUTH = null;
 let DB = {};              // DB[pedido][tag][produto] = [itens...]
 let PEDIDOS_INFO = {};    // numero_pedido -> row from pedidos

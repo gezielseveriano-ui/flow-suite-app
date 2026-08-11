@@ -51,7 +51,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 
 .content{flex:1;min-width:0;padding:1.75rem 2rem;overflow-y:auto}
 
-.btn{padding:8px 15px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg2);color:var(--text);font-size:12.5px;cursor:pointer;font-weight:500;transition:border-color .12s,color .12s}
+.btn{display:inline-block;padding:8px 15px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg2);color:var(--text);font-size:12.5px;cursor:pointer;font-weight:500;transition:border-color .12s,color .12s}
 .btn:hover{border-color:var(--blue);color:var(--blue)}
 .btn-primary{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}
 .btn-primary:hover{background:var(--blue-hover);border-color:var(--blue-hover);color:#fff}
@@ -135,6 +135,24 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 .instr-row .v{font-weight:600;text-align:right}
 .instr-obs{margin-top:10px;padding:12px;background:var(--bg3);border-radius:var(--radius-sm);font-size:13px;color:var(--text2);font-style:italic}
 .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}
+
+/* barra de rolagem horizontal flutuante — a tabela de apontamento pode ter
+   centenas de linhas, então a barra nativa (no fim do .grid-wrap) fica
+   inacessível sem rolar a página inteira primeiro. Essa barra fica grudada
+   embaixo da tela, alinhada com a tabela, e acompanha o scroll. */
+.float-hscroll{position:fixed;bottom:0;height:14px;overflow-x:auto;overflow-y:hidden;z-index:250;background:var(--bg3);border-top:1px solid var(--border-strong);box-shadow:0 -2px 6px rgba(16,24,40,.06);display:none}
+.float-hscroll.show{display:block}
+.float-hscroll-inner{height:1px}
+
+/* botão flutuante pra abrir/fechar o menu lateral — o botão "Recolher menu"
+   original fica preso embaixo da sidebar, que estica pra acompanhar a altura
+   do conteúdo (pode ficar bem longe da tela em listas compridas). Esse fica
+   fixo na viewport, sempre alcançável. O menu também fecha sozinho alguns
+   segundos depois de carregar a página, pra não ocupar espaço à toa. */
+.sidebar-fab{position:fixed;bottom:20px;left:16px;z-index:260;width:46px;height:46px;border-radius:50%;background:var(--navy2);border:1px solid rgba(255,255,255,.15);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:var(--shadow-md);transition:background .12s,transform .12s}
+.sidebar-fab:hover{background:var(--navy3);transform:scale(1.06)}
+.sidebar-fab svg{width:20px;height:20px;transition:transform .2s;flex-shrink:0}
+.app-shell.sidebar-collapsed .sidebar-fab svg{transform:rotate(180deg)}
 </style>
 </head>
 <body>
@@ -188,11 +206,14 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
           <span class="nav-label">Dashboard</span>
         </a>
       </nav>
-      <button class="collapse-btn" onclick="document.getElementById('appShell').classList.toggle('sidebar-collapsed')">
+      <button class="collapse-btn" onclick="alternarSidebar(true)">
         <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12.5 4 7 10l5.5 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span class="collapse-label">Recolher menu</span>
       </button>
     </aside>
+    <button class="sidebar-fab" id="sidebarFab" onclick="alternarSidebar(true)" title="Mostrar/ocultar menu">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12.5 4 7 10l5.5 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
     <main class="content">
   <div class="msg-box" id="msgBox"></div>
   <div class="nav-bar" id="navBar"></div>
@@ -223,6 +244,90 @@ let etapasAtuais = {};       // itemId -> { etapaKey: percentualAtual }
 const OPCOES_PCT = Array.from({length: 21}, (_, i) => i * 5); // 0,5,...,100
 // Expedição e Finalizado são fechadas automaticamente quando o item entra num romaneio
 const ETAPAS_AUTOMATICAS = ['expedicao', 'finalizado'];
+
+// ── MENU LATERAL: fecha sozinho e tem botão flutuante sempre alcançável ────
+// O botão "Recolher menu" original fica preso embaixo da sidebar, que estica
+// pra acompanhar a altura do conteúdo — em listas compridas ele some tela
+// abaixo. O botão flutuante é fixo na viewport (sempre alcançável), e o menu
+// fecha sozinho 5s depois de carregar, a não ser que a pessoa já tenha
+// mexido nele manualmente antes disso.
+let sidebarMexidoManualmente = false;
+function alternarSidebar(manual){
+  document.getElementById('appShell').classList.toggle('sidebar-collapsed');
+  if (manual) sidebarMexidoManualmente = true;
+  if (typeof posicionarBarraFlutuante === 'function') setTimeout(posicionarBarraFlutuante, 180);
+}
+setTimeout(() => {
+  if (sidebarMexidoManualmente) return;
+  document.getElementById('appShell').classList.add('sidebar-collapsed');
+  if (typeof posicionarBarraFlutuante === 'function') setTimeout(posicionarBarraFlutuante, 180);
+}, 5000);
+
+// ── BARRA DE ROLAGEM HORIZONTAL FLUTUANTE ───────────────────────────────────
+// A tabela de apontamento pode ter centenas de linhas; a barra nativa do
+// .grid-wrap só aparece no fim dele, exigindo rolar a página inteira pra
+// achar. Essa barra fica fixa embaixo da tela, alinhada com a largura visível
+// da tabela, e sincroniza o scroll nos dois sentidos.
+let floatScrollEl = null, floatScrollInner = null, floatScrollSyncing = false;
+
+function garantirBarraFlutuante(){
+  if (floatScrollEl) return;
+  floatScrollEl = document.createElement('div');
+  floatScrollEl.className = 'float-hscroll';
+  floatScrollInner = document.createElement('div');
+  floatScrollInner.className = 'float-hscroll-inner';
+  floatScrollEl.appendChild(floatScrollInner);
+  document.body.appendChild(floatScrollEl);
+
+  floatScrollEl.addEventListener('scroll', () => {
+    if (floatScrollSyncing) return;
+    const wrap = document.querySelector('.grid-wrap');
+    if (!wrap) return;
+    floatScrollSyncing = true;
+    wrap.scrollLeft = floatScrollEl.scrollLeft;
+    floatScrollSyncing = false;
+  });
+
+  window.addEventListener('resize', posicionarBarraFlutuante);
+  window.addEventListener('scroll', posicionarBarraFlutuante, { passive: true });
+}
+
+function posicionarBarraFlutuante(){
+  if (!floatScrollEl) return;
+  const wrap = document.querySelector('.grid-wrap');
+  if (!wrap){ floatScrollEl.classList.remove('show'); return; }
+
+  const precisaRolagem = wrap.scrollWidth > wrap.clientWidth + 2;
+  const rect = wrap.getBoundingClientRect();
+  const visivel = rect.top < window.innerHeight && rect.bottom > 0;
+
+  if (!precisaRolagem || !visivel){
+    floatScrollEl.classList.remove('show');
+    return;
+  }
+  floatScrollEl.style.left = `${rect.left}px`;
+  floatScrollEl.style.width = `${rect.width}px`;
+  floatScrollInner.style.width = `${wrap.scrollWidth}px`;
+  if (!floatScrollSyncing){
+    floatScrollSyncing = true;
+    floatScrollEl.scrollLeft = wrap.scrollLeft;
+    floatScrollSyncing = false;
+  }
+  floatScrollEl.classList.add('show');
+}
+
+function conectarBarraFlutuanteNaGrade(){
+  const wrap = document.querySelector('.grid-wrap');
+  if (!wrap) return;
+  garantirBarraFlutuante();
+  wrap.addEventListener('scroll', () => {
+    if (floatScrollSyncing || !floatScrollEl) return;
+    floatScrollSyncing = true;
+    floatScrollEl.scrollLeft = wrap.scrollLeft;
+    floatScrollSyncing = false;
+  });
+  posicionarBarraFlutuante();
+}
 
 function abrirModal(id){ document.getElementById(id).classList.add('show'); }
 function fecharModal(id){ document.getElementById(id).classList.remove('show'); }
@@ -324,6 +429,7 @@ function renderNav(){
 // ── HOME: busca por desenho ou pedidos em carteira ──────────────────────────
 function renderHome(){
   ctx = { pedido: null, produto: null };
+  if (floatScrollEl) floatScrollEl.classList.remove('show');
   renderNav();
   document.getElementById('content').innerHTML = `
     <div class="search-row">
@@ -394,6 +500,7 @@ function selecionarPedido(p){
 // ── PRODUTOS/SETORES DO PEDIDO ───────────────────────────────────────────────
 async function browseProdutos(){
   ctx.produto = null;
+  if (floatScrollEl) floatScrollEl.classList.remove('show');
   renderNav();
   const content = document.getElementById('content');
   content.innerHTML = `<div class="grid" id="grid"><div class="empty">Carregando...</div></div>`;
@@ -550,6 +657,7 @@ function desenharGrid(){
       </tbody>
     </table>`;
   document.getElementById('filterCount').textContent = `${gridItens.length} desenho${gridItens.length !== 1 ? 's' : ''}`;
+  conectarBarraFlutuanteNaGrade();
 }
 
 function aplicarFiltroGrid(){

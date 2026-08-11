@@ -48,9 +48,18 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 .collapse-btn svg{width:15px;height:15px;transition:transform .15s;flex-shrink:0}
 .app-shell.sidebar-collapsed .collapse-btn svg{transform:rotate(180deg)}
 
+/* botão flutuante pra abrir/fechar o menu lateral — ver explicação nas outras
+   páginas: o botão original fica preso embaixo da sidebar, que estica com o
+   conteúdo. Esse é fixo na viewport, e o menu fecha sozinho alguns segundos
+   depois de carregar, a não ser que a pessoa já tenha mexido nele antes. */
+.sidebar-fab{position:fixed;bottom:20px;left:16px;z-index:260;width:46px;height:46px;border-radius:50%;background:var(--navy2);border:1px solid rgba(255,255,255,.15);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:var(--shadow-md);transition:background .12s,transform .12s}
+.sidebar-fab:hover{background:var(--navy3);transform:scale(1.06)}
+.sidebar-fab svg{width:20px;height:20px;transition:transform .2s;flex-shrink:0}
+.app-shell.sidebar-collapsed .sidebar-fab svg{transform:rotate(180deg)}
+
 .content{flex:1;min-width:0;padding:1.75rem 2rem;overflow-y:auto}
 
-.btn{padding:8px 15px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg2);color:var(--text);font-size:12.5px;cursor:pointer;font-weight:500;transition:border-color .12s,color .12s}
+.btn{display:inline-block;padding:8px 15px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg2);color:var(--text);font-size:12.5px;cursor:pointer;font-weight:500;transition:border-color .12s,color .12s}
 .btn:hover{border-color:var(--blue);color:var(--blue)}
 .btn-primary{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}
 .btn-primary:hover{background:var(--blue-hover);border-color:var(--blue-hover);color:#fff}
@@ -85,12 +94,14 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 .equip-dropdown{display:none;position:absolute;top:100%;left:0;right:0;margin-top:2px;max-height:280px;overflow-y:auto;background:var(--bg2);border:1px solid var(--border-strong);border-radius:var(--radius-sm);box-shadow:var(--shadow-md);z-index:50}
 .equip-dropdown.show{display:block}
 .equip-cat-label{padding:7px 12px 3px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text3)}
-.equip-opt{padding:8px 14px;font-size:13px;cursor:pointer}
+.equip-opt{padding:8px 14px;font-size:13px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px}
 .equip-opt:hover{background:var(--bg3)}
 .equip-opt.equip-novo{color:var(--blue);font-weight:600;border-top:1px solid var(--border);margin-top:4px}
 .equip-empty{padding:12px 14px;font-size:12px;color:var(--text3)}
 .equip-novo-form{padding:12px 14px}
-.equip-novo-form select{width:100%;padding:8px 10px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);background:var(--bg3);color:var(--text);font-size:13px;margin-top:4px}
+.equip-novo-form select,.equip-novo-form input{width:100%;padding:8px 10px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);background:var(--bg3);color:var(--text);font-size:13px;margin-top:4px}
+.equip-edit-btn{opacity:.45;font-size:12px;padding:2px 5px;border-radius:4px;flex-shrink:0}
+.equip-edit-btn:hover{opacity:1;background:var(--bg2)}
 
 .campo-auto-lido input{border-color:var(--amber)!important;background:var(--amber-dim)!important;box-shadow:0 0 0 1px var(--amber)}
 .campo-auto-lido > label{color:var(--amber)!important}
@@ -202,11 +213,14 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
           <span class="nav-label">Dashboard</span>
         </a>
       </nav>
-      <button class="collapse-btn" onclick="document.getElementById('appShell').classList.toggle('sidebar-collapsed')">
+      <button class="collapse-btn" onclick="alternarSidebar(true)">
         <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12.5 4 7 10l5.5 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span class="collapse-label">Recolher menu</span>
       </button>
     </aside>
+    <button class="sidebar-fab" id="sidebarFab" onclick="alternarSidebar(true)" title="Mostrar/ocultar menu">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12.5 4 7 10l5.5 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
     <main class="content">
   <div class="msg-box" id="msgBox"></div>
 
@@ -240,7 +254,10 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 
   <!-- NÍVEL 3: desenhos da remessa (upload + lista filtrada) -->
   <div id="viewRemessa" style="display:none">
-    <div class="breadcrumb"><a onclick="voltarPedidos()">Pedidos</a> / <a onclick="voltarRemessas()" id="remessaBreadcrumbPedido"></a> / <strong id="remessaBreadcrumbNumero"></strong></div>
+    <div class="breadcrumb"><a onclick="voltarPedidos()">Pedidos</a> / <a onclick="voltarRemessas()" id="remessaBreadcrumbPedido"></a> / <strong id="remessaBreadcrumbNumero"></strong>
+      <span class="btn" style="margin-left:8px;padding:3px 9px;font-size:11px" onclick="abrirEditarNomeRemessa()" title="Revisar nome da remessa">✏️ Nome</span>
+      <span class="btn" style="margin-left:4px;padding:3px 9px;font-size:11px;color:var(--red)" onclick="excluirRemessa()" title="Excluir esta remessa">🗑 Excluir</span>
+    </div>
 
   <div class="form-box">
     <div class="section-title" id="formTitulo">Novo Desenho</div>
@@ -274,7 +291,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
       <div class="field-row">
         <div class="field" id="fieldEquipamento" style="grid-column:1/-1;position:relative">
           <label>Nome do equipamento *</label>
-          <input id="fdNomeEquipamento" required autocomplete="off" placeholder="Digite pra buscar (ex: Tambor de acionamento)..." oninput="filtrarEquipamentos()" onfocus="filtrarEquipamentos()">
+          <input id="fdNomeEquipamento" required autocomplete="off" placeholder="Digite pra buscar (ex: Tambor de acionamento)..." oninput="digitouEquipamento()" onfocus="filtrarEquipamentos()">
           <input type="hidden" id="fdEquipamentoId">
           <div id="equipDropdown" class="equip-dropdown"></div>
         </div>
@@ -322,6 +339,26 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
   <div class="tbl-wrap" id="listaWrap"><div class="empty">Carregando...</div></div>
   </div>
     </main>
+  </div>
+</div>
+
+<!-- MODAL: nome da remessa (ao gerar uma nova, ou revisar o nome de uma existente) -->
+<div class="overlay" id="ovNomeRemessa">
+  <div class="modal">
+    <h3 id="nomeRemessaTitulo">Nova remessa</h3>
+    <div class="modal-sub" id="nomeRemessaSub">Dê um nome pra essa remessa — ajuda a identificar rápido o que está descendo (ex: "Ponte Treliça", "Chutes de Descarga").</div>
+    <div class="err-box" id="errNomeRemessa"></div>
+    <form id="formNomeRemessa">
+      <div class="field" id="fieldNomeRemessa" style="position:relative">
+        <label>Nome da remessa *</label>
+        <input id="fdNomeRemessa" required autocomplete="off" placeholder="Digite pra buscar ou criar um nome novo..." oninput="filtrarNomesRemessa()" onfocus="filtrarNomesRemessa()">
+        <div id="nomeRemessaDropdown" class="equip-dropdown"></div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn" onclick="fecharModal('ovNomeRemessa')">Cancelar</button>
+        <button type="submit" class="btn btn-primary" id="btnCriarRemessa">Criar remessa</button>
+      </div>
+    </form>
   </div>
 </div>
 
@@ -391,6 +428,19 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 let AUTH = null;
 let desenhoEditandoId = null;
 let pedidoAtual = null;
+
+// ── MENU LATERAL: fecha sozinho e tem botão flutuante sempre alcançável ────
+let sidebarMexidoManualmente = false;
+function alternarSidebar(manual){
+  document.getElementById('appShell').classList.toggle('sidebar-collapsed');
+  if (manual) sidebarMexidoManualmente = true;
+  if (typeof posicionarBarraFlutuante === 'function') setTimeout(posicionarBarraFlutuante, 180);
+}
+setTimeout(() => {
+  if (sidebarMexidoManualmente) return;
+  document.getElementById('appShell').classList.add('sidebar-collapsed');
+  if (typeof posicionarBarraFlutuante === 'function') setTimeout(posicionarBarraFlutuante, 180);
+}, 5000);
 let remessaAtual = null;
 let confirmacaoLeituraOk = false;
 
@@ -580,22 +630,170 @@ async function renderRemessas(){
   if (!data.length){ wrap.innerHTML = `<div class="empty">Nenhuma remessa criada ainda pra esse pedido — clique em "Gerar nova remessa".</div>`; return; }
 
   wrap.innerHTML = data.map(r => `
-    <div class="card-item" onclick='abrirRemessa(${JSON.stringify({ id: r.id, numero: r.numero, pedido_id: r.pedido_id, enviada_email_em: r.enviada_email_em }).replace(/'/g, "&#39;")})'>
-      <h4>Remessa ${r.numero}</h4>
+    <div class="card-item" onclick='abrirRemessa(${JSON.stringify({ id: r.id, numero: r.numero, nome: r.nome, pedido_id: r.pedido_id, enviada_email_em: r.enviada_email_em }).replace(/'/g, "&#39;")})'>
+      <h4>Remessa ${r.numero}${r.nome ? ' — ' + esc(r.nome) : ''}</h4>
       <div class="sub">${(r.desenhos_engenharia || []).length} desenho(s) · criada em ${new Date(r.created_at).toLocaleDateString('pt-BR')}</div>
       ${r.enviada_email_em ? `<div class="badge-ok">✓ Enviada por email em ${new Date(r.enviada_email_em).toLocaleDateString('pt-BR')}</div>` : ''}
     </div>`).join('');
 }
 
-async function gerarNovaRemessa(){
+let nomeRemessaModo = 'criar';
+
+function gerarNovaRemessa(){
+  nomeRemessaModo = 'criar';
+  document.getElementById('nomeRemessaTitulo').textContent = 'Nova remessa';
+  document.getElementById('nomeRemessaSub').textContent = 'Dê um nome pra essa remessa — ajuda a identificar rápido o que está descendo (ex: "Ponte Treliça", "Chutes de Descarga").';
+  document.getElementById('btnCriarRemessa').textContent = 'Criar remessa';
+  document.getElementById('formNomeRemessa').reset();
+  document.getElementById('fdNomeRemessa').required = true;
+  document.getElementById('errNomeRemessa').classList.remove('show');
+  fecharDropdownNomeRemessa();
+  abrirModal('ovNomeRemessa');
+}
+
+function abrirEditarNomeRemessa(){
+  nomeRemessaModo = 'editar';
+  document.getElementById('nomeRemessaTitulo').textContent = `Revisar nome — Remessa ${remessaAtual.numero}`;
+  document.getElementById('nomeRemessaSub').textContent = 'Altere o nome dessa remessa. Deixe em branco pra remover o nome.';
+  document.getElementById('btnCriarRemessa').textContent = 'Salvar';
+  document.getElementById('formNomeRemessa').reset();
+  document.getElementById('fdNomeRemessa').value = remessaAtual.nome || '';
+  document.getElementById('fdNomeRemessa').required = false;
+  document.getElementById('errNomeRemessa').classList.remove('show');
+  fecharDropdownNomeRemessa();
+  abrirModal('ovNomeRemessa');
+}
+
+async function excluirRemessa(){
+  const desenhos = window.__desenhosLista || [];
+  if (desenhos.length){
+    showMsg(`Essa remessa tem ${desenhos.length} desenho(s) — mova ou exclua eles antes de excluir a remessa.`, false);
+    return;
+  }
+  if (!confirm(`Excluir a Remessa ${remessaAtual.numero}${remessaAtual.nome ? ' — ' + remessaAtual.nome : ''}? Essa ação não pode ser desfeita.`)) return;
+
+  const { data, error } = await sb.from('remessas').delete().eq('id', remessaAtual.id).select();
+  if (error){
+    showMsg('Erro ao excluir remessa: ' + error.message, false);
+    return;
+  }
+  if (!data || !data.length){
+    showMsg('Não foi possível excluir — sem permissão pra essa ação.', false);
+    return;
+  }
+  showMsg('Remessa excluída.', true);
+  voltarRemessas();
+}
+
+// Mesma lista padronizada usada em "Nome do equipamento" (equipamentos_padrao,
+// agrupada por CABEÇA/TRONCO/CAUDA/...) -- a remessa costuma levar o nome do
+// equipamento/conjunto que está descendo, então reaproveita o mesmo catálogo.
+function fecharDropdownNomeRemessa(){
+  document.getElementById('nomeRemessaDropdown').classList.remove('show');
+}
+
+async function filtrarNomesRemessa(){
+  const inputEl = document.getElementById('fdNomeRemessa');
+  const termo = inputEl.value.trim().toLowerCase();
+  const lista = await carregarEquipamentosPadrao();
+  const filtrados = termo ? lista.filter(eq => eq.nome.toLowerCase().includes(termo)) : lista;
+
+  const porCategoria = {};
+  filtrados.forEach(eq => { (porCategoria[eq.categoria] ??= []).push(eq); });
+
+  let html = ORDEM_CATEGORIAS_EQUIP.filter(c => porCategoria[c]?.length).map(c => `
+    <div class="equip-cat-label">${CATEGORIAS_EQUIP_LABEL[c]}</div>
+    ${porCategoria[c].map(eq => `<div class="equip-opt" onclick='selecionarNomeRemessa(${JSON.stringify(eq.nome).replace(/'/g, "&#39;")})'>${esc(eq.nome)}<span class="equip-edit-btn" onclick="event.stopPropagation();iniciarEdicaoEquipamento(${eq.id},'remessa')" title="Editar nome/categoria deste equipamento padrão">✏️</span></div>`).join('')}
+  `).join('');
+
+  if (!filtrados.length) html += `<div class="equip-empty">Nenhum equipamento encontrado.</div>`;
+  if (termo && !lista.some(eq => eq.nome.toLowerCase() === termo)){
+    html += `<div class="equip-opt equip-novo" onclick="abrirNovoEquipamentoRemessa()">+ Cadastrar novo equipamento: "${esc(inputEl.value.trim())}"</div>`;
+  }
+
+  document.getElementById('nomeRemessaDropdown').innerHTML = html;
+  document.getElementById('nomeRemessaDropdown').classList.add('show');
+}
+
+function abrirNovoEquipamentoRemessa(){
+  const nome = document.getElementById('fdNomeRemessa').value.trim();
+  document.getElementById('nomeRemessaDropdown').innerHTML = `
+    <div class="equip-novo-form">
+      <div style="font-size:12px">Cadastrar "<strong>${esc(nome)}</strong>" como novo equipamento padrão. Categoria:</div>
+      <select id="novaEquipCategoriaRemessa">${ORDEM_CATEGORIAS_EQUIP.map(c => `<option value="${c}">${CATEGORIAS_EQUIP_LABEL[c]}</option>`).join('')}</select>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button type="button" class="btn" onclick="filtrarNomesRemessa()">Cancelar</button>
+        <button type="button" class="btn btn-primary" onclick="salvarNovoEquipamentoRemessa()">Cadastrar e usar</button>
+      </div>
+    </div>`;
+}
+
+async function salvarNovoEquipamentoRemessa(){
+  const nome = document.getElementById('fdNomeRemessa').value.trim();
+  const categoria = document.getElementById('novaEquipCategoriaRemessa').value;
+  const { data, error } = await sb.from('equipamentos_padrao').insert({ nome, categoria }).select().single();
+  if (error){
+    showMsg('Erro ao cadastrar equipamento: ' + (error.message.includes('duplicate') ? 'Esse equipamento já existe na lista.' : error.message), false);
+    return;
+  }
+  await carregarEquipamentosPadrao(true);
+  selecionarNomeRemessa(data.nome);
+  showMsg(`Equipamento "${nome}" cadastrado na lista padrão.`, true);
+}
+
+function selecionarNomeRemessa(nome){
+  document.getElementById('fdNomeRemessa').value = nome;
+  fecharDropdownNomeRemessa();
+}
+
+document.addEventListener('click', e => {
+  const wrap = document.getElementById('fieldNomeRemessa');
+  if (wrap && !wrap.contains(e.target)) fecharDropdownNomeRemessa();
+});
+
+document.getElementById('formNomeRemessa').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errBox = document.getElementById('errNomeRemessa');
+  errBox.classList.remove('show');
+  const nome = document.getElementById('fdNomeRemessa').value.trim();
+  const btn = document.getElementById('btnCriarRemessa');
+
+  if (nomeRemessaModo === 'editar'){
+    btn.disabled = true; btn.textContent = 'Salvando...';
+    const { data, error } = await sb.from('remessas').update({ nome: nome || null }).eq('id', remessaAtual.id).select().single();
+    btn.disabled = false; btn.textContent = 'Salvar';
+
+    if (error){
+      errBox.textContent = 'Erro ao salvar: ' + error.message;
+      errBox.classList.add('show');
+      return;
+    }
+
+    fecharModal('ovNomeRemessa');
+    remessaAtual = data;
+    document.getElementById('remessaBreadcrumbNumero').textContent = `Remessa ${data.numero}${data.nome ? ' — ' + data.nome : ''}`;
+    showMsg('Nome da remessa atualizado.', true);
+    return;
+  }
+
+  btn.disabled = true; btn.textContent = 'Criando...';
+
   const { data: existentes } = await sb.from('remessas').select('numero').eq('pedido_id', pedidoAtual.id).order('numero', { ascending: false }).limit(1);
   const proximoNumero = (existentes && existentes[0]?.numero || 0) + 1;
 
-  const { data, error } = await sb.from('remessas').insert({ pedido_id: pedidoAtual.id, numero: proximoNumero }).select().single();
-  if (error){ showMsg('Erro ao gerar remessa: ' + error.message, false); return; }
+  const { data, error } = await sb.from('remessas').insert({ pedido_id: pedidoAtual.id, numero: proximoNumero, nome }).select().single();
 
+  btn.disabled = false; btn.textContent = 'Criar remessa';
+
+  if (error){
+    errBox.textContent = 'Erro ao gerar remessa: ' + error.message;
+    errBox.classList.add('show');
+    return;
+  }
+
+  fecharModal('ovNomeRemessa');
   await abrirRemessa(data);
-}
+});
 
 function voltarRemessas(){
   remessaAtual = null;
@@ -607,7 +805,7 @@ function voltarRemessas(){
 async function abrirRemessa(remessa){
   remessaAtual = remessa;
   document.getElementById('remessaBreadcrumbPedido').textContent = pedidoAtual.cliente ? `${pedidoAtual.numero_pedido} — ${pedidoAtual.cliente}` : pedidoAtual.numero_pedido;
-  document.getElementById('remessaBreadcrumbNumero').textContent = `Remessa ${remessa.numero}`;
+  document.getElementById('remessaBreadcrumbNumero').textContent = `Remessa ${remessa.numero}${remessa.nome ? ' — ' + remessa.nome : ''}`;
   mostrarView('viewRemessa');
   cancelarEdicao();
   atualizarAvisoEmail();
@@ -674,8 +872,14 @@ function fecharDropdownEquip(){
   document.getElementById('equipDropdown').classList.remove('show');
 }
 
+function digitouEquipamento(){
+  // só invalida a seleção quando a pessoa realmente digita algo novo --
+  // reabrir o dropdown pra conferir (focus) não pode limpar a seleção já feita
+  document.getElementById('fdEquipamentoId').value = '';
+  filtrarEquipamentos();
+}
+
 async function filtrarEquipamentos(){
-  document.getElementById('fdEquipamentoId').value = ''; // digitar de novo invalida a seleção anterior
   const inputEl = document.getElementById('fdNomeEquipamento');
   const termo = inputEl.value.trim().toLowerCase();
   const lista = await carregarEquipamentosPadrao();
@@ -686,7 +890,7 @@ async function filtrarEquipamentos(){
 
   let html = ORDEM_CATEGORIAS_EQUIP.filter(c => porCategoria[c]?.length).map(c => `
     <div class="equip-cat-label">${CATEGORIAS_EQUIP_LABEL[c]}</div>
-    ${porCategoria[c].map(eq => `<div class="equip-opt" onclick="selecionarEquipamento(${eq.id})">${esc(eq.nome)}</div>`).join('')}
+    ${porCategoria[c].map(eq => `<div class="equip-opt" onclick="selecionarEquipamento(${eq.id})">${esc(eq.nome)}<span class="equip-edit-btn" onclick="event.stopPropagation();iniciarEdicaoEquipamento(${eq.id},'desenho')" title="Editar nome/categoria deste equipamento padrão">✏️</span></div>`).join('')}
   `).join('');
 
   if (!filtrados.length) html += `<div class="equip-empty">Nenhum equipamento encontrado.</div>`;
@@ -696,6 +900,39 @@ async function filtrarEquipamentos(){
 
   document.getElementById('equipDropdown').innerHTML = html;
   document.getElementById('equipDropdown').classList.add('show');
+}
+
+function iniciarEdicaoEquipamento(id, contexto){
+  const eq = (EQUIPAMENTOS_CACHE || []).find(e => e.id === id);
+  if (!eq) return;
+  const dropdownId = contexto === 'remessa' ? 'nomeRemessaDropdown' : 'equipDropdown';
+  const cancelarFn = contexto === 'remessa' ? 'filtrarNomesRemessa()' : 'filtrarEquipamentos()';
+  document.getElementById(dropdownId).innerHTML = `
+    <div class="equip-novo-form">
+      <div style="font-size:12px">Editar nome/categoria do equipamento padrão (afeta todo lugar que usa esse catálogo):</div>
+      <input id="editEquipNome" value="${esc(eq.nome)}">
+      <select id="editEquipCategoria">${ORDEM_CATEGORIAS_EQUIP.map(c => `<option value="${c}" ${c === eq.categoria ? 'selected' : ''}>${CATEGORIAS_EQUIP_LABEL[c]}</option>`).join('')}</select>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button type="button" class="btn" onclick="${cancelarFn}">Cancelar</button>
+        <button type="button" class="btn btn-primary" onclick="salvarEdicaoEquipamento(${id},'${contexto}')">Salvar</button>
+      </div>
+    </div>`;
+}
+
+async function salvarEdicaoEquipamento(id, contexto){
+  const nome = document.getElementById('editEquipNome').value.trim();
+  const categoria = document.getElementById('editEquipCategoria').value;
+  if (!nome) return;
+
+  const { error } = await sb.from('equipamentos_padrao').update({ nome, categoria }).eq('id', id);
+  if (error){
+    showMsg('Erro ao editar equipamento: ' + (error.message.includes('duplicate') ? 'Já existe um equipamento com esse nome.' : error.message), false);
+    return;
+  }
+  await carregarEquipamentosPadrao(true);
+  showMsg('Equipamento padrão atualizado.', true);
+  if (contexto === 'remessa') selecionarNomeRemessa(nome);
+  else selecionarEquipamento(id);
 }
 
 function selecionarEquipamento(id){
@@ -1255,7 +1492,7 @@ async function dispararRemessaPorEmail(){
     : [];
   const ehRevisao = revisados.length > 0;
 
-  const assuntoBase = `Remessa ${remessaAtual.numero} - Pedido ${pedidoAtual.numero_pedido}${pedidoAtual.cliente ? ' – ' + pedidoAtual.cliente : ''}`;
+  const assuntoBase = `Remessa ${remessaAtual.numero}${remessaAtual.nome ? ' - ' + remessaAtual.nome : ''} - Pedido ${pedidoAtual.numero_pedido}${pedidoAtual.cliente ? ' – ' + pedidoAtual.cliente : ''}`;
   const assunto = ehRevisao
     ? `REVISÃO - ${assuntoBase} - Desenho(s) revisado(s): ${revisados.map(d => d.desenho_mde).join(', ')}`
     : assuntoBase;

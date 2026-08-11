@@ -49,9 +49,19 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 .collapse-btn svg{width:15px;height:15px;transition:transform .15s;flex-shrink:0}
 .app-shell.sidebar-collapsed .collapse-btn svg{transform:rotate(180deg)}
 
+/* botão flutuante pra abrir/fechar o menu lateral — o botão "Recolher menu"
+   original fica preso embaixo da sidebar, que estica pra acompanhar a altura
+   do conteúdo (pode ficar bem longe da tela em listas compridas). Esse fica
+   fixo na viewport, sempre alcançável. O menu também fecha sozinho alguns
+   segundos depois de carregar a página, pra não ocupar espaço à toa. */
+.sidebar-fab{position:fixed;bottom:20px;left:16px;z-index:260;width:46px;height:46px;border-radius:50%;background:var(--navy2);border:1px solid rgba(255,255,255,.15);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:var(--shadow-md);transition:background .12s,transform .12s}
+.sidebar-fab:hover{background:var(--navy3);transform:scale(1.06)}
+.sidebar-fab svg{width:20px;height:20px;transition:transform .2s;flex-shrink:0}
+.app-shell.sidebar-collapsed .sidebar-fab svg{transform:rotate(180deg)}
+
 .content{flex:1;min-width:0;padding:1.75rem 2rem;overflow-y:auto}
 
-.btn{padding:8px 15px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg2);color:var(--text);font-size:12.5px;cursor:pointer;font-weight:500;transition:border-color .12s,color .12s}
+.btn{display:inline-block;padding:8px 15px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg2);color:var(--text);font-size:12.5px;cursor:pointer;font-weight:500;transition:border-color .12s,color .12s}
 .btn:hover{border-color:var(--blue);color:var(--blue)}
 .btn-primary{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}
 .btn-primary:hover{background:var(--blue-hover);border-color:var(--blue-hover);color:#fff}
@@ -189,11 +199,14 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
           <span class="nav-label">Dashboard</span>
         </a>
       </nav>
-      <button class="collapse-btn" onclick="document.getElementById('appShell').classList.toggle('sidebar-collapsed')">
+      <button class="collapse-btn" onclick="alternarSidebar(true)">
         <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12.5 4 7 10l5.5 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span class="collapse-label">Recolher menu</span>
       </button>
     </aside>
+    <button class="sidebar-fab" id="sidebarFab" onclick="alternarSidebar(true)" title="Mostrar/ocultar menu">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12.5 4 7 10l5.5 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
     <main class="content">
   <div class="nav-bar" id="navBar"></div>
   <div class="msg-box" id="msgBox"></div>
@@ -254,6 +267,24 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 <script>
 let AUTH = null;
 let pedidoAtual = null; // {id, numero_pedido, ...}
+
+// ── MENU LATERAL: fecha sozinho e tem botão flutuante sempre alcançável ────
+// O botão "Recolher menu" original fica preso embaixo da sidebar, que estica
+// pra acompanhar a altura do conteúdo — em listas compridas ele some tela
+// abaixo. O botão flutuante é fixo na viewport (sempre alcançável), e o menu
+// fecha sozinho 5s depois de carregar, a não ser que a pessoa já tenha
+// mexido nele manualmente antes disso.
+let sidebarMexidoManualmente = false;
+function alternarSidebar(manual){
+  document.getElementById('appShell').classList.toggle('sidebar-collapsed');
+  if (manual) sidebarMexidoManualmente = true;
+  if (typeof posicionarBarraFlutuante === 'function') setTimeout(posicionarBarraFlutuante, 180);
+}
+setTimeout(() => {
+  if (sidebarMexidoManualmente) return;
+  document.getElementById('appShell').classList.add('sidebar-collapsed');
+  if (typeof posicionarBarraFlutuante === 'function') setTimeout(posicionarBarraFlutuante, 180);
+}, 5000);
 let remessaAtual = null; // {id, numero, pedido_id}
 
 function showMsg(text, ok){
@@ -295,7 +326,7 @@ function renderNav(){
     <span class="nav-sep">/</span>
     <span class="nav-crumb" onclick="voltarRemessas()">${esc(pedidoAtual.numero_pedido)}</span>
     <span class="nav-sep">/</span>
-    <span class="nav-crumb active">Remessa ${remessaAtual.numero}</span>`;
+    <span class="nav-crumb active">Remessa ${remessaAtual.numero}${remessaAtual.nome ? ' — ' + esc(remessaAtual.nome) : ''}</span>`;
 }
 
 function voltarLista(){
@@ -374,8 +405,8 @@ async function renderRemessasPCP(){
   if (!data.length){ grid.innerHTML = `<div class="empty">Nenhuma remessa disponível ainda — a Engenharia precisa disparar a remessa por email antes dela aparecer aqui pro PCP.</div>`; return; }
 
   grid.innerHTML = data.map(r => `
-    <div class="pedido-card" onclick='abrirRemessaPCP(${JSON.stringify({ id: r.id, numero: r.numero, pedido_id: r.pedido_id, enviada_email_em: r.enviada_email_em }).replace(/'/g, "&#39;")})'>
-      <div class="pc-num">Remessa ${r.numero}</div>
+    <div class="pedido-card" onclick='abrirRemessaPCP(${JSON.stringify({ id: r.id, numero: r.numero, nome: r.nome, pedido_id: r.pedido_id, enviada_email_em: r.enviada_email_em }).replace(/'/g, "&#39;")})'>
+      <div class="pc-num">Remessa ${r.numero}${r.nome ? ' — ' + esc(r.nome) : ''}</div>
       <div class="pc-equip">${(r.desenhos_engenharia || []).length} desenho(s)</div>
       <div style="font-size:11px;color:var(--green);font-weight:600;margin-top:4px">✓ Enviada por email</div>
     </div>`).join('');
@@ -391,7 +422,7 @@ async function renderDetalhePedido(){
   const content = document.getElementById('content');
   content.innerHTML = `
     <div class="cliente-banner">
-      <div class="cb-equip">${esc(pedidoAtual.equipamento || pedidoAtual.numero_pedido)} — Remessa ${remessaAtual.numero}</div>
+      <div class="cb-equip">${esc(pedidoAtual.equipamento || pedidoAtual.numero_pedido)} — Remessa ${remessaAtual.numero}${remessaAtual.nome ? ' — ' + esc(remessaAtual.nome) : ''}</div>
       ${pedidoAtual.cliente ? `<div style="font-size:12px;color:var(--blue);font-weight:600">${esc(pedidoAtual.cliente)}</div>` : ''}
       ${pedidoAtual.observacao ? `<div class="cb-obs">${esc(pedidoAtual.observacao)}</div>` : ''}
     </div>
