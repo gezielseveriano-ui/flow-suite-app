@@ -201,6 +201,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
       <div class="tabs" id="tabsBar" style="display:none;margin:-1.75rem -2rem 1.5rem">
         <div class="tab active" id="tabPonto" onclick="mudarTab('ponto')">Quiosque</div>
         <div class="tab" id="tabCorrecoes" onclick="mudarTab('correcoes')" style="display:none">Correções</div>
+        <div class="tab" id="tabRelatorios" onclick="mudarTab('relatorios')" style="display:none">Relatórios</div>
         <div class="tab" id="tabColaboradores" onclick="mudarTab('colaboradores')" style="display:none">Colaboradores</div>
         <div class="tab" id="tabAtividades" onclick="mudarTab('atividades')" style="display:none">Atividades</div>
         <div class="tab" id="tabSetores" onclick="mudarTab('setores')" style="display:none">Setores / CC</div>
@@ -339,6 +340,7 @@ async function init(){
   if (AUTH.perfil === 'admin' || AUTH.perfil === 'producao'){
     document.getElementById('tabsBar').style.display = 'flex';
     document.getElementById('tabCorrecoes').style.display = '';
+    document.getElementById('tabRelatorios').style.display = '';
   }
   if (AUTH.perfil === 'admin'){
     document.getElementById('tabColaboradores').style.display = '';
@@ -361,12 +363,13 @@ async function carregarSetores(){
 
 function mudarTab(nome){
   aba = nome;
-  ['Ponto','Correcoes','Colaboradores','Atividades','Setores'].forEach(t => {
+  ['Ponto','Correcoes','Relatorios','Colaboradores','Atividades','Setores'].forEach(t => {
     const el = document.getElementById('tab' + t);
     if (el) el.classList.toggle('active', t.toLowerCase() === nome);
   });
   if (nome === 'ponto') renderKioskIdentificar();
   else if (nome === 'correcoes') renderCorrecoes();
+  else if (nome === 'relatorios') renderRelatorios();
   else if (nome === 'colaboradores') renderColaboradores();
   else if (nome === 'atividades') renderAtividades();
   else if (nome === 'setores') renderSetores();
@@ -696,6 +699,32 @@ async function estornarApontamento(){
   fecharModal('ovCorrecao');
   showMsg('Apontamento estornado.', true);
   buscarCorrecoes();
+}
+
+/* ══════════════════════════ RELATÓRIOS ══════════════════════════ */
+
+function renderRelatorios(){
+  document.getElementById('content').innerHTML = `
+    <div class="kiosk-wrap" style="max-width:620px;margin-top:1rem">
+      <div class="kiosk-card" style="text-align:left">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">
+          <div style="width:40px;height:40px;border-radius:10px;background:var(--blue-dim);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">📊</div>
+          <div>
+            <div style="font-weight:800;font-size:16px;color:var(--navy)">Relatório de Apontamento de Horas</div>
+            <div style="font-size:12px;color:var(--text2)">Exemplo com dados de simulação (30 dias, 10 colaboradores de teste)</div>
+          </div>
+        </div>
+        <p style="font-size:13px;color:var(--text2);margin:12px 0 18px;line-height:1.5">
+          Total de horas, por centro de custo, por cargo, por pedido, tabela por colaborador e um estudo de caso individual.
+          Ainda é um relatório gerado uma única vez a partir de dados simulados — quando o relatório ao vivo (com filtro por
+          período/colaborador/pedido) estiver pronto, ele substitui este aqui.
+        </p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <a class="btn btn-primary" href="assets/Relatorio_Apontamento_Simulacao.pdf" target="_blank" rel="noopener">👁 Visualizar PDF</a>
+          <a class="btn" href="assets/Relatorio_Apontamento_Simulacao.pdf" download="Relatorio_Apontamento_Horas.pdf">⬇ Baixar PDF</a>
+        </div>
+      </div>
+    </div>`;
 }
 
 /* ══════════════════════════ CADASTRO: COLABORADORES (admin) ══════════════════════════ */
