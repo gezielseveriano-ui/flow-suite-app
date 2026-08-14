@@ -378,6 +378,7 @@ function renderKioskIdentificar(){
   clearInterval(cronometroInterval);
   sessaoMatricula = null;
   sessaoPin = null;
+  document.getElementById('msgBox').classList.remove('show');
   document.getElementById('content').innerHTML = `
     <div class="kiosk-wrap">
       <div class="kiosk-card">
@@ -410,6 +411,7 @@ async function identificar(){
     return;
   }
 
+  document.getElementById('msgBox').classList.remove('show');
   sessaoMatricula = matricula;
   sessaoPin = pin;
   renderKioskColaborador(data[0]);
