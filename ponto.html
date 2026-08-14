@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Flow Suite — Apontamento de Horas</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <style>
 :root{
   --navy:#0b1e33; --navy2:#102A43; --navy3:#173a5e;
@@ -103,8 +104,8 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 
 /* ── CADASTRO (admin) ── */
 .filter-row{display:flex;gap:10px;margin-bottom:1rem;flex-wrap:wrap;align-items:center}
-.filter-row input{flex:1;min-width:200px;padding:11px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg3);color:var(--text);font-size:14px}
-.filter-row input:focus{outline:none;border-color:var(--blue)}
+.filter-row input,.filter-row select{flex:1;min-width:160px;padding:11px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg3);color:var(--text);font-size:14px}
+.filter-row input:focus,.filter-row select:focus{outline:none;border-color:var(--blue)}
 .tbl-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg2);box-shadow:var(--shadow-sm)}
 .dtbl{width:100%;border-collapse:collapse;font-size:12.5px}
 .dtbl thead th{text-align:left;padding:10px;color:var(--text2);font-weight:600;white-space:nowrap;background:var(--bg3);border-bottom:1px solid var(--border)}
@@ -112,6 +113,24 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 .dtbl tbody tr:hover td{background:rgba(0,0,0,.02)}
 .pill{display:inline-block;padding:2px 10px;border-radius:20px;font-size:10.5px;font-weight:700;text-transform:uppercase}
 .empty{text-align:center;padding:3rem 2rem;color:var(--text2);font-size:14px}
+
+/* ── RELATÓRIOS ── */
+.rel-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:1.5rem}
+.rel-kpi{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:1rem 1.1rem;box-shadow:var(--shadow-sm)}
+.rel-kpi-label{font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--text3);margin-bottom:6px}
+.rel-kpi-value{font-size:22px;font-weight:800;color:var(--text)}
+.rel-charts{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:1.5rem}
+@media (max-width:820px){ .rel-charts{grid-template-columns:1fr} }
+.rel-chart-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:1.1rem 1.2rem;box-shadow:var(--shadow-sm)}
+.rel-chart-card h3{font-size:12.5px;font-weight:700;color:var(--text2);margin-bottom:12px;text-transform:uppercase;letter-spacing:.04em}
+.rel-chart-card canvas{max-height:220px}
+.rel-chart-hint{font-size:11px;color:var(--text3);margin-top:8px}
+.rel-active-filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:1rem}
+.rel-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px 4px 12px;border-radius:20px;background:var(--blue-dim);color:var(--blue);font-size:12px;font-weight:600}
+.rel-chip button{border:none;background:none;color:inherit;cursor:pointer;font-size:14px;line-height:1;padding:0}
+.rel-panel{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:1.2rem;box-shadow:var(--shadow-sm);margin-bottom:1.5rem}
+.rel-panel h3{font-size:14px;font-weight:800;margin-bottom:2px}
+.rel-panel .sub{font-size:12px;color:var(--text2);margin-bottom:14px}
 
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:300;padding:20px}
 .overlay.show{display:flex}
@@ -701,30 +720,222 @@ async function estornarApontamento(){
   buscarCorrecoes();
 }
 
-/* ══════════════════════════ RELATÓRIOS ══════════════════════════ */
+/* ══════════════════════════ RELATÓRIOS (ao vivo, interativo) ══════════════════════════ */
 
-function renderRelatorios(){
+let relFiltro = { inicio: null, fim: null, matricula: '', pedidoId: '', setorCc: '' };
+let relCharts = { cc: null, cargo: null, pedido: null };
+const CORES_REL = ['#1D4ED8','#b5690a','#10B981','#8b5cf6','#DC2626','#0891b2','#db2777','#65a30d'];
+
+function primeiroDiaMes(){
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`;
+}
+function hojeStr(){ return new Date().toISOString().slice(0,10); }
+
+async function renderRelatorios(){
+  const hoje = hojeStr();
+  relFiltro.inicio = relFiltro.inicio || primeiroDiaMes();
+  relFiltro.fim = relFiltro.fim || hoje;
+
   document.getElementById('content').innerHTML = `
-    <div class="kiosk-wrap" style="max-width:620px;margin-top:1rem">
-      <div class="kiosk-card" style="text-align:left">
-        <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">
-          <div style="width:40px;height:40px;border-radius:10px;background:var(--blue-dim);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">📊</div>
-          <div>
-            <div style="font-weight:800;font-size:16px;color:var(--navy)">Relatório de Apontamento de Horas</div>
-            <div style="font-size:12px;color:var(--text2)">Exemplo com dados de simulação (30 dias, 10 colaboradores de teste)</div>
-          </div>
-        </div>
-        <p style="font-size:13px;color:var(--text2);margin:12px 0 18px;line-height:1.5">
-          Total de horas, por centro de custo, por cargo, por pedido, tabela por colaborador e um estudo de caso individual.
-          Ainda é um relatório gerado uma única vez a partir de dados simulados — quando o relatório ao vivo (com filtro por
-          período/colaborador/pedido) estiver pronto, ele substitui este aqui.
-        </p>
-        <div style="display:flex;gap:10px;flex-wrap:wrap">
-          <a class="btn btn-primary" href="assets/Relatorio_Apontamento_Simulacao.pdf" target="_blank" rel="noopener">👁 Visualizar PDF</a>
-          <a class="btn" href="assets/Relatorio_Apontamento_Simulacao.pdf" download="Relatorio_Apontamento_Horas.pdf">⬇ Baixar PDF</a>
+    <div class="filter-row">
+      <input type="date" id="relInicio" value="${relFiltro.inicio}">
+      <input type="date" id="relFim" value="${relFiltro.fim}">
+      <select id="relColaborador"><option value="">Todos os colaboradores</option></select>
+      <select id="relPedido"><option value="">Todos os pedidos</option></select>
+      <select id="relSetor"><option value="">Todos os centros de custo</option></select>
+      <button class="btn btn-primary" onclick="aplicarFiltrosRelatorio()">Aplicar</button>
+    </div>
+    <div id="relConteudo"><div class="empty">Carregando...</div></div>
+    <div class="kiosk-wrap" style="max-width:none;margin:1.5rem 0 0">
+      <div class="kiosk-card" style="text-align:left;padding:1.1rem 1.3rem">
+        <div style="display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--text2)">
+          <span style="font-size:18px">📄</span>
+          <span>Também temos um relatório de exemplo em PDF (dados de simulação) — <a href="assets/Relatorio_Apontamento_Simulacao.pdf" target="_blank" rel="noopener" style="color:var(--blue);font-weight:600">visualizar</a> ou <a href="assets/Relatorio_Apontamento_Simulacao.pdf" download="Relatorio_Apontamento_Horas.pdf" style="color:var(--blue);font-weight:600">baixar</a>.</span>
         </div>
       </div>
     </div>`;
+
+  await Promise.all([carregarColaboradores(), carregarPedidos()]);
+  document.getElementById('relColaborador').innerHTML += colaboradoresCache.map(c => `<option value="${esc(c.matricula)}" ${c.matricula===relFiltro.matricula?'selected':''}>${esc(c.matricula)} — ${esc(c.nome)}</option>`).join('');
+  document.getElementById('relPedido').innerHTML += pedidosCache.map(p => `<option value="${p.id}" ${String(p.id)===String(relFiltro.pedidoId)?'selected':''}>${esc(p.numero_pedido)}${p.cliente?' — '+esc(p.cliente):''}</option>`).join('');
+  document.getElementById('relSetor').innerHTML += setoresCache.map(s => `<option value="${esc(s.codigo_cc)}" ${s.codigo_cc===relFiltro.setorCc?'selected':''}>${esc(s.codigo_cc)} — ${esc(s.nome)}</option>`).join('');
+  document.getElementById('relColaborador').value = relFiltro.matricula;
+  document.getElementById('relPedido').value = relFiltro.pedidoId;
+  document.getElementById('relSetor').value = relFiltro.setorCc;
+
+  aplicarFiltrosRelatorio();
+}
+
+function setFiltroEAplicar(campo, valor){
+  relFiltro[campo] = valor;
+  const idPorCampo = { matricula: 'relColaborador', pedidoId: 'relPedido', setorCc: 'relSetor' };
+  const el = document.getElementById(idPorCampo[campo]);
+  if (el) el.value = valor;
+  aplicarFiltrosRelatorio();
+}
+
+async function aplicarFiltrosRelatorio(){
+  relFiltro.inicio = document.getElementById('relInicio').value;
+  relFiltro.fim = document.getElementById('relFim').value;
+  relFiltro.matricula = document.getElementById('relColaborador').value;
+  relFiltro.pedidoId = document.getElementById('relPedido').value;
+  relFiltro.setorCc = document.getElementById('relSetor').value;
+
+  const wrap = document.getElementById('relConteudo');
+  wrap.innerHTML = `<div class="empty">Carregando...</div>`;
+
+  let q = sb.from('apontamentos_horas')
+    .select('matricula, data, hora_inicio, hora_fim, horas, atividade_codigo, pedido_id, setor_cc, status, colaboradores(nome,cargo), pedidos(numero_pedido)')
+    .gte('data', relFiltro.inicio).lte('data', relFiltro.fim)
+    .neq('status', 'estornado')
+    .not('hora_fim', 'is', null);
+  if (relFiltro.matricula) q = q.eq('matricula', relFiltro.matricula);
+  if (relFiltro.pedidoId) q = q.eq('pedido_id', Number(relFiltro.pedidoId));
+  if (relFiltro.setorCc) q = q.eq('setor_cc', relFiltro.setorCc);
+
+  const { data, error } = await q.order('data');
+  if (error){ wrap.innerHTML = `<div class="empty">Erro: ${esc(error.message)}</div>`; return; }
+  renderRelatorioResultado(data || []);
+}
+
+function nomeSetor(cc){ return setoresCache.find(s => s.codigo_cc === cc)?.nome || cc || '—'; }
+
+function renderRelatorioResultado(rows){
+  const wrap = document.getElementById('relConteudo');
+
+  const chips = [];
+  if (relFiltro.matricula){
+    const c = colaboradoresCache.find(x => x.matricula === relFiltro.matricula);
+    chips.push(['matricula', `Colaborador: ${c ? c.nome : relFiltro.matricula}`]);
+  }
+  if (relFiltro.pedidoId){
+    const p = pedidosCache.find(x => String(x.id) === String(relFiltro.pedidoId));
+    chips.push(['pedidoId', `Pedido: ${p ? p.numero_pedido : relFiltro.pedidoId}`]);
+  }
+  if (relFiltro.setorCc) chips.push(['setorCc', `CC: ${nomeSetor(relFiltro.setorCc)}`]);
+  const chipsHtml = chips.length ? `<div class="rel-active-filters">${chips.map(([campo,label]) =>
+    `<span class="rel-chip">${esc(label)}<button onclick="setFiltroEAplicar('${campo}','')" title="Remover filtro">✕</button></span>`).join('')}</div>` : '';
+
+  if (!rows.length){
+    wrap.innerHTML = chipsHtml + `<div class="empty">Nenhum apontamento encontrado nesse período/filtro.</div>`;
+    return;
+  }
+
+  const totalHoras = rows.reduce((s,r) => s + Number(r.horas||0), 0);
+  const colaboradoresSet = new Set(rows.map(r => r.matricula));
+  const diasSet = new Set(rows.map(r => r.data));
+
+  const porCC = {}, porCargo = {}, porPedido = {}, porColab = {};
+  for (const r of rows){
+    const cc = r.setor_cc || '—';
+    porCC[cc] = (porCC[cc]||0) + Number(r.horas);
+    const cargo = r.colaboradores?.cargo || '—';
+    porCargo[cargo] = (porCargo[cargo]||0) + Number(r.horas);
+    const ped = r.pedidos?.numero_pedido || 'Sem pedido';
+    porPedido[ped] = (porPedido[ped]||0) + Number(r.horas);
+    const key = r.matricula;
+    if (!porColab[key]) porColab[key] = { nome: r.colaboradores?.nome || key, cargo: r.colaboradores?.cargo || '—', cc, horas: 0, dias: new Set() };
+    porColab[key].horas += Number(r.horas);
+    porColab[key].dias.add(r.data);
+  }
+
+  wrap.innerHTML = chipsHtml + `
+    <div class="rel-kpis">
+      <div class="rel-kpi"><div class="rel-kpi-label">Total de horas</div><div class="rel-kpi-value tabular">${totalHoras.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}h</div></div>
+      <div class="rel-kpi"><div class="rel-kpi-label">Colaboradores</div><div class="rel-kpi-value tabular">${colaboradoresSet.size}</div></div>
+      <div class="rel-kpi"><div class="rel-kpi-label">Dias com apontamento</div><div class="rel-kpi-value tabular">${diasSet.size}</div></div>
+      <div class="rel-kpi"><div class="rel-kpi-label">Apontamentos</div><div class="rel-kpi-value tabular">${rows.length}</div></div>
+    </div>
+    <div class="rel-charts">
+      <div class="rel-chart-card"><h3>Horas por Centro de Custo</h3><canvas id="relChartCC"></canvas><div class="rel-chart-hint">Clique numa barra pra filtrar</div></div>
+      <div class="rel-chart-card"><h3>Horas por Cargo</h3><canvas id="relChartCargo"></canvas></div>
+      <div class="rel-chart-card" style="grid-column:1/-1"><h3>Horas por Pedido</h3><canvas id="relChartPedido"></canvas><div class="rel-chart-hint">Clique numa barra pra filtrar</div></div>
+    </div>
+    ${relFiltro.matricula ? renderRelatorioDetalheColaborador(rows) : ''}
+    <div class="tbl-wrap">
+      <table class="dtbl">
+        <thead><tr><th>Colaborador</th><th>Cargo</th><th>CC</th><th class="r">Dias</th><th class="r">Horas</th><th></th></tr></thead>
+        <tbody>
+          ${Object.entries(porColab).sort((a,b)=>b[1].horas-a[1].horas).map(([mat,c]) => `
+            <tr>
+              <td>${esc(c.nome)}</td>
+              <td>${esc(c.cargo)}</td>
+              <td><span class="cc-dot" style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:${CORES_REL[Object.keys(porCC).indexOf(c.cc)%CORES_REL.length]}"></span>${esc(nomeSetor(c.cc))}</td>
+              <td class="r tabular">${c.dias.size}</td>
+              <td class="r tabular" style="font-weight:700">${c.horas.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+              <td><span class="btn" style="cursor:pointer" onclick="setFiltroEAplicar('matricula','${esc(mat)}')">Ver detalhe</span></td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+
+  desenharChartsRelatorio(porCC, porCargo, porPedido);
+}
+
+function renderRelatorioDetalheColaborador(rows){
+  const linhas = rows.slice().sort((a,b) => a.hora_inicio.localeCompare(b.hora_inicio));
+  return `
+    <div class="rel-panel">
+      <h3>Apontamentos no período</h3>
+      <div class="sub">${linhas.length} lançamento${linhas.length!==1?'s':''}</div>
+      <div class="tbl-wrap">
+        <table class="dtbl">
+          <thead><tr><th>Data</th><th>Início</th><th>Fim</th><th>Atividade</th><th>Pedido</th><th class="r">Horas</th><th>Status</th></tr></thead>
+          <tbody>
+            ${linhas.map(r => {
+              const ativ = atividadesCache.find(a=>a.codigo===r.atividade_codigo)?.nome || r.atividade_codigo;
+              return `<tr>
+                <td>${new Date(r.data+'T00:00:00').toLocaleDateString('pt-BR')}</td>
+                <td>${new Date(r.hora_inicio).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</td>
+                <td>${new Date(r.hora_fim).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</td>
+                <td>${esc(r.atividade_codigo)} — ${esc(ativ)}</td>
+                <td>${esc(r.pedidos?.numero_pedido || '—')}</td>
+                <td class="r tabular">${Number(r.horas).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+                <td><span class="pill ${r.status==='normal'?'badge-produtivo':'badge-apoio'}">${esc(r.status)}</span></td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+function desenharChartsRelatorio(porCC, porCargo, porPedido){
+  Object.values(relCharts).forEach(c => c && c.destroy());
+
+  const barOpts = (labels, onClickFiltro) => ({
+    type: 'bar',
+    data: { labels, datasets: [{ data: labels.map((_,i)=>0), backgroundColor: CORES_REL }] },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { x: { ticks: { font: { size: 10 } } }, y: { ticks: { font: { size: 11 }, autoSkip: false } } },
+      onClick: onClickFiltro ? (evt, els) => { if (els.length) onClickFiltro(labels[els[0].index]); } : undefined,
+    },
+  });
+
+  function montar(canvasId, obj, onClickFiltro){
+    const entries = Object.entries(obj).sort((a,b)=>b[1]-a[1]);
+    const cfg = barOpts(entries.map(e=>e[0]), onClickFiltro);
+    cfg.data.datasets[0].data = entries.map(e=>Math.round(e[1]*100)/100);
+    const canvas = document.getElementById(canvasId);
+    canvas.parentElement.style.height = Math.max(120, entries.length*44) + 'px';
+    canvas.style.height = '100%';
+    return new Chart(canvas, cfg);
+  }
+
+  relCharts.cc = montar('relChartCC', porCC, (label) => {
+    const cc = Object.keys(porCC).find(k => nomeSetor(k) === label || k === label);
+    setFiltroEAplicar('setorCc', cc || label);
+  });
+  relCharts.cargo = montar('relChartCargo', porCargo, null);
+  relCharts.pedido = montar('relChartPedido', porPedido, (label) => {
+    const p = pedidosCache.find(x => x.numero_pedido === label);
+    if (p) setFiltroEAplicar('pedidoId', p.id);
+  });
 }
 
 /* ══════════════════════════ CADASTRO: COLABORADORES (admin) ══════════════════════════ */
