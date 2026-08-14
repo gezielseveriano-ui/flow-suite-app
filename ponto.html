@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flow Suite — Apontamento de Horas</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{
+  --navy:#0b1e33; --navy2:#102A43; --navy3:#173a5e;
+  --bg:#F8FAFC; --bg2:#ffffff; --bg3:#F1F5F9; --bg4:#E9EDF3;
+  --border:#E5E7EB; --border-strong:#CBD5E1; --text:#111827; --text2:#6B7280; --text3:#9CA3AF;
+  --blue:#1D4ED8; --blue-dim:#DBEAFE; --blue-hover:#1E40AF; --header-bg:#102A43;
+  --green:#10B981; --green-dim:#D1FAE5;
+  --amber:#b5690a; --amber-dim:#faedd9;
+  --red:#DC2626; --red-dim:#FEE2E2;
+  --radius:16px; --radius-sm:10px;
+  --shadow-sm:0 1px 2px rgba(16,24,40,.04), 0 1px 3px rgba(16,24,40,.06);
+  --shadow-md:0 8px 20px rgba(16,24,40,.10), 0 2px 6px rgba(16,24,40,.05);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:14px;-webkit-font-smoothing:antialiased}
+
+/* ── APP SHELL ── */
+.app-shell{min-height:100vh;display:flex;flex-direction:column}
+.app-header{display:flex;align-items:center;justify-content:space-between;height:60px;padding:0 22px;background:var(--header-bg);border-bottom:1px solid var(--border);flex-shrink:0;position:sticky;top:0;z-index:100}
+.app-header-brand{display:flex;align-items:center;gap:10px}
+.app-header-brand .logo-full{height:42px;width:auto;flex-shrink:0;display:block}
+.app-header-right{display:flex;align-items:center;gap:12px}
+.header-user{font-size:12px;color:rgba(255,255,255,.6);text-align:right;line-height:1.3}
+.header-user strong{color:#fff;font-weight:600;display:block;font-size:12.5px}
+.icon-btn{width:32px;height:32px;border-radius:9px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:#fff;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+.icon-btn:hover{background:rgba(255,255,255,.16)}
+.icon-btn svg{width:15px;height:15px}
+.avatar{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#4f8ef7,#7c6cf0);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;flex-shrink:0}
+
+.app-body{flex:1;display:flex;min-height:0}
+.sidebar{width:222px;flex-shrink:0;background:var(--navy2);border-right:1px solid var(--border);display:flex;flex-direction:column;justify-content:space-between;padding:16px 10px;transition:width .15s ease}
+.app-shell.sidebar-collapsed .sidebar{width:68px}
+.app-shell.sidebar-collapsed .nav-label,.app-shell.sidebar-collapsed .collapse-label{display:none}
+.sidebar-nav{display:flex;flex-direction:column;gap:2px}
+.nav-item{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:10px;color:rgba(255,255,255,.66);text-decoration:none;font-size:13.5px;font-weight:500;white-space:nowrap;overflow:hidden}
+.nav-item svg{width:17px;height:17px;flex-shrink:0}
+.nav-item:hover{background:rgba(255,255,255,.07);color:#fff}
+.nav-item.active{background:var(--blue);color:#fff;font-weight:600}
+.collapse-btn{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;color:rgba(255,255,255,.45);background:none;border:none;cursor:pointer;font-size:12.5px;width:100%;font-family:inherit}
+.collapse-btn:hover{background:rgba(255,255,255,.07);color:#fff}
+.collapse-btn svg{width:15px;height:15px;transition:transform .15s;flex-shrink:0}
+.app-shell.sidebar-collapsed .collapse-btn svg{transform:rotate(180deg)}
+
+.content{flex:1;min-width:0;padding:1.75rem 2rem;overflow-y:auto}
+
+.btn{display:inline-block;padding:8px 15px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg2);color:var(--text);font-size:12.5px;cursor:pointer;font-weight:500;transition:border-color .12s,color .12s}
+.btn:hover{border-color:var(--blue);color:var(--blue)}
+.btn-primary{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}
+.btn-primary:hover{background:var(--blue-hover);border-color:var(--blue-hover);color:#fff}
+.btn-primary:disabled{opacity:.5;cursor:default}
+.btn-red{color:var(--red);border-color:rgba(220,38,38,.35)}
+.btn-red:hover{border-color:var(--red);background:var(--red-dim)}
+
+.tabs{display:flex;gap:8px;padding:0 2rem;background:var(--bg2);border-bottom:1px solid var(--border)}
+.tab{padding:12px 6px;font-size:13px;font-weight:600;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent}
+.tab:hover{color:var(--text)}
+.tab.active{color:var(--blue);border-bottom-color:var(--blue)}
+
+.msg-box{display:none;padding:10px 16px;border-radius:var(--radius-sm);font-size:13px;font-weight:600;margin-bottom:1rem}
+.msg-box.show{display:block}
+.msg-box.ok{background:var(--green-dim);color:#047857}
+.msg-box.err{background:var(--red-dim);color:var(--red)}
+
+/* ── QUIOSQUE ── */
+.kiosk-wrap{max-width:460px;margin:2rem auto}
+.kiosk-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-md);padding:2rem}
+.kiosk-title{font-size:18px;font-weight:800;text-align:center;margin-bottom:1.5rem;color:var(--navy)}
+.kiosk-field{margin-bottom:1.1rem}
+.kiosk-field label{display:block;font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.03em}
+.kiosk-field input,.kiosk-field select,.kiosk-field textarea{
+  width:100%;padding:14px 16px;border:1px solid var(--border);border-radius:var(--radius-sm);
+  background:var(--bg3);color:var(--text);font-size:18px;text-align:center;letter-spacing:.04em;
+}
+.kiosk-field select{text-align:left;font-size:15px}
+.kiosk-field textarea{text-align:left;font-size:14px;resize:vertical;min-height:60px}
+.kiosk-field input:focus,.kiosk-field select:focus,.kiosk-field textarea:focus{outline:none;border-color:var(--blue)}
+.kiosk-btn{width:100%;padding:15px;border-radius:var(--radius-sm);border:none;background:var(--blue);color:#fff;font-size:16px;font-weight:700;cursor:pointer;margin-top:.4rem}
+.kiosk-btn:hover{background:var(--blue-hover)}
+.kiosk-btn.stop{background:var(--red)}
+.kiosk-btn.stop:hover{background:#b91c1c}
+.kiosk-link{display:block;text-align:center;margin-top:1rem;color:var(--text3);font-size:12.5px;cursor:pointer}
+.kiosk-link:hover{color:var(--text2)}
+
+.colab-box{text-align:center;margin-bottom:1.5rem}
+.colab-nome{font-size:20px;font-weight:800;color:var(--navy)}
+.colab-info{font-size:12.5px;color:var(--text2);margin-top:4px}
+.colab-badge{display:inline-block;margin-top:8px;padding:3px 12px;border-radius:20px;font-size:11px;font-weight:700;text-transform:uppercase}
+.badge-produtivo{background:var(--green-dim);color:#047857}
+.badge-improdutivo{background:var(--red-dim);color:var(--red)}
+.badge-apoio{background:var(--amber-dim);color:var(--amber)}
+
+.aberto-box{background:var(--blue-dim);border-radius:var(--radius-sm);padding:1.25rem;text-align:center;margin-bottom:1.25rem}
+.aberto-atividade{font-size:15px;font-weight:700;color:var(--navy)}
+.aberto-cronometro{font-size:32px;font-weight:800;color:var(--blue);font-variant-numeric:tabular-nums;margin-top:6px}
+.aberto-desde{font-size:11.5px;color:var(--text2);margin-top:4px}
+
+/* ── CADASTRO (admin) ── */
+.filter-row{display:flex;gap:10px;margin-bottom:1rem;flex-wrap:wrap;align-items:center}
+.filter-row input{flex:1;min-width:200px;padding:11px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg3);color:var(--text);font-size:14px}
+.filter-row input:focus{outline:none;border-color:var(--blue)}
+.tbl-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg2);box-shadow:var(--shadow-sm)}
+.dtbl{width:100%;border-collapse:collapse;font-size:12.5px}
+.dtbl thead th{text-align:left;padding:10px;color:var(--text2);font-weight:600;white-space:nowrap;background:var(--bg3);border-bottom:1px solid var(--border)}
+.dtbl tbody td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:middle}
+.dtbl tbody tr:hover td{background:rgba(0,0,0,.02)}
+.pill{display:inline-block;padding:2px 10px;border-radius:20px;font-size:10.5px;font-weight:700;text-transform:uppercase}
+.empty{text-align:center;padding:3rem 2rem;color:var(--text2);font-size:14px}
+
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:300;padding:20px}
+.overlay.show{display:flex}
+.modal{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:1.4rem;width:100%;max-width:480px;max-height:90vh;overflow-y:auto}
+.modal h3{font-size:17px;font-weight:700;margin-bottom:14px}
+.form-field{margin-bottom:.9rem}
+.form-field label{display:block;font-size:12px;font-weight:600;color:var(--text2);margin-bottom:5px}
+.form-field input,.form-field select{width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg3);color:var(--text);font-size:14px}
+.form-field input:focus,.form-field select:focus{outline:none;border-color:var(--blue)}
+.form-check{display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:.9rem}
+.modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}
+
+.sidebar-fab{position:fixed;bottom:20px;left:16px;z-index:260;width:46px;height:46px;border-radius:50%;background:var(--navy2);border:1px solid rgba(255,255,255,.15);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:var(--shadow-md);transition:background .12s,transform .12s}
+.sidebar-fab:hover{background:var(--navy3);transform:scale(1.06)}
+.sidebar-fab svg{width:20px;height:20px;transition:transform .2s;flex-shrink:0}
+.app-shell.sidebar-collapsed .sidebar-fab svg{transform:rotate(180deg)}
+</style>
+</head>
+<body>
+
+<div class="app-shell" id="appShell">
+  <header class="app-header">
+    <div class="app-header-brand">
+      <img class="logo-full" src="assets/logo.png" alt="Flow Suite">
+    </div>
+    <div class="app-header-right">
+      <span class="header-user">Logado como<strong id="userNome">...</strong></span>
+      <div id="sininhoWrap"></div>
+      <button class="icon-btn" title="Início" onclick="window.location.href='index.html'">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 9.5 10 3l7 6.5M5 8v8h10V8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <button class="icon-btn" title="Sair" onclick="logout()">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 3H4v14h4M13 6l4 4-4 4M6.5 10H17" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="avatar" id="userAvatar">··</div>
+    </div>
+  </header>
+  <div class="app-body">
+    <aside class="sidebar">
+      <nav class="sidebar-nav">
+        <a class="nav-item" href="index.html">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 9.5 10 3l7 6.5M5 8v8h10V8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="nav-label">Início</span>
+        </a>
+        <a class="nav-item" href="contratos.html">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 2.5h6l3 3v12h-9z" stroke-linejoin="round"/><path d="M12 2.5V6h3M8 10h4M8 13h4M8 7h1.5" stroke-linecap="round"/></svg>
+          <span class="nav-label">Contratos</span>
+        </a>
+        <a class="nav-item" href="engenharia.html">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m3 17 8-8m0 0 4-4 2 2-4 4m-4-4 4 4M6 14l-1 3 3-1" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="nav-label">Engenharia</span>
+        </a>
+        <a class="nav-item" href="cadastro.html">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M7 3h6a1 1 0 0 1 1 1v1H6V4a1 1 0 0 1 1-1Z" stroke-linejoin="round"/><path d="M6 4H5a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1h-1M7 10h6M7 13h4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="nav-label">PCP</span>
+        </a>
+        <a class="nav-item" href="apontamento.html">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 17V9l4-3 4 3v8M11 17V6l3-2 3 2v11" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="nav-label">Produção</span>
+        </a>
+        <a class="nav-item active" href="ponto.html">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10.5" r="7"/><path d="M10 6.5v4l3 2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="nav-label">Apontamento de Horas</span>
+        </a>
+        <a class="nav-item" href="expedicao.html">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 6h9v8H2zM11 9h4l3 3v2h-7z" stroke-linejoin="round"/><circle cx="6" cy="15.5" r="1.4"/><circle cx="14" cy="15.5" r="1.4"/></svg>
+          <span class="nav-label">Expedição</span>
+        </a>
+        <a class="nav-item" href="industrializacao.html">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m10 2 7 3.5v9L10 18l-7-3.5v-9L10 2Z" stroke-linejoin="round"/><path d="M10 2v16M3 5.5 10 9l7-3.5M10 9v9" stroke-linejoin="round"/></svg>
+          <span class="nav-label">Industrialização</span>
+        </a>
+        <a class="nav-item" href="dashboard.html">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 15V9M10 15V4M16 15v-6" stroke-linecap="round"/></svg>
+          <span class="nav-label">Dashboard</span>
+        </a>
+      </nav>
+      <button class="collapse-btn" onclick="alternarSidebar(true)">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12.5 4 7 10l5.5 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span class="collapse-label">Recolher menu</span>
+      </button>
+    </aside>
+    <button class="sidebar-fab" id="sidebarFab" onclick="alternarSidebar(true)" title="Mostrar/ocultar menu">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12.5 4 7 10l5.5 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <main class="content">
+      <div class="tabs" id="tabsBar" style="display:none;margin:-1.75rem -2rem 1.5rem">
+        <div class="tab active" id="tabPonto" onclick="mudarTab('ponto')">Quiosque</div>
+        <div class="tab" id="tabColaboradores" onclick="mudarTab('colaboradores')">Colaboradores</div>
+        <div class="tab" id="tabAtividades" onclick="mudarTab('atividades')">Atividades</div>
+        <div class="tab" id="tabSetores" onclick="mudarTab('setores')">Setores / CC</div>
+      </div>
+      <div class="msg-box" id="msgBox"></div>
+      <div id="content"></div>
+    </main>
+  </div>
+</div>
+
+<!-- MODAL: colaborador -->
+<div class="overlay" id="ovColaborador">
+  <div class="modal">
+    <h3 id="colabModalTitulo">Novo colaborador</h3>
+    <div class="form-field"><label>Matrícula</label><input id="cMatricula" placeholder="Ex: 1234"></div>
+    <div class="form-field"><label>Nome</label><input id="cNome"></div>
+    <div class="form-field"><label>Cargo</label><input id="cCargo"></div>
+    <div class="form-field"><label>Setor / Centro de Custo</label><select id="cSetor"></select></div>
+    <div class="form-field"><label>Supervisor</label><input id="cSupervisor"></div>
+    <div class="form-field"><label>Classificação</label>
+      <select id="cClassificacao">
+        <option value="produtivo">Produtivo</option>
+        <option value="improdutivo">Improdutivo</option>
+        <option value="apoio">Apoio</option>
+      </select>
+    </div>
+    <div class="form-field"><label>PIN (4 dígitos) — deixe em branco pra não alterar</label><input id="cPin" maxlength="4" inputmode="numeric" placeholder="••••"></div>
+    <label class="form-check"><input type="checkbox" id="cAtivo" checked> Colaborador ativo</label>
+    <div class="modal-actions">
+      <button type="button" class="btn" onclick="fecharModal('ovColaborador')">Cancelar</button>
+      <button type="button" class="btn btn-primary" onclick="salvarColaborador()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: atividade -->
+<div class="overlay" id="ovAtividade">
+  <div class="modal">
+    <h3 id="atividadeModalTitulo">Nova atividade</h3>
+    <div class="form-field"><label>Código</label><input id="aCodigo" placeholder="Ex: AT24"></div>
+    <div class="form-field"><label>Nome</label><input id="aNome"></div>
+    <div class="form-field"><label>Tipo</label>
+      <select id="aTipo">
+        <option value="produtiva">Produtiva</option>
+        <option value="improdutiva">Improdutiva</option>
+        <option value="apoio">Apoio</option>
+      </select>
+    </div>
+    <label class="form-check"><input type="checkbox" id="aExigePedido"> Exige pedido no apontamento</label>
+    <label class="form-check"><input type="checkbox" id="aAtivo" checked> Atividade ativa</label>
+    <div class="modal-actions">
+      <button type="button" class="btn" onclick="fecharModal('ovAtividade')">Cancelar</button>
+      <button type="button" class="btn btn-primary" onclick="salvarAtividade()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: setor/CC -->
+<div class="overlay" id="ovSetor">
+  <div class="modal">
+    <h3 id="setorModalTitulo">Novo setor / CC</h3>
+    <div class="form-field"><label>Código do Centro de Custo</label><input id="sCodigo" placeholder="Ex: 1103"></div>
+    <div class="form-field"><label>Nome do setor</label><input id="sNome" placeholder="Ex: Usinagem"></div>
+    <label class="form-check"><input type="checkbox" id="sAtivo" checked> Setor ativo</label>
+    <div class="modal-actions">
+      <button type="button" class="btn" onclick="fecharModal('ovSetor')">Cancelar</button>
+      <button type="button" class="btn btn-primary" onclick="salvarSetor()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/supabase-client.js"></script>
+<script>
+let AUTH = null;
+let sidebarMexidoManualmente = false;
+function alternarSidebar(manual){
+  document.getElementById('appShell').classList.toggle('sidebar-collapsed');
+  if (manual) sidebarMexidoManualmente = true;
+}
+setTimeout(() => {
+  if (sidebarMexidoManualmente) return;
+  document.getElementById('appShell').classList.add('sidebar-collapsed');
+}, 5000);
+
+let aba = 'ponto';
+let atividadesCache = [];
+let setoresCache = [];
+let sessaoMatricula = null;
+let sessaoPin = null;
+let cronometroInterval = null;
+
+function showMsg(text, ok){
+  const box = document.getElementById('msgBox');
+  box.textContent = (ok ? '✓ ' : '✕ ') + text;
+  box.className = 'msg-box show ' + (ok ? 'ok' : 'err');
+  box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  clearTimeout(window.__msgTimeout);
+  if (ok) window.__msgTimeout = setTimeout(() => box.classList.remove('show'), 4000);
+}
+function abrirModal(id){ document.getElementById(id).classList.add('show'); }
+function fecharModal(id){ document.getElementById(id).classList.remove('show'); }
+
+async function init(){
+  AUTH = await exigirLogin(['apontamento', 'producao', 'admin']);
+  if (!AUTH) return;
+  document.getElementById('userNome').textContent = AUTH.nome;
+  document.getElementById('userAvatar').textContent = (AUTH.nome || '').trim().split(/\s+/).map(p => p[0]).slice(0, 2).join('').toUpperCase() || '··';
+  iniciarSininho('sininhoWrap');
+
+  if (AUTH.perfil === 'admin'){
+    document.getElementById('tabsBar').style.display = 'flex';
+  }
+
+  await Promise.all([carregarAtividades(), carregarSetores()]);
+  mudarTab('ponto');
+}
+
+async function carregarAtividades(){
+  const { data } = await sb.from('atividades').select('*').eq('ativo', true).order('codigo');
+  atividadesCache = data || [];
+}
+async function carregarSetores(){
+  const { data } = await sb.from('setores_cc').select('*').order('nome');
+  setoresCache = data || [];
+}
+
+function mudarTab(nome){
+  aba = nome;
+  ['Ponto','Colaboradores','Atividades','Setores'].forEach(t => {
+    const el = document.getElementById('tab' + t);
+    if (el) el.classList.toggle('active', t.toLowerCase() === nome);
+  });
+  if (nome === 'ponto') renderKioskIdentificar();
+  else if (nome === 'colaboradores') renderColaboradores();
+  else if (nome === 'atividades') renderAtividades();
+  else if (nome === 'setores') renderSetores();
+}
+
+/* ══════════════════════════ QUIOSQUE ══════════════════════════ */
+
+function renderKioskIdentificar(){
+  clearInterval(cronometroInterval);
+  sessaoMatricula = null;
+  sessaoPin = null;
+  document.getElementById('content').innerHTML = `
+    <div class="kiosk-wrap">
+      <div class="kiosk-card">
+        <div class="kiosk-title">⏱ Apontamento de Horas</div>
+        <div class="kiosk-field">
+          <label>Matrícula</label>
+          <input id="kMatricula" inputmode="numeric" autocomplete="off" placeholder="0000">
+        </div>
+        <div class="kiosk-field">
+          <label>PIN</label>
+          <input id="kPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="••••">
+        </div>
+        <button class="kiosk-btn" onclick="identificar()">Entrar</button>
+      </div>
+    </div>`;
+  document.getElementById('kMatricula').focus();
+  document.getElementById('kPin').addEventListener('keydown', e => { if (e.key === 'Enter') identificar(); });
+}
+
+async function identificar(){
+  const matricula = document.getElementById('kMatricula').value.trim();
+  const pin = document.getElementById('kPin').value.trim();
+  if (!matricula || !pin){ showMsg('Informe matrícula e PIN.', false); return; }
+
+  const { data, error } = await sb.rpc('apontamento_identificar', { p_matricula: matricula, p_pin: pin });
+  if (error || !data || !data.length){
+    showMsg(error?.message || 'Matrícula ou PIN inválido.', false);
+    document.getElementById('kPin').value = '';
+    document.getElementById('kPin').focus();
+    return;
+  }
+
+  sessaoMatricula = matricula;
+  sessaoPin = pin;
+  renderKioskColaborador(data[0]);
+}
+
+function renderKioskColaborador(col){
+  const badgeClass = 'badge-' + col.classificacao;
+  const setorNome = setoresCache.find(s => s.codigo_cc === col.setor_cc)?.nome || col.setor_cc || '—';
+
+  let corpo;
+  if (col.apontamento_aberto_id){
+    const ativNome = atividadesCache.find(a => a.codigo === col.apontamento_aberto_atividade)?.nome || col.apontamento_aberto_atividade;
+    corpo = `
+      <div class="aberto-box">
+        <div class="aberto-atividade">${esc(col.apontamento_aberto_atividade)} — ${esc(ativNome)}</div>
+        <div class="aberto-cronometro" id="cronometro">00:00:00</div>
+        <div class="aberto-desde">desde ${new Date(col.apontamento_aberto_inicio).toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' })}</div>
+      </div>
+      <button class="kiosk-btn stop" onclick="finalizar()">⏹ Finalizar apontamento</button>`;
+  } else {
+    const opcoesAtiv = atividadesCache.map(a => `<option value="${esc(a.codigo)}" data-exige="${a.exige_pedido}">${esc(a.codigo)} — ${esc(a.nome)}</option>`).join('');
+    corpo = `
+      <div class="kiosk-field">
+        <label>Atividade</label>
+        <select id="kAtividade" onchange="onAtividadeChange()">${opcoesAtiv}</select>
+      </div>
+      <div class="kiosk-field" id="kPedidoWrap" style="display:none">
+        <label>Pedido</label>
+        <select id="kPedido"><option value="">Carregando...</option></select>
+      </div>
+      <div class="kiosk-field">
+        <label>Observação (opcional)</label>
+        <textarea id="kObs"></textarea>
+      </div>
+      <button class="kiosk-btn" onclick="iniciar()">▶ Iniciar apontamento</button>`;
+  }
+
+  document.getElementById('content').innerHTML = `
+    <div class="kiosk-wrap">
+      <div class="kiosk-card">
+        <div class="colab-box">
+          <div class="colab-nome">${esc(col.nome)}</div>
+          <div class="colab-info">${esc(col.cargo || '—')} · ${esc(setorNome)}</div>
+          <span class="colab-badge ${badgeClass}">${esc(col.classificacao)}</span>
+        </div>
+        ${corpo}
+        <span class="kiosk-link" onclick="renderKioskIdentificar()">← Trocar usuário</span>
+      </div>
+    </div>`;
+
+  if (col.apontamento_aberto_id){
+    const inicio = new Date(col.apontamento_aberto_inicio).getTime();
+    const atualizar = () => {
+      const s = Math.max(0, Math.floor((Date.now() - inicio) / 1000));
+      const hh = String(Math.floor(s / 3600)).padStart(2, '0');
+      const mm = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
+      const ss = String(s % 60).padStart(2, '0');
+      const el = document.getElementById('cronometro');
+      if (el) el.textContent = `${hh}:${mm}:${ss}`;
+    };
+    atualizar();
+    cronometroInterval = setInterval(atualizar, 1000);
+  } else {
+    carregarPedidosParaSelect();
+    onAtividadeChange();
+  }
+}
+
+async function carregarPedidosParaSelect(){
+  const sel = document.getElementById('kPedido');
+  const { data, error } = await sb.from('pedidos').select('id, numero_pedido, cliente').order('numero_pedido');
+  if (!sel) return;
+  if (error || !data){ sel.innerHTML = '<option value="">Erro ao carregar pedidos</option>'; return; }
+  sel.innerHTML = data.map(p => `<option value="${p.id}">${esc(p.numero_pedido)}${p.cliente ? ' — ' + esc(p.cliente) : ''}</option>`).join('');
+}
+
+function onAtividadeChange(){
+  const sel = document.getElementById('kAtividade');
+  const wrap = document.getElementById('kPedidoWrap');
+  if (!sel || !wrap) return;
+  const exige = sel.options[sel.selectedIndex]?.dataset.exige === 'true';
+  wrap.style.display = exige ? 'block' : 'none';
+}
+
+async function iniciar(){
+  const atividade = document.getElementById('kAtividade').value;
+  const exige = document.getElementById('kAtividade').options[document.getElementById('kAtividade').selectedIndex]?.dataset.exige === 'true';
+  const pedidoId = exige ? (document.getElementById('kPedido').value || null) : null;
+  const obs = document.getElementById('kObs').value.trim() || null;
+
+  if (exige && !pedidoId){ showMsg('Essa atividade exige um pedido.', false); return; }
+
+  const { error } = await sb.rpc('apontamento_iniciar', {
+    p_matricula: sessaoMatricula, p_pin: sessaoPin, p_atividade_codigo: atividade,
+    p_pedido_id: pedidoId ? Number(pedidoId) : null, p_observacao: obs,
+  });
+
+  if (error){ showMsg(error.message, false); return; }
+  showMsg('Apontamento iniciado.', true);
+  setTimeout(renderKioskIdentificar, 1200);
+}
+
+async function finalizar(){
+  const { error } = await sb.rpc('apontamento_finalizar', { p_matricula: sessaoMatricula, p_pin: sessaoPin });
+  if (error){ showMsg(error.message, false); return; }
+  showMsg('Apontamento finalizado.', true);
+  setTimeout(renderKioskIdentificar, 1200);
+}
+
+/* ══════════════════════════ CADASTRO: COLABORADORES (admin) ══════════════════════════ */
+
+async function renderColaboradores(){
+  document.getElementById('content').innerHTML = `
+    <div class="filter-row">
+      <input id="filtroColab" placeholder="Filtrar por matrícula, nome ou setor..." oninput="aplicarFiltro('filtroColab','colabTblWrap')">
+      <button class="btn btn-primary" onclick="abrirNovoColaborador()">+ Novo colaborador</button>
+    </div>
+    <div class="tbl-wrap" id="colabTblWrap"><div class="empty">Carregando...</div></div>`;
+
+  const { data, error } = await sb.from('colaboradores').select('*, setores_cc(nome)').order('nome');
+  const wrap = document.getElementById('colabTblWrap');
+  if (error){ wrap.innerHTML = `<div class="empty">Erro: ${esc(error.message)}</div>`; return; }
+  if (!data.length){ wrap.innerHTML = `<div class="empty">Nenhum colaborador cadastrado.</div>`; return; }
+
+  wrap.innerHTML = `
+    <table class="dtbl">
+      <thead><tr><th>Matrícula</th><th>Nome</th><th>Cargo</th><th>Setor</th><th>Supervisor</th><th>Classificação</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+        ${data.map(c => {
+          const chave = `${c.matricula} ${c.nome} ${c.setores_cc?.nome||''}`.toLowerCase();
+          return `<tr data-search="${esc(chave)}">
+          <td>${esc(c.matricula)}</td>
+          <td>${esc(c.nome)}</td>
+          <td>${esc(c.cargo || '—')}</td>
+          <td>${esc(c.setores_cc?.nome || '—')}</td>
+          <td>${esc(c.supervisor || '—')}</td>
+          <td><span class="pill badge-${c.classificacao}">${esc(c.classificacao)}</span></td>
+          <td>${c.ativo ? '<span class="pill badge-produtivo">Ativo</span>' : '<span class="pill badge-improdutivo">Inativo</span>'}</td>
+          <td><span class="btn" style="cursor:pointer" onclick='editarColaborador(${JSON.stringify(c).replace(/'/g, "&#39;")})'>Editar</span></td>
+        </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+}
+
+function aplicarFiltro(inputId, wrapId){
+  const termo = document.getElementById(inputId).value.trim().toLowerCase();
+  document.querySelectorAll(`#${wrapId} tbody tr`).forEach(row => {
+    row.style.display = (!termo || row.dataset.search.includes(termo)) ? '' : 'none';
+  });
+}
+
+function preencherSelectSetores(selectId, selecionado){
+  const sel = document.getElementById(selectId);
+  sel.innerHTML = setoresCache.map(s => `<option value="${esc(s.codigo_cc)}" ${s.codigo_cc === selecionado ? 'selected' : ''}>${esc(s.codigo_cc)} — ${esc(s.nome)}</option>`).join('');
+}
+
+function abrirNovoColaborador(){
+  document.getElementById('colabModalTitulo').textContent = 'Novo colaborador';
+  document.getElementById('cMatricula').value = '';
+  document.getElementById('cMatricula').disabled = false;
+  document.getElementById('cNome').value = '';
+  document.getElementById('cCargo').value = '';
+  preencherSelectSetores('cSetor', null);
+  document.getElementById('cSupervisor').value = '';
+  document.getElementById('cClassificacao').value = 'produtivo';
+  document.getElementById('cPin').value = '';
+  document.getElementById('cAtivo').checked = true;
+  abrirModal('ovColaborador');
+}
+
+function editarColaborador(c){
+  document.getElementById('colabModalTitulo').textContent = 'Editar colaborador';
+  document.getElementById('cMatricula').value = c.matricula;
+  document.getElementById('cMatricula').disabled = true;
+  document.getElementById('cNome').value = c.nome || '';
+  document.getElementById('cCargo').value = c.cargo || '';
+  preencherSelectSetores('cSetor', c.setor_cc);
+  document.getElementById('cSupervisor').value = c.supervisor || '';
+  document.getElementById('cClassificacao').value = c.classificacao;
+  document.getElementById('cPin').value = '';
+  document.getElementById('cAtivo').checked = c.ativo;
+  abrirModal('ovColaborador');
+}
+
+async function salvarColaborador(){
+  const matricula = document.getElementById('cMatricula').value.trim();
+  const nome = document.getElementById('cNome').value.trim();
+  const pin = document.getElementById('cPin').value.trim();
+  if (!matricula || !nome){ showMsg('Matrícula e nome são obrigatórios.', false); return; }
+  if (pin && pin.length < 4){ showMsg('O PIN precisa ter 4 dígitos.', false); return; }
+
+  const payload = {
+    matricula,
+    nome,
+    cargo: document.getElementById('cCargo').value.trim() || null,
+    setor_cc: document.getElementById('cSetor').value || null,
+    supervisor: document.getElementById('cSupervisor').value.trim() || null,
+    classificacao: document.getElementById('cClassificacao').value,
+    ativo: document.getElementById('cAtivo').checked,
+  };
+
+  const { error } = await sb.from('colaboradores').upsert(payload, { onConflict: 'matricula' });
+  if (error){ showMsg('Erro ao salvar: ' + error.message, false); return; }
+
+  if (pin){
+    const { error: errPin } = await sb.rpc('definir_pin_colaborador', { p_matricula: matricula, p_pin: pin });
+    if (errPin){ showMsg('Colaborador salvo, mas erro ao definir PIN: ' + errPin.message, false); return; }
+  }
+
+  fecharModal('ovColaborador');
+  showMsg('Colaborador salvo.', true);
+  renderColaboradores();
+}
+
+/* ══════════════════════════ CADASTRO: ATIVIDADES (admin) ══════════════════════════ */
+
+async function renderAtividades(){
+  document.getElementById('content').innerHTML = `
+    <div class="filter-row">
+      <input id="filtroAtiv" placeholder="Filtrar por código ou nome..." oninput="aplicarFiltro('filtroAtiv','ativTblWrap')">
+      <button class="btn btn-primary" onclick="abrirNovaAtividade()">+ Nova atividade</button>
+    </div>
+    <div class="tbl-wrap" id="ativTblWrap"><div class="empty">Carregando...</div></div>`;
+
+  const { data, error } = await sb.from('atividades').select('*').order('codigo');
+  const wrap = document.getElementById('ativTblWrap');
+  if (error){ wrap.innerHTML = `<div class="empty">Erro: ${esc(error.message)}</div>`; return; }
+
+  wrap.innerHTML = `
+    <table class="dtbl">
+      <thead><tr><th>Código</th><th>Nome</th><th>Tipo</th><th>Exige pedido?</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+        ${data.map(a => {
+          const chave = `${a.codigo} ${a.nome}`.toLowerCase();
+          return `<tr data-search="${esc(chave)}">
+          <td><strong>${esc(a.codigo)}</strong></td>
+          <td>${esc(a.nome)}</td>
+          <td><span class="pill badge-${a.tipo}">${esc(a.tipo)}</span></td>
+          <td>${a.exige_pedido ? 'Sim' : 'Não'}</td>
+          <td>${a.ativo ? '<span class="pill badge-produtivo">Ativa</span>' : '<span class="pill badge-improdutivo">Inativa</span>'}</td>
+          <td><span class="btn" style="cursor:pointer" onclick='editarAtividade(${JSON.stringify(a).replace(/'/g, "&#39;")})'>Editar</span></td>
+        </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+}
+
+function abrirNovaAtividade(){
+  document.getElementById('atividadeModalTitulo').textContent = 'Nova atividade';
+  document.getElementById('aCodigo').value = '';
+  document.getElementById('aCodigo').disabled = false;
+  document.getElementById('aNome').value = '';
+  document.getElementById('aTipo').value = 'produtiva';
+  document.getElementById('aExigePedido').checked = false;
+  document.getElementById('aAtivo').checked = true;
+  abrirModal('ovAtividade');
+}
+
+function editarAtividade(a){
+  document.getElementById('atividadeModalTitulo').textContent = 'Editar atividade';
+  document.getElementById('aCodigo').value = a.codigo;
+  document.getElementById('aCodigo').disabled = true;
+  document.getElementById('aNome').value = a.nome;
+  document.getElementById('aTipo').value = a.tipo;
+  document.getElementById('aExigePedido').checked = a.exige_pedido;
+  document.getElementById('aAtivo').checked = a.ativo;
+  abrirModal('ovAtividade');
+}
+
+async function salvarAtividade(){
+  const codigo = document.getElementById('aCodigo').value.trim().toUpperCase();
+  const nome = document.getElementById('aNome').value.trim();
+  if (!codigo || !nome){ showMsg('Código e nome são obrigatórios.', false); return; }
+
+  const payload = {
+    codigo, nome,
+    tipo: document.getElementById('aTipo').value,
+    exige_pedido: document.getElementById('aExigePedido').checked,
+    ativo: document.getElementById('aAtivo').checked,
+  };
+
+  const { error } = await sb.from('atividades').upsert(payload, { onConflict: 'codigo' });
+  if (error){ showMsg('Erro ao salvar: ' + error.message, false); return; }
+
+  fecharModal('ovAtividade');
+  showMsg('Atividade salva.', true);
+  await carregarAtividades();
+  renderAtividades();
+}
+
+/* ══════════════════════════ CADASTRO: SETORES / CC (admin) ══════════════════════════ */
+
+async function renderSetores(){
+  document.getElementById('content').innerHTML = `
+    <div class="filter-row">
+      <input id="filtroSetor" placeholder="Filtrar por código ou nome..." oninput="aplicarFiltro('filtroSetor','setorTblWrap')">
+      <button class="btn btn-primary" onclick="abrirNovoSetor()">+ Novo setor / CC</button>
+    </div>
+    <div class="tbl-wrap" id="setorTblWrap"><div class="empty">Carregando...</div></div>`;
+
+  const { data, error } = await sb.from('setores_cc').select('*').order('nome');
+  const wrap = document.getElementById('setorTblWrap');
+  if (error){ wrap.innerHTML = `<div class="empty">Erro: ${esc(error.message)}</div>`; return; }
+
+  wrap.innerHTML = `
+    <table class="dtbl">
+      <thead><tr><th>Centro de Custo</th><th>Setor</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+        ${data.map(s => {
+          const chave = `${s.codigo_cc} ${s.nome}`.toLowerCase();
+          return `<tr data-search="${esc(chave)}">
+          <td><strong>${esc(s.codigo_cc)}</strong></td>
+          <td>${esc(s.nome)}</td>
+          <td>${s.ativo ? '<span class="pill badge-produtivo">Ativo</span>' : '<span class="pill badge-improdutivo">Inativo</span>'}</td>
+          <td><span class="btn" style="cursor:pointer" onclick='editarSetor(${JSON.stringify(s).replace(/'/g, "&#39;")})'>Editar</span></td>
+        </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+}
+
+function abrirNovoSetor(){
+  document.getElementById('setorModalTitulo').textContent = 'Novo setor / CC';
+  document.getElementById('sCodigo').value = '';
+  document.getElementById('sCodigo').disabled = false;
+  document.getElementById('sNome').value = '';
+  document.getElementById('sAtivo').checked = true;
+  abrirModal('ovSetor');
+}
+
+function editarSetor(s){
+  document.getElementById('setorModalTitulo').textContent = 'Editar setor / CC';
+  document.getElementById('sCodigo').value = s.codigo_cc;
+  document.getElementById('sCodigo').disabled = true;
+  document.getElementById('sNome').value = s.nome;
+  document.getElementById('sAtivo').checked = s.ativo;
+  abrirModal('ovSetor');
+}
+
+async function salvarSetor(){
+  const codigo_cc = document.getElementById('sCodigo').value.trim();
+  const nome = document.getElementById('sNome').value.trim();
+  if (!codigo_cc || !nome){ showMsg('Código e nome são obrigatórios.', false); return; }
+
+  const payload = { codigo_cc, nome, ativo: document.getElementById('sAtivo').checked };
+  const { error } = await sb.from('setores_cc').upsert(payload, { onConflict: 'codigo_cc' });
+  if (error){ showMsg('Erro ao salvar: ' + error.message, false); return; }
+
+  fecharModal('ovSetor');
+  showMsg('Setor salvo.', true);
+  await carregarSetores();
+  renderSetores();
+}
+
+init();
+</script>
+</body>
+</html>

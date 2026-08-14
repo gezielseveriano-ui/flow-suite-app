@@ -173,6 +173,10 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
           <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 17V9l4-3 4 3v8M11 17V6l3-2 3 2v11" stroke-linecap="round" stroke-linejoin="round"/></svg>
           <span class="nav-label">Produção</span>
         </a>
+        <a class="nav-item" href="ponto.html">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10.5" r="7"/><path d="M10 6.5v4l3 2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="nav-label">Apontamento de Horas</span>
+        </a>
         <a class="nav-item" href="expedicao.html">
           <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 6h9v8H2zM11 9h4l3 3v2h-7z" stroke-linejoin="round"/><circle cx="6" cy="15.5" r="1.4"/><circle cx="14" cy="15.5" r="1.4"/></svg>
           <span class="nav-label">Expedição</span>
@@ -241,6 +245,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 <script src="js/supabase-client.js"></script>
 <script>
 let AUTH = null;
+let SOMENTE_LEITURA = false;
 let aba = 'gerar';
 let pedidoAtual = null;
 
@@ -271,9 +276,17 @@ function fecharModal(id){ document.getElementById(id).classList.remove('show'); 
 async function init(){
   AUTH = await exigirLogin(['pcp', 'expedicao', 'admin']);
   if (!AUTH) return;
+  SOMENTE_LEITURA = AUTH.perfil === 'pcp';
   document.getElementById('userNome').textContent = AUTH.nome;
   document.getElementById('userAvatar').textContent = (AUTH.nome || '').trim().split(/\s+/).map(p => p[0]).slice(0, 2).join('').toUpperCase() || '··';
   iniciarSininho('sininhoWrap');
+  if (SOMENTE_LEITURA){
+    // PCP só acompanha (visualização) — quem gera LI e cadastra fornecedor é a Expedição.
+    document.getElementById('tabGerar').style.display = 'none';
+    document.getElementById('tabFornecedores').style.display = 'none';
+    mudarAba('historico');
+    return;
+  }
   mudarAba('gerar');
 }
 
@@ -530,7 +543,7 @@ async function verItensLI(liId, numero){
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px">
       <div style="font-size:12px;color:var(--text2);font-weight:600">Itens da LI ${esc(numero)} · Fornecedor ${esc(li.fornecedores?.razao_social||'')}</div>
       <div style="display:flex;gap:8px">
-        <button class="btn" onclick="toggleRevisaoLI(${liId}, '${esc(numero)}')">${modoRevisaoLI ? 'Concluir revisão' : '✏️ Revisar (add/remover itens)'}</button>
+        ${SOMENTE_LEITURA ? '' : `<button class="btn" onclick="toggleRevisaoLI(${liId}, '${esc(numero)}')">${modoRevisaoLI ? 'Concluir revisão' : '✏️ Revisar (add/remover itens)'}</button>`}
         <button class="btn btn-primary" onclick="gerarExcelLI()">📊 Gerar Excel</button>
       </div>
     </div>
