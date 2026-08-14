@@ -385,11 +385,11 @@ function renderKioskIdentificar(){
         <div class="kiosk-title">⏱ Apontamento de Horas</div>
         <div class="kiosk-field">
           <label>Matrícula</label>
-          <input id="kMatricula" inputmode="numeric" autocomplete="off" placeholder="0000">
+          <input id="kMatricula" name="kiosk-matricula" inputmode="numeric" pattern="[0-9]*" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="0000">
         </div>
         <div class="kiosk-field">
           <label>PIN</label>
-          <input id="kPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="••••">
+          <input id="kPin" name="kiosk-pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="new-password" placeholder="••••">
         </div>
         <button class="kiosk-btn" onclick="identificar()">Entrar</button>
       </div>
