@@ -200,9 +200,10 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
     <main class="content">
       <div class="tabs" id="tabsBar" style="display:none;margin:-1.75rem -2rem 1.5rem">
         <div class="tab active" id="tabPonto" onclick="mudarTab('ponto')">Quiosque</div>
-        <div class="tab" id="tabColaboradores" onclick="mudarTab('colaboradores')">Colaboradores</div>
-        <div class="tab" id="tabAtividades" onclick="mudarTab('atividades')">Atividades</div>
-        <div class="tab" id="tabSetores" onclick="mudarTab('setores')">Setores / CC</div>
+        <div class="tab" id="tabCorrecoes" onclick="mudarTab('correcoes')" style="display:none">Correções</div>
+        <div class="tab" id="tabColaboradores" onclick="mudarTab('colaboradores')" style="display:none">Colaboradores</div>
+        <div class="tab" id="tabAtividades" onclick="mudarTab('atividades')" style="display:none">Atividades</div>
+        <div class="tab" id="tabSetores" onclick="mudarTab('setores')" style="display:none">Setores / CC</div>
       </div>
       <div class="msg-box" id="msgBox"></div>
       <div id="content"></div>
@@ -271,6 +272,32 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
   </div>
 </div>
 
+<!-- MODAL: correção / lançamento manual de apontamento -->
+<div class="overlay" id="ovCorrecao">
+  <div class="modal">
+    <h3 id="corModalTitulo">Corrigir apontamento</h3>
+    <input type="hidden" id="corId">
+    <div class="form-field" id="corColabWrap">
+      <label>Colaborador</label>
+      <select id="corColaborador"></select>
+    </div>
+    <div class="form-field" id="corColabTexto" style="display:none">
+      <label>Colaborador</label>
+      <div style="padding:9px 12px;background:var(--bg3);border-radius:var(--radius-sm);font-weight:600" id="corColabNome"></div>
+    </div>
+    <div class="form-field"><label>Início</label><input type="datetime-local" id="corInicio"></div>
+    <div class="form-field"><label>Fim (deixe em branco se ainda estiver em aberto)</label><input type="datetime-local" id="corFim"></div>
+    <div class="form-field"><label>Atividade</label><select id="corAtividade" onchange="onAtividadeCorrecaoChange()"></select></div>
+    <div class="form-field" id="corPedidoWrap" style="display:none"><label>Pedido</label><select id="corPedido"></select></div>
+    <div class="form-field"><label>Observação</label><input id="corObs" placeholder="Motivo da correção, se quiser registrar"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-red" id="corBtnEstornar" style="display:none;margin-right:auto" onclick="estornarApontamento()">Estornar</button>
+      <button type="button" class="btn" onclick="fecharModal('ovCorrecao')">Cancelar</button>
+      <button type="button" class="btn btn-primary" onclick="salvarCorrecao()">Salvar</button>
+    </div>
+  </div>
+</div>
+
 <script src="js/supabase-client.js"></script>
 <script>
 let AUTH = null;
@@ -309,8 +336,14 @@ async function init(){
   document.getElementById('userAvatar').textContent = (AUTH.nome || '').trim().split(/\s+/).map(p => p[0]).slice(0, 2).join('').toUpperCase() || '··';
   iniciarSininho('sininhoWrap');
 
-  if (AUTH.perfil === 'admin'){
+  if (AUTH.perfil === 'admin' || AUTH.perfil === 'producao'){
     document.getElementById('tabsBar').style.display = 'flex';
+    document.getElementById('tabCorrecoes').style.display = '';
+  }
+  if (AUTH.perfil === 'admin'){
+    document.getElementById('tabColaboradores').style.display = '';
+    document.getElementById('tabAtividades').style.display = '';
+    document.getElementById('tabSetores').style.display = '';
   }
 
   await Promise.all([carregarAtividades(), carregarSetores()]);
@@ -328,11 +361,12 @@ async function carregarSetores(){
 
 function mudarTab(nome){
   aba = nome;
-  ['Ponto','Colaboradores','Atividades','Setores'].forEach(t => {
+  ['Ponto','Correcoes','Colaboradores','Atividades','Setores'].forEach(t => {
     const el = document.getElementById('tab' + t);
     if (el) el.classList.toggle('active', t.toLowerCase() === nome);
   });
   if (nome === 'ponto') renderKioskIdentificar();
+  else if (nome === 'correcoes') renderCorrecoes();
   else if (nome === 'colaboradores') renderColaboradores();
   else if (nome === 'atividades') renderAtividades();
   else if (nome === 'setores') renderSetores();
@@ -483,6 +517,183 @@ async function finalizar(){
   if (error){ showMsg(error.message, false); return; }
   showMsg('Apontamento finalizado.', true);
   setTimeout(renderKioskIdentificar, 1200);
+}
+
+/* ══════════════════════════ CORREÇÕES (admin + producao/supervisor) ══════════════════════════ */
+
+let colaboradoresCache = [];
+let pedidosCache = [];
+
+async function carregarColaboradores(){
+  const { data } = await sb.from('colaboradores').select('*').eq('ativo', true).order('nome');
+  colaboradoresCache = data || [];
+}
+async function carregarPedidos(){
+  const { data } = await sb.from('pedidos').select('id, numero_pedido, cliente').order('numero_pedido');
+  pedidosCache = data || [];
+}
+
+// datetime-local <-> timestamptz: o input não sabe de fuso, então tratamos
+// sempre como horário local do navegador (igual à fábrica) nos dois sentidos.
+function paraInputLocal(isoStr){
+  if (!isoStr) return '';
+  const d = new Date(isoStr);
+  const pad = n => String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function deInputLocal(val){
+  if (!val) return null;
+  return new Date(val).toISOString();
+}
+
+function renderCorrecoes(){
+  const hoje = new Date().toISOString().slice(0,10);
+  document.getElementById('content').innerHTML = `
+    <div class="filter-row">
+      <select id="corrColaborador" style="max-width:280px"></select>
+      <input type="date" id="corrData" value="${hoje}" style="max-width:170px">
+      <button class="btn btn-primary" onclick="buscarCorrecoes()">Buscar</button>
+      <button class="btn" onclick="abrirNovoManual()" style="margin-left:auto">+ Lançar apontamento esquecido</button>
+    </div>
+    <div id="corrResultado"><div class="empty">Escolha um colaborador e uma data, depois clique em Buscar.</div></div>`;
+
+  Promise.all([carregarColaboradores(), carregarPedidos()]).then(() => {
+    const sel = document.getElementById('corrColaborador');
+    if (sel) sel.innerHTML = colaboradoresCache.map(c => `<option value="${esc(c.matricula)}">${esc(c.matricula)} — ${esc(c.nome)}</option>`).join('');
+  });
+}
+
+async function buscarCorrecoes(){
+  const matricula = document.getElementById('corrColaborador').value;
+  const data = document.getElementById('corrData').value;
+  const wrap = document.getElementById('corrResultado');
+  if (!matricula || !data){ wrap.innerHTML = `<div class="empty">Escolha colaborador e data.</div>`; return; }
+  wrap.innerHTML = `<div class="empty">Carregando...</div>`;
+
+  const { data: rows, error } = await sb
+    .from('apontamentos_horas')
+    .select('*, pedidos(numero_pedido)')
+    .eq('matricula', matricula)
+    .eq('data', data)
+    .order('hora_inicio');
+
+  if (error){ wrap.innerHTML = `<div class="empty">Erro: ${esc(error.message)}</div>`; return; }
+  if (!rows.length){ wrap.innerHTML = `<div class="empty">Nenhum apontamento nesse dia.</div>`; return; }
+
+  wrap.innerHTML = `
+    <div class="tbl-wrap">
+      <table class="dtbl">
+        <thead><tr><th>Início</th><th>Fim</th><th>Atividade</th><th>Pedido</th><th>Status</th><th>Observação</th><th></th></tr></thead>
+        <tbody>
+          ${rows.map(r => {
+            const ativ = atividadesCache.find(a => a.codigo === r.atividade_codigo)?.nome || r.atividade_codigo;
+            const estornado = r.status === 'estornado';
+            return `<tr style="${estornado ? 'opacity:.5;text-decoration:line-through' : ''}">
+              <td>${new Date(r.hora_inicio).toLocaleString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</td>
+              <td>${r.hora_fim ? new Date(r.hora_fim).toLocaleString('pt-BR',{hour:'2-digit',minute:'2-digit'}) : '<span class="pill badge-apoio">Em aberto</span>'}</td>
+              <td>${esc(r.atividade_codigo)} — ${esc(ativ)}</td>
+              <td>${esc(r.pedidos?.numero_pedido || '—')}</td>
+              <td><span class="pill ${r.status==='normal'?'badge-produtivo':r.status==='corrigido'?'badge-apoio':'badge-improdutivo'}">${esc(r.status)}</span></td>
+              <td>${esc(r.observacao || '—')}</td>
+              <td><span class="btn" style="cursor:pointer" onclick='editarCorrecao(${JSON.stringify(r).replace(/'/g, "&#39;")})'>Editar</span></td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+function preencherSelectAtividadesCorrecao(selecionada){
+  const sel = document.getElementById('corAtividade');
+  sel.innerHTML = atividadesCache.map(a => `<option value="${esc(a.codigo)}" data-exige="${a.exige_pedido}" ${a.codigo===selecionada?'selected':''}>${esc(a.codigo)} — ${esc(a.nome)}</option>`).join('');
+}
+function preencherSelectPedidosCorrecao(selecionado){
+  const sel = document.getElementById('corPedido');
+  sel.innerHTML = pedidosCache.map(p => `<option value="${p.id}" ${p.id===selecionado?'selected':''}>${esc(p.numero_pedido)}${p.cliente?' — '+esc(p.cliente):''}</option>`).join('');
+}
+function onAtividadeCorrecaoChange(){
+  const sel = document.getElementById('corAtividade');
+  const exige = sel.options[sel.selectedIndex]?.dataset.exige === 'true';
+  document.getElementById('corPedidoWrap').style.display = exige ? 'block' : 'none';
+}
+
+function abrirNovoManual(){
+  const matricula = document.getElementById('corrColaborador')?.value;
+  const data = document.getElementById('corrData')?.value || new Date().toISOString().slice(0,10);
+  document.getElementById('corModalTitulo').textContent = 'Lançar apontamento esquecido';
+  document.getElementById('corId').value = '';
+  document.getElementById('corColabWrap').style.display = 'block';
+  document.getElementById('corColabTexto').style.display = 'none';
+  const selColab = document.getElementById('corColaborador');
+  selColab.innerHTML = colaboradoresCache.map(c => `<option value="${esc(c.matricula)}" ${c.matricula===matricula?'selected':''}>${esc(c.matricula)} — ${esc(c.nome)}</option>`).join('');
+  document.getElementById('corInicio').value = data ? `${data}T07:30` : '';
+  document.getElementById('corFim').value = data ? `${data}T12:00` : '';
+  preencherSelectAtividadesCorrecao(null);
+  preencherSelectPedidosCorrecao(null);
+  onAtividadeCorrecaoChange();
+  document.getElementById('corObs').value = '';
+  document.getElementById('corBtnEstornar').style.display = 'none';
+  abrirModal('ovCorrecao');
+}
+
+function editarCorrecao(r){
+  document.getElementById('corModalTitulo').textContent = 'Editar apontamento';
+  document.getElementById('corId').value = r.id;
+  document.getElementById('corColabWrap').style.display = 'none';
+  document.getElementById('corColabTexto').style.display = 'block';
+  document.getElementById('corColabNome').textContent = r.matricula;
+  document.getElementById('corInicio').value = paraInputLocal(r.hora_inicio);
+  document.getElementById('corFim').value = paraInputLocal(r.hora_fim);
+  preencherSelectAtividadesCorrecao(r.atividade_codigo);
+  preencherSelectPedidosCorrecao(r.pedido_id);
+  onAtividadeCorrecaoChange();
+  document.getElementById('corObs').value = r.observacao || '';
+  document.getElementById('corBtnEstornar').style.display = r.status === 'estornado' ? 'none' : 'inline-block';
+  abrirModal('ovCorrecao');
+}
+
+async function salvarCorrecao(){
+  const id = document.getElementById('corId').value;
+  const inicio = deInputLocal(document.getElementById('corInicio').value);
+  const fim = deInputLocal(document.getElementById('corFim').value);
+  const atividade = document.getElementById('corAtividade').value;
+  const exige = document.getElementById('corAtividade').options[document.getElementById('corAtividade').selectedIndex]?.dataset.exige === 'true';
+  const pedidoId = exige ? Number(document.getElementById('corPedido').value) : null;
+  const obs = document.getElementById('corObs').value.trim() || null;
+
+  if (!inicio){ showMsg('Informe a hora de início.', false); return; }
+  if (exige && !pedidoId){ showMsg('Essa atividade exige um pedido.', false); return; }
+
+  let error;
+  if (id){
+    ({ error } = await sb.rpc('apontamento_corrigir', {
+      p_id: Number(id), p_hora_inicio: inicio, p_hora_fim: fim,
+      p_atividade_codigo: atividade, p_pedido_id: pedidoId, p_observacao: obs,
+    }));
+  } else {
+    const matricula = document.getElementById('corColaborador').value;
+    if (!matricula){ showMsg('Escolha o colaborador.', false); return; }
+    ({ error } = await sb.rpc('apontamento_criar_manual', {
+      p_matricula: matricula, p_hora_inicio: inicio, p_hora_fim: fim,
+      p_atividade_codigo: atividade, p_pedido_id: pedidoId, p_observacao: obs,
+    }));
+  }
+
+  if (error){ showMsg(error.message, false); return; }
+  fecharModal('ovCorrecao');
+  showMsg('Apontamento salvo.', true);
+  buscarCorrecoes();
+}
+
+async function estornarApontamento(){
+  const id = document.getElementById('corId').value;
+  if (!id) return;
+  if (!confirm('Estornar este apontamento? Ele fica marcado como cancelado, mas continua no histórico.')) return;
+  const { error } = await sb.rpc('apontamento_estornar', { p_id: Number(id) });
+  if (error){ showMsg(error.message, false); return; }
+  fecharModal('ovCorrecao');
+  showMsg('Apontamento estornado.', true);
+  buscarCorrecoes();
 }
 
 /* ══════════════════════════ CADASTRO: COLABORADORES (admin) ══════════════════════════ */
