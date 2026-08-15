@@ -122,3 +122,93 @@ async function atualizarSininho(){
       </div>`;
     }).join('')}`;
 }
+
+// ── CARTINHA: pedidos de revisão de desenho (Produção/PCP → Engenharia) ────
+// Compartilhado igual o sininho: chama iniciarCartinha('idDoContainer') no
+// init() de cada módulo. Fica visível pra todo mundo; só Engenharia/admin
+// vê o campo de resposta. Nunca some sozinho — só quando alguém responde.
+async function iniciarCartinha(containerId){
+  const wrap = document.getElementById(containerId);
+  if (!wrap) return;
+  wrap.style.position = 'relative';
+  wrap.innerHTML = `
+    <button type="button" id="cartinhaBtn" title="Pedidos de revisão de desenho" style="position:relative;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);border-radius:8px;padding:7px 10px;cursor:pointer;font-size:15px;color:inherit;line-height:1">
+      ✉️<span id="cartinhaBadge" style="display:none;position:absolute;top:-5px;right:-5px;background:#c0392b;color:#fff;border-radius:10px;font-size:10px;font-weight:700;padding:1px 5px;line-height:1.4"></span>
+    </button>
+    <div id="cartinhaPainel" style="display:none;position:absolute;top:120%;right:0;width:360px;max-height:440px;overflow-y:auto;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);box-shadow:0 12px 28px rgba(0,0,0,.3);z-index:1000;text-align:left"></div>`;
+
+  document.getElementById('cartinhaBtn').addEventListener('click', async (e) => {
+    e.stopPropagation();
+    const painel = document.getElementById('cartinhaPainel');
+    const abrindo = painel.style.display === 'none';
+    painel.style.display = abrindo ? 'block' : 'none';
+    if (abrindo) await atualizarCartinha();
+  });
+  document.getElementById('cartinhaPainel').addEventListener('click', e => e.stopPropagation());
+  document.addEventListener('click', () => {
+    const painel = document.getElementById('cartinhaPainel');
+    if (painel) painel.style.display = 'none';
+  });
+
+  await atualizarCartinha();
+}
+
+async function atualizarCartinha(){
+  const badge = document.getElementById('cartinhaBadge');
+  const painel = document.getElementById('cartinhaPainel');
+  if (!badge || !painel) return;
+
+  const { data, error } = await sb
+    .from('revisoes_desenho')
+    .select('id, observacao, solicitado_por_nome, solicitado_em, respondido, resposta, respondido_por_nome, respondido_em, desenhos_engenharia(codigo_mde, desenho_mde)')
+    .order('solicitado_em', { ascending: false })
+    .limit(50);
+
+  if (error || !data){ badge.style.display = 'none'; painel.innerHTML = `<div style="padding:14px;font-size:12px;color:var(--text2)">Erro ao carregar.</div>`; return; }
+
+  const abertas = data.filter(r => !r.respondido);
+  badge.textContent = abertas.length;
+  badge.style.display = abertas.length ? 'inline-block' : 'none';
+
+  const podeResponder = typeof AUTH !== 'undefined' && AUTH && (AUTH.perfil === 'engenharia' || AUTH.perfil === 'admin');
+
+  if (!data.length){
+    painel.innerHTML = `<div style="padding:14px;font-size:12px;color:var(--text2)">Nenhum pedido de revisão ainda.</div>`;
+    return;
+  }
+
+  painel.innerHTML = `
+    <div style="padding:10px 14px;font-weight:700;font-size:12px;border-bottom:1px solid var(--border)">✉️ ${abertas.length} pedido(s) de revisão em aberto</div>
+    ${data.map(r => {
+      const d = r.desenhos_engenharia;
+      return `<div style="padding:10px 14px;border-bottom:1px solid var(--border);font-size:12px;${r.respondido ? 'opacity:.65' : ''}">
+        <div style="font-weight:600">Cód. MDE ${d?.codigo_mde ?? '—'} — ${esc(d?.desenho_mde || '')}</div>
+        <div style="color:var(--text2);margin-top:2px">Pedido por ${esc(r.solicitado_por_nome || '—')} em ${new Date(r.solicitado_em).toLocaleString('pt-BR')}</div>
+        <div style="color:var(--text2);margin-top:4px;font-style:italic">"${esc(r.observacao)}"</div>
+        ${r.respondido
+          ? `<div style="margin-top:6px;padding:6px 8px;background:rgba(16,185,129,.12);border-radius:6px;color:#0d9488">
+              <strong>✓ Respondida</strong> por ${esc(r.respondido_por_nome || '—')} em ${new Date(r.respondido_em).toLocaleString('pt-BR')}
+              ${r.resposta ? `<div style="margin-top:3px;font-style:italic">"${esc(r.resposta)}"</div>` : ''}
+            </div>`
+          : (podeResponder
+            ? `<div style="margin-top:6px">
+                <textarea id="respostaTexto-${r.id}" placeholder="Responder ao pedido de revisão..." style="width:100%;min-height:44px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg3);color:var(--text);font-size:12px;font-family:inherit"></textarea>
+                <button type="button" onclick="responderRevisaoDesenho(${r.id})" style="margin-top:4px;padding:5px 10px;border:none;border-radius:6px;background:#2563eb;color:#fff;font-size:11px;font-weight:600;cursor:pointer">Marcar como respondida</button>
+              </div>`
+            : `<div style="margin-top:6px;font-size:11px;color:#b5690a;font-weight:600">⏳ Aguardando resposta da Engenharia</div>`)}
+      </div>`;
+    }).join('')}`;
+}
+
+async function responderRevisaoDesenho(id){
+  const campo = document.getElementById(`respostaTexto-${id}`);
+  const resposta = campo ? campo.value.trim() : '';
+  const { error } = await sb.from('revisoes_desenho').update({
+    respondido: true,
+    resposta: resposta || null,
+    respondido_por_nome: (typeof AUTH !== 'undefined' && AUTH) ? AUTH.nome : null,
+    respondido_em: new Date().toISOString(),
+  }).eq('id', id);
+  if (error){ alert('Erro ao responder: ' + error.message); return; }
+  await atualizarCartinha();
+}

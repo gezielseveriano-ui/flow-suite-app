@@ -170,6 +170,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
     <div class="app-header-right">
       <span class="header-user">Logado como<strong id="userNome">...</strong></span>
       <div id="sininhoWrap"></div>
+      <div id="cartinhaWrap"></div>
       <button class="icon-btn" title="Início" onclick="window.location.href='index.html'">
         <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 9.5 10 3l7 6.5M5 8v8h10V8" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
@@ -248,10 +249,24 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
   </div>
 </div>
 
+<!-- MODAL: solicitar revisão de desenho (Produção/PCP → Engenharia) -->
+<div class="overlay" id="ovSolicitarRevisao">
+  <div class="modal">
+    <h3>✉️ Solicitar revisão à Engenharia</h3>
+    <p style="font-size:13px;color:var(--text2);margin-bottom:12px" id="revisaoDesenhoInfo"></p>
+    <textarea id="revisaoObservacao" placeholder="Descreva o que precisa ser revisado neste desenho..." style="width:100%;min-height:110px;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg3);color:var(--text);font-size:14px;font-family:inherit"></textarea>
+    <div class="modal-actions">
+      <button type="button" class="btn" onclick="fecharModal('ovSolicitarRevisao')">Cancelar</button>
+      <button type="button" class="btn btn-primary" onclick="enviarSolicitacaoRevisao()">Enviar pedido de revisão</button>
+    </div>
+  </div>
+</div>
+
 <script src="js/supabase-client.js"></script>
 <script>
 let AUTH = null;
 let SOMENTE_LEITURA = false;
+let podeSolicitarRevisao = false;
 let evolucaoVisivel = false;
 let ctx = { pedido: null, produto: null };
 let gridItens = [];          // itens carregados para o pedido+produto atual
@@ -420,13 +435,46 @@ function baixarInstrucoesPDF(it){
   doc.save(`Instrucoes_${(it.desenho || it.codigo_mde || 'item').replace(/[^\w.\-]/g, '_')}.pdf`);
 }
 
+// ── SOLICITAR REVISÃO À ENGENHARIA ───────────────────────────────────────
+let revisaoDesenhoIdAtual = null;
+let revisaoItemIdAtual = null;
+
+function abrirSolicitarRevisao(desenhoId, itemId){
+  const it = gridItens.find(i => i.id === itemId);
+  revisaoDesenhoIdAtual = desenhoId;
+  revisaoItemIdAtual = itemId;
+  document.getElementById('revisaoDesenhoInfo').textContent = it
+    ? `Desenho ${it.desenho || '—'} (Cód. MDE ${it.codigo_mde ?? '—'})`
+    : '';
+  document.getElementById('revisaoObservacao').value = '';
+  abrirModal('ovSolicitarRevisao');
+}
+
+async function enviarSolicitacaoRevisao(){
+  const observacao = document.getElementById('revisaoObservacao').value.trim();
+  if (!observacao){ alert('Descreva o que precisa ser revisado.'); return; }
+
+  const { error } = await sb.from('revisoes_desenho').insert({
+    desenho_id: revisaoDesenhoIdAtual,
+    item_id: revisaoItemIdAtual,
+    observacao,
+  });
+
+  if (error){ alert('Erro ao enviar pedido de revisão: ' + error.message); return; }
+  fecharModal('ovSolicitarRevisao');
+  alert('Pedido de revisão enviado à Engenharia.');
+  if (typeof atualizarCartinha === 'function') atualizarCartinha();
+}
+
 async function init(){
   AUTH = await exigirLogin(['producao', 'pcp', 'admin']);
   if (!AUTH) return;
   SOMENTE_LEITURA = AUTH.perfil === 'pcp';
+  podeSolicitarRevisao = AUTH.perfil === 'producao' || AUTH.perfil === 'pcp' || AUTH.perfil === 'admin';
   document.getElementById('userNome').textContent = AUTH.nome;
   document.getElementById('userAvatar').textContent = (AUTH.nome || '').trim().split(/\s+/).map(p => p[0]).slice(0, 2).join('').toUpperCase() || '··';
   iniciarSininho('sininhoWrap');
+  iniciarCartinha('cartinhaWrap');
   renderHome();
 }
 
@@ -709,7 +757,8 @@ function desenharGrid(){
           <td style="white-space:nowrap">${paralisado
             ? `<span class="etapa-readonly" style="color:var(--red);border-color:var(--red)" title="${esc(motivoTitle)}">⏸ Paralisado</span>`
             : (it.desenho_engenharia_id ? `<span class="btn btn-sm" onclick="baixarDesenho(${it.desenho_engenharia_id}, this)">📐 Abrir desenho</span>` : '<span style="color:var(--text3)">—</span>')}
-            <span class="btn btn-sm" onclick="abrirInstrucoes(${it.id})" title="Remessa, tag, quantidade a fabricar e observação da Engenharia">📋 Instruções</span></td>
+            <span class="btn btn-sm" onclick="abrirInstrucoes(${it.id})" title="Remessa, tag, quantidade a fabricar e observação da Engenharia">📋 Instruções</span>
+            ${podeSolicitarRevisao && it.desenho_engenharia_id ? `<span class="btn btn-sm" onclick="abrirSolicitarRevisao(${it.desenho_engenharia_id}, ${it.id})" title="Pedir pra Engenharia revisar este desenho">✉️ Revisão</span>` : ''}</td>
           ${!evolucaoVisivel ? '' : ETAPAS.map(e => `
             <td class="etapa-td">
               ${paralisado
