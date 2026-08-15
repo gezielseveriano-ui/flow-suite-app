@@ -342,6 +342,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
     </div>
     <button class="btn btn-primary" id="btnEnviarEmail" onclick="dispararRemessaPorEmail()" style="font-size:14px;padding:12px 24px;font-weight:700;flex-shrink:0">📧 Disparar remessa por email</button>
   </div>
+  <div id="statusRecebimentoLine" style="font-size:12px;margin-bottom:12px"></div>
   <div class="search-row"><input id="filtroDesenhos" placeholder="Filtrar por código, desenho MDE ou desenho cliente..." oninput="aplicarFiltro('filtroDesenhos','listaWrap')"></div>
   <div class="tbl-wrap" id="listaWrap"><div class="empty">Carregando...</div></div>
   </div>
@@ -637,10 +638,12 @@ async function renderRemessas(){
   if (!data.length){ wrap.innerHTML = `<div class="empty">Nenhuma remessa criada ainda pra esse pedido — clique em "Gerar nova remessa".</div>`; return; }
 
   wrap.innerHTML = data.map(r => `
-    <div class="card-item" onclick='abrirRemessa(${JSON.stringify({ id: r.id, numero: r.numero, nome: r.nome, pedido_id: r.pedido_id, enviada_email_em: r.enviada_email_em }).replace(/'/g, "&#39;")})'>
+    <div class="card-item" onclick='abrirRemessa(${JSON.stringify({ id: r.id, numero: r.numero, nome: r.nome, pedido_id: r.pedido_id, enviada_email_em: r.enviada_email_em, recebida_pcp_em: r.recebida_pcp_em, recebida_producao_em: r.recebida_producao_em }).replace(/'/g, "&#39;")})'>
       <h4>Remessa ${r.numero}${r.nome ? ' — ' + esc(r.nome) : ''}</h4>
       <div class="sub">${(r.desenhos_engenharia || []).length} desenho(s) · criada em ${new Date(r.created_at).toLocaleDateString('pt-BR')}</div>
       ${r.enviada_email_em ? `<div class="badge-ok">✓ Enviada por email em ${new Date(r.enviada_email_em).toLocaleDateString('pt-BR')}</div>` : ''}
+      ${r.recebida_pcp_em ? `<div class="badge-ok">✓ Recebida pelo PCP em ${new Date(r.recebida_pcp_em).toLocaleDateString('pt-BR')}</div>` : (r.enviada_email_em ? `<div style="font-size:11px;color:var(--amber);font-weight:600;margin-top:4px">Aguardando confirmação do PCP</div>` : '')}
+      ${r.recebida_producao_em ? `<div class="badge-ok">✓ Recebida pela produção em ${new Date(r.recebida_producao_em).toLocaleDateString('pt-BR')}</div>` : ''}
     </div>`).join('');
 }
 
@@ -816,7 +819,20 @@ async function abrirRemessa(remessa){
   mostrarView('viewRemessa');
   cancelarEdicao();
   atualizarAvisoEmail();
+  atualizarStatusRecebimento();
   await carregarLista();
+}
+
+function atualizarStatusRecebimento(){
+  const linha = document.getElementById('statusRecebimentoLine');
+  if (!linha) return;
+  const pcp = remessaAtual.recebida_pcp_em
+    ? `<span style="color:var(--green);font-weight:600">✓ Recebida pelo PCP em ${new Date(remessaAtual.recebida_pcp_em).toLocaleString('pt-BR')}</span>`
+    : `<span style="color:var(--text3)">PCP ainda não confirmou recebimento</span>`;
+  const producao = remessaAtual.recebida_producao_em
+    ? `<span style="color:var(--green);font-weight:600">✓ Recebida pela produção em ${new Date(remessaAtual.recebida_producao_em).toLocaleString('pt-BR')}</span>`
+    : `<span style="color:var(--text3)">Produção ainda não confirmou recebimento</span>`;
+  linha.innerHTML = `${pcp} &nbsp;·&nbsp; ${producao}`;
 }
 
 function atualizarAvisoEmail(){

@@ -519,7 +519,11 @@ async function browseProdutos(){
   if (floatScrollEl) floatScrollEl.classList.remove('show');
   renderNav();
   const content = document.getElementById('content');
-  content.innerHTML = `<div class="grid" id="grid"><div class="empty">Carregando...</div></div>`;
+  content.innerHTML = `
+    <div id="remessasPendentesBanner"></div>
+    <div class="grid" id="grid"><div class="empty">Carregando...</div></div>`;
+
+  renderRemessasPendentesBanner();
 
   const { data, error } = await sb.from('itens').select('produto').eq('pedido_id', ctx.pedido.id);
   const grid = document.getElementById('grid');
@@ -531,6 +535,47 @@ async function browseProdutos(){
     <div class="card" onclick="selecionarProduto('${esc(pr)}')">
       <div class="card-title">${esc(pr)}</div>
     </div>`).join('');
+}
+
+// ── Remessas ainda não confirmadas como recebidas pela produção: mostra um
+// aviso no topo do pedido, com botão de confirmar só pra supervisor/admin.
+// Itens dessas remessas ficam bloqueados pro apontamento (ver apontar_etapa
+// e revisar_etapa no banco) até a confirmação acontecer.
+async function renderRemessasPendentesBanner(){
+  const wrap = document.getElementById('remessasPendentesBanner');
+  if (!wrap) return;
+
+  const { data, error } = await sb
+    .from('remessas')
+    .select('id, numero, nome, enviada_email_em, recebida_producao_em')
+    .eq('pedido_id', ctx.pedido.id)
+    .not('enviada_email_em', 'is', null)
+    .is('recebida_producao_em', null)
+    .order('numero');
+
+  if (error || !data || !data.length){ wrap.innerHTML = ''; return; }
+
+  const podeConfirmar = AUTH.perfil === 'producao' || AUTH.perfil === 'admin';
+  wrap.innerHTML = `
+    <div class="notice">
+      <div style="font-weight:700;margin-bottom:6px">⚠ ${data.length} remessa${data.length > 1 ? 's' : ''} aguardando confirmação de recebimento da produção</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        ${data.map(r => `
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+            <span>Remessa ${r.numero}${r.nome ? ' — ' + esc(r.nome) : ''}</span>
+            ${podeConfirmar
+              ? `<span class="btn btn-primary btn-sm" style="cursor:pointer" onclick="confirmarRecebimentoProducao(${r.id})">✓ Confirmar recebimento</span>`
+              : `<span style="font-size:11px">Só o supervisor ou admin pode confirmar</span>`}
+          </div>`).join('')}
+      </div>
+      <div style="font-size:11px;margin-top:8px;opacity:.85">Itens dessas remessas não podem ser apontados até a confirmação.</div>
+    </div>`;
+}
+
+async function confirmarRecebimentoProducao(remessaId){
+  const { error } = await sb.rpc('remessa_confirmar_recebimento_producao', { p_remessa_id: remessaId });
+  if (error){ alert('Erro ao confirmar recebimento: ' + error.message); return; }
+  renderRemessasPendentesBanner();
 }
 
 function selecionarProduto(pr){
@@ -739,7 +784,7 @@ async function alterarEtapa(itemId, etapaKey, selectEl){
 
   const { error } = emRevisao
     ? await sb.rpc('revisar_etapa', { p_item_id: itemId, p_etapa: etapaKey, p_percentual: novoValor })
-    : await sb.from('etapas_avanco').insert({ item_id: itemId, etapa: etapaKey, percentual: novoValor });
+    : await sb.rpc('apontar_etapa', { p_item_id: itemId, p_etapa: etapaKey, p_percentual: novoValor });
 
   selectEl.disabled = false;
   selectEl.classList.remove('saving');

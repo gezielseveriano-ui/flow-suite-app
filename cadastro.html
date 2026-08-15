@@ -395,10 +395,12 @@ async function renderRemessasPCP(){
   if (!data.length){ grid.innerHTML = `<div class="empty">Nenhuma remessa disponível ainda — a Engenharia precisa disparar a remessa por email antes dela aparecer aqui pro PCP.</div>`; return; }
 
   grid.innerHTML = data.map(r => `
-    <div class="pedido-card" onclick='abrirRemessaPCP(${JSON.stringify({ id: r.id, numero: r.numero, nome: r.nome, pedido_id: r.pedido_id, enviada_email_em: r.enviada_email_em }).replace(/'/g, "&#39;")})'>
+    <div class="pedido-card" onclick='abrirRemessaPCP(${JSON.stringify({ id: r.id, numero: r.numero, nome: r.nome, pedido_id: r.pedido_id, enviada_email_em: r.enviada_email_em, recebida_pcp_em: r.recebida_pcp_em, recebida_producao_em: r.recebida_producao_em }).replace(/'/g, "&#39;")})'>
       <div class="pc-num">Remessa ${r.numero}${r.nome ? ' — ' + esc(r.nome) : ''}</div>
       <div class="pc-equip">${(r.desenhos_engenharia || []).length} desenho(s)</div>
       <div style="font-size:11px;color:var(--green);font-weight:600;margin-top:4px">✓ Enviada por email</div>
+      ${r.recebida_pcp_em ? `<div style="font-size:11px;color:var(--blue);font-weight:600;margin-top:2px">✓ Recebida pelo PCP</div>` : `<div style="font-size:11px;color:var(--amber);font-weight:600;margin-top:2px">Aguardando confirmação do PCP</div>`}
+      ${r.recebida_producao_em ? `<div style="font-size:11px;color:var(--green);font-weight:600;margin-top:2px">✓ Recebida pela produção</div>` : `<div style="font-size:11px;color:var(--text2);margin-top:2px">Produção ainda não confirmou</div>`}
     </div>`).join('');
 }
 
@@ -407,16 +409,32 @@ function abrirRemessaPCP(remessa){
   renderDetalhePedido();
 }
 
+async function confirmarRecebimentoPCP(){
+  const { data, error } = await sb.rpc('remessa_confirmar_recebimento_pcp', { p_remessa_id: remessaAtual.id });
+  if (error){ alert('Erro ao confirmar recebimento: ' + error.message); return; }
+  remessaAtual.recebida_pcp_em = data.recebida_pcp_em;
+  renderDetalhePedido();
+}
+
 async function renderDetalhePedido(){
   renderNav();
   const content = document.getElementById('content');
+  const statusRecebimento = `
+    <div class="notice" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+      <div>
+        <div>${remessaAtual.recebida_pcp_em ? `✓ Recebida pelo PCP em ${new Date(remessaAtual.recebida_pcp_em).toLocaleString('pt-BR')}` : 'PCP ainda não confirmou o recebimento desta remessa'}</div>
+        <div style="margin-top:3px">${remessaAtual.recebida_producao_em ? `✓ Recebida pela produção em ${new Date(remessaAtual.recebida_producao_em).toLocaleString('pt-BR')}` : '⏳ Produção ainda não confirmou — itens desta remessa ficam bloqueados pro apontamento até lá'}</div>
+      </div>
+      ${!remessaAtual.recebida_pcp_em ? `<button type="button" class="btn btn-primary" onclick="confirmarRecebimentoPCP()">✓ Confirmar recebimento</button>` : ''}
+    </div>
+    <div class="toolbar"><h2>Desenhos da Engenharia — ler e transcrever pro sistema</h2></div>`;
   content.innerHTML = `
     <div class="cliente-banner">
       <div class="cb-equip">${esc(pedidoAtual.equipamento || pedidoAtual.numero_pedido)} — Remessa ${remessaAtual.numero}${remessaAtual.nome ? ' — ' + esc(remessaAtual.nome) : ''}</div>
       ${pedidoAtual.cliente ? `<div style="font-size:12px;color:var(--blue);font-weight:600">${esc(pedidoAtual.cliente)}</div>` : ''}
       ${pedidoAtual.observacao ? `<div class="cb-obs">${esc(pedidoAtual.observacao)}</div>` : ''}
     </div>
-    <div class="toolbar"><h2>Desenhos da Engenharia — ler e transcrever pro sistema</h2></div>
+    ${statusRecebimento}
     <div class="tbl-wrap" id="desenhosWrap"><div class="empty">Carregando...</div></div>
     <div class="toolbar"><h2>Itens gerados (produção)</h2></div>
     <div class="tbl-wrap" id="itensWrap"><div class="empty">Carregando...</div></div>`;
