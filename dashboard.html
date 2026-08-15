@@ -12,6 +12,7 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
 <style>
 :root {
@@ -996,6 +997,7 @@ function renderPedido(){
   h += `<div style="display:flex;gap:10px;flex-wrap:wrap;padding:0 1.5rem 1.25rem">
     <button class="btn-report" onclick="abrirRelatorioGeral()"><i class="ti ti-report"></i> Relatório Geral</button>
     <button class="btn-report primary" onclick="abrirItensExpedidos()"><i class="ti ti-truck-delivery"></i> Itens Expedidos</button>
+    <button class="btn-report" id="btnPdfPedido" onclick="gerarPdfPedido()"><i class="ti ti-file-type-pdf"></i> Relatório do Pedido (PDF p/ cliente)</button>
   </div>`;
 
   const mapaSetores = setoresDoPedido(state.pedido);
@@ -1018,6 +1020,195 @@ function renderPedido(){
   h += `</div></div>`;
   document.getElementById('mainContent').innerHTML = h;
   setStatus(`${state.pedido}${cli&&cli.equipamento?' — '+cli.equipamento:''} · ${tk.length} TAGs · ${fmt_kg(s.peso)} kg`);
+}
+
+/* ── PDF de situação do pedido — documento pra mandar pro cliente ── */
+let logoDataUrlMDE = null;
+function carregarLogoMDEParaPdf(){
+  return new Promise((resolve) => {
+    if (logoDataUrlMDE){ resolve(logoDataUrlMDE); return; }
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+      canvas.getContext('2d').drawImage(img, 0, 0);
+      try { logoDataUrlMDE = canvas.toDataURL('image/png'); } catch { logoDataUrlMDE = null; }
+      resolve(logoDataUrlMDE);
+    };
+    img.onerror = () => resolve(null);
+    img.src = 'assets/logo-mde.png';
+  });
+}
+
+async function gerarPdfPedido(){
+  const btn = document.getElementById('btnPdfPedido');
+  const txtOriginal = btn.innerHTML;
+  btn.disabled = true; btn.innerHTML = 'Gerando PDF...';
+
+  try {
+    const numeroPedido = state.pedido;
+    const cli = getCli(numeroPedido);
+    const s = resP(numeroPedido);
+    const mapaSetores = setoresDoPedido(numeroPedido);
+    const tags = DB[numeroPedido];
+    const logo = await carregarLogoMDEParaPdf();
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+    const M = 14, CW = 182;
+    const COR = { ink:[23,33,43], inkSoft:[91,107,120], line:[219,225,230], navy:[16,42,68], blue:[29,78,216], green:[16,150,90], amber:[181,105,10], red:[190,40,40] };
+    const numT = kg => (kg/1000).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+
+    function rodape(pagina){
+      doc.setFont(undefined,'normal'); doc.setFontSize(8); doc.setTextColor(...COR.inkSoft);
+      doc.text(`MDE Equipamentos Industriais · Gerado em ${new Date().toLocaleString('pt-BR')}`, M, 291);
+      doc.text(`Pág. ${pagina}`, M+CW, 291, { align: 'right' });
+    }
+
+    function tituloSecao(y, texto){
+      doc.setFont(undefined,'bold'); doc.setFontSize(11); doc.setTextColor(...COR.ink);
+      doc.text(texto, M, y);
+      doc.setDrawColor(...COR.line); doc.setLineWidth(0.4);
+      doc.line(M, y+2, M+CW, y+2);
+      return y + 8;
+    }
+
+    // ── cabeçalho ──
+    doc.setFillColor(...COR.navy);
+    doc.rect(0, 0, 210, 28, 'F');
+    if (logo){
+      try { doc.addImage(logo, 'PNG', M, 5, 28, 28*(98/219)); } catch {}
+    }
+    doc.setFont(undefined,'bold'); doc.setFontSize(15); doc.setTextColor(255,255,255);
+    doc.text('Situação do Pedido', M+CW, 13, { align: 'right' });
+    doc.setFont(undefined,'normal'); doc.setFontSize(10);
+    doc.text(`Pedido ${numeroPedido}${cli?.cliente ? ' — ' + cli.cliente : ''}`, M+CW, 20, { align: 'right' });
+
+    let y = 38;
+    doc.setFont(undefined,'normal'); doc.setFontSize(9); doc.setTextColor(...COR.inkSoft);
+    const infoLinhas = [];
+    if (cli?.equipamento) infoLinhas.push(`Equipamento: ${cli.equipamento}`);
+    if (cli?.data_prevista) infoLinhas.push(`Data prevista: ${fmtD(cli.data_prevista)}`);
+    if (cli?.data_reprogramada) infoLinhas.push(`Data reprogramada: ${fmtD(cli.data_reprogramada)}`);
+    if (infoLinhas.length){ doc.text(infoLinhas.join('   ·   '), M, y); y += 6; }
+    if (cli?.observacao){
+      doc.setFont(undefined,'italic');
+      const obsLinhas = doc.splitTextToSize('Observação: ' + cli.observacao, CW);
+      doc.text(obsLinhas, M, y);
+      y += obsLinhas.length * 4.5 + 2;
+      doc.setFont(undefined,'normal');
+    }
+    y += 6;
+
+    // ── KPIs ──
+    const kpis = [
+      ['Peso total', numT(s.peso) + ' t', COR.ink],
+      ['Fabricado', s.pctFab.toFixed(1).replace('.', ',') + '%', COR.green],
+      ['Expedido', s.pctExp.toFixed(1).replace('.', ',') + '%', COR.amber],
+      ['Pendente de expedição', numT(s.pendExp) + ' t', COR.red],
+    ];
+    const kpiW = (CW - 3*3) / 4;
+    kpis.forEach(([label, valor, cor], i) => {
+      const x = M + i*(kpiW+3);
+      doc.setDrawColor(...COR.line); doc.setLineWidth(0.3);
+      doc.roundedRect(x, y, kpiW, 20, 1.2, 1.2, 'S');
+      doc.setFont(undefined,'normal'); doc.setFontSize(6.8); doc.setTextColor(...COR.inkSoft);
+      doc.text(label.toUpperCase(), x+3.5, y+7, { maxWidth: kpiW-7 });
+      doc.setFont(undefined,'bold'); doc.setFontSize(13); doc.setTextColor(...cor);
+      doc.text(valor, x+3.5, y+16);
+    });
+    y += 30;
+
+    // ── barras de progresso ──
+    function barraProgresso(label, pct, cor){
+      doc.setFont(undefined,'bold'); doc.setFontSize(9); doc.setTextColor(...COR.ink);
+      doc.text(label, M, y+3.7);
+      const trackX = M+42, trackW = CW-42-14;
+      doc.setFillColor(...COR.line); doc.roundedRect(trackX, y, trackW, 5, 2, 2, 'F');
+      doc.setFillColor(...cor); doc.roundedRect(trackX, y, Math.max(2,trackW*pct/100), 5, 2, 2, 'F');
+      doc.setFont(undefined,'bold'); doc.setFontSize(9); doc.setTextColor(...cor);
+      doc.text(pct.toFixed(1).replace('.', ',')+'%', M+CW, y+3.7, { align:'right' });
+      y += 10;
+    }
+    barraProgresso('Fabricação', s.pctFab, COR.green);
+    barraProgresso('Expedição', s.pctExp, COR.amber);
+    y += 6;
+
+    // ── tabela por setor ──
+    y = tituloSecao(y, 'Situação por setor');
+    const setores = Object.keys(mapaSetores).sort();
+    const colsSetor = [
+      { label:'Setor', w:48, align:'left' },
+      { label:'Carga (t)', w:32, align:'right' },
+      { label:'Expedido (t)', w:34, align:'right' },
+      { label:'Pendente (t)', w:34, align:'right' },
+      { label:'Avanço', w:34, align:'right' },
+    ];
+    let x = M;
+    doc.setFillColor(...COR.line); doc.rect(M, y, CW, 7, 'F');
+    doc.setFont(undefined,'bold'); doc.setFontSize(7.5); doc.setTextColor(...COR.inkSoft);
+    colsSetor.forEach(c => { doc.text(c.label.toUpperCase(), x+(c.align==='right'?c.w-2:2), y+4.8, { align:c.align }); x += c.w; });
+    y += 7;
+
+    setores.forEach((setor, i) => {
+      const a = setorAgg(mapaSetores[setor]);
+      if (i % 2 === 1){ doc.setFillColor(248,249,250); doc.rect(M, y, CW, 7, 'F'); }
+      x = M;
+      doc.setFont(undefined,'normal'); doc.setFontSize(8.5); doc.setTextColor(...COR.ink);
+      const vals = [setor, numT(a.cargaProg), numT(a.expedido), numT(a.pendExp), a.avanco != null ? a.avanco.toFixed(0)+'%' : '—'];
+      vals.forEach((v, ci) => { const c = colsSetor[ci]; doc.text(String(v), x+(c.align==='right'?c.w-2:2), y+4.8, { align:c.align }); x += c.w; });
+      doc.setDrawColor(...COR.line); doc.setLineWidth(0.15);
+      doc.line(M, y+7, M+CW, y+7);
+      y += 7;
+    });
+    y += 10;
+
+    // ── tabela de TAGs ──
+    if (y > 250){ rodape(1); doc.addPage(); y = 20; }
+    y = tituloSecao(y, 'TAGs do pedido');
+    const colsTag = [
+      { label:'TAG', w:70, align:'left' },
+      { label:'Peso (t)', w:37, align:'right' },
+      { label:'Pendente (t)', w:37, align:'right' },
+      { label:'Status', w:38, align:'right' },
+    ];
+    function cabecalhoTag(){
+      x = M;
+      doc.setFillColor(...COR.line); doc.rect(M, y, CW, 7, 'F');
+      doc.setFont(undefined,'bold'); doc.setFontSize(7.5); doc.setTextColor(...COR.inkSoft);
+      colsTag.forEach(c => { doc.text(c.label.toUpperCase(), x+(c.align==='right'?c.w-2:2), y+4.8, { align:c.align }); x += c.w; });
+      y += 7;
+    }
+    cabecalhoTag();
+
+    Object.keys(tags).sort().forEach((tag, i) => {
+      if (y > 275){
+        rodape(doc.internal.getNumberOfPages());
+        doc.addPage(); y = 20;
+        cabecalhoTag();
+      }
+      const itensTag = itensFlat(tags[tag]);
+      const tPeso = itensTag.reduce((a, it) => a + it.pesoTotal, 0);
+      const tPE = itensTag.reduce((a, it) => a + it.pendExp, 0);
+      if (i % 2 === 1){ doc.setFillColor(248,249,250); doc.rect(M, y, CW, 7, 'F'); }
+      x = M;
+      doc.setFont(undefined,'normal'); doc.setFontSize(8.5); doc.setTextColor(...COR.ink);
+      doc.text(tag, x+2, y+4.8); x += colsTag[0].w;
+      doc.text(numT(tPeso), x+colsTag[1].w-2, y+4.8, { align:'right' }); x += colsTag[1].w;
+      doc.text(numT(tPE), x+colsTag[2].w-2, y+4.8, { align:'right' }); x += colsTag[2].w;
+      doc.setFont(undefined,'bold'); doc.setTextColor(...(tPE > 0 ? COR.red : COR.green));
+      doc.text(tPE > 0 ? 'Pendente' : 'OK', x+colsTag[3].w-2, y+4.8, { align:'right' });
+      doc.setDrawColor(...COR.line); doc.setLineWidth(0.15);
+      doc.line(M, y+7, M+CW, y+7);
+      y += 7;
+    });
+
+    rodape(doc.internal.getNumberOfPages());
+    doc.save(`Situacao_Pedido_${String(numeroPedido).replace(/[^\w-]/g,'_')}.pdf`);
+  } finally {
+    btn.disabled = false; btn.innerHTML = txtOriginal;
+  }
 }
 
 /* ── RELATÓRIO GERAL (todos os itens do pedido — abertos primeiro, expedidos depois) ── */
