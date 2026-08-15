@@ -132,6 +132,20 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 .rel-panel h3{font-size:14px;font-weight:800;margin-bottom:2px}
 .rel-panel .sub{font-size:12px;color:var(--text2);margin-bottom:14px}
 
+/* ── MONITORAMENTO ── */
+.mon-row-normal{background:var(--bg2)}
+.mon-row-atencao{background:var(--amber-dim)}
+.mon-row-critico{background:var(--red-dim)}
+.pill-normal{background:var(--blue-dim);color:var(--blue)}
+.pill-atencao{background:var(--amber-dim);color:var(--amber)}
+.pill-critico{background:var(--red-dim);color:var(--red)}
+.pill-ok{background:var(--green-dim);color:var(--green)}
+.pill-neutro{background:var(--bg3);color:var(--text3)}
+.mon-status-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.mon-status-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:.85rem 1rem;box-shadow:var(--shadow-sm)}
+.mon-status-nome{font-weight:700;font-size:13.5px;margin-bottom:2px}
+.mon-status-sub{font-size:11px;color:var(--text3);margin-bottom:8px}
+
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:300;padding:20px}
 .overlay.show{display:flex}
 .modal{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:1.4rem;width:100%;max-width:480px;max-height:90vh;overflow-y:auto}
@@ -219,6 +233,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
     <main class="content">
       <div class="tabs" id="tabsBar" style="display:none;margin:-1.75rem -2rem 1.5rem">
         <div class="tab active" id="tabPonto" onclick="mudarTab('ponto')">Quiosque</div>
+        <div class="tab" id="tabMonitoramento" onclick="mudarTab('monitoramento')" style="display:none">Monitoramento</div>
         <div class="tab" id="tabCorrecoes" onclick="mudarTab('correcoes')" style="display:none">Correções</div>
         <div class="tab" id="tabRelatorios" onclick="mudarTab('relatorios')" style="display:none">Relatórios</div>
         <div class="tab" id="tabColaboradores" onclick="mudarTab('colaboradores')" style="display:none">Colaboradores</div>
@@ -337,6 +352,7 @@ let setoresCache = [];
 let sessaoMatricula = null;
 let sessaoPin = null;
 let cronometroInterval = null;
+let monitoramentoInterval = null;
 
 function showMsg(text, ok){
   const box = document.getElementById('msgBox');
@@ -358,6 +374,7 @@ async function init(){
 
   if (AUTH.perfil === 'admin' || AUTH.perfil === 'producao'){
     document.getElementById('tabsBar').style.display = 'flex';
+    document.getElementById('tabMonitoramento').style.display = '';
     document.getElementById('tabCorrecoes').style.display = '';
     document.getElementById('tabRelatorios').style.display = '';
   }
@@ -382,11 +399,13 @@ async function carregarSetores(){
 
 function mudarTab(nome){
   aba = nome;
-  ['Ponto','Correcoes','Relatorios','Colaboradores','Atividades','Setores'].forEach(t => {
+  ['Ponto','Monitoramento','Correcoes','Relatorios','Colaboradores','Atividades','Setores'].forEach(t => {
     const el = document.getElementById('tab' + t);
     if (el) el.classList.toggle('active', t.toLowerCase() === nome);
   });
+  clearInterval(monitoramentoInterval);
   if (nome === 'ponto') renderKioskIdentificar();
+  else if (nome === 'monitoramento') renderMonitoramento();
   else if (nome === 'correcoes') renderCorrecoes();
   else if (nome === 'relatorios') renderRelatorios();
   else if (nome === 'colaboradores') renderColaboradores();
@@ -541,6 +560,125 @@ async function finalizar(){
   if (error){ showMsg(error.message, false); return; }
   showMsg('Apontamento finalizado.', true);
   setTimeout(renderKioskIdentificar, 1200);
+}
+
+/* ══════════════════════════ MONITORAMENTO (admin + producao/supervisor) ══════════════════════════ */
+
+function formatarDuracao(ms){
+  const min = Math.floor(ms / 60000);
+  const h = Math.floor(min / 60), m = min % 60;
+  return h > 0 ? `${h}h ${m}min` : `${m}min`;
+}
+
+async function renderMonitoramento(){
+  document.getElementById('content').innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+      <div style="font-size:12px;color:var(--text2)">Atualiza sozinho a cada minuto.</div>
+      <button class="btn" onclick="carregarMonitoramento()">🔄 Atualizar agora</button>
+    </div>
+    <div id="monAbertos"><div class="empty">Carregando...</div></div>
+    <div style="margin:2rem 0 1rem">
+      <h3 style="font-size:14px;font-weight:800">Status de hoje</h3>
+      <div style="font-size:12px;color:var(--text2);margin-top:2px">Quem já bateu ponto hoje, quem está com algo aberto, e quem ainda não apareceu</div>
+    </div>
+    <div id="monHoje"><div class="empty">Carregando...</div></div>`;
+
+  await Promise.all([carregarColaboradores(), carregarSetores(), carregarAtividades(), carregarPedidos()]);
+  await carregarMonitoramento();
+  monitoramentoInterval = setInterval(carregarMonitoramento, 60000);
+}
+
+async function carregarMonitoramento(){
+  await Promise.all([carregarAbertos(), carregarStatusHoje()]);
+}
+
+async function carregarAbertos(){
+  const wrap = document.getElementById('monAbertos');
+  const { data, error } = await sb
+    .from('apontamentos_horas')
+    .select('id, matricula, hora_inicio, atividade_codigo, colaboradores(nome,cargo,setor_cc), pedidos(numero_pedido)')
+    .is('hora_fim', null)
+    .neq('status', 'estornado')
+    .order('hora_inicio');
+
+  if (error){ wrap.innerHTML = `<div class="empty">Erro: ${esc(error.message)}</div>`; return; }
+  if (!data.length){
+    wrap.innerHTML = `<div class="rel-panel" style="text-align:center;color:var(--green);font-weight:700;padding:1.5rem">✓ Nenhum apontamento aberto no momento — todo mundo fechou certinho.</div>`;
+    return;
+  }
+
+  const agora = Date.now();
+  const linhas = data.map(r => {
+    const ms = agora - new Date(r.hora_inicio).getTime();
+    const horas = ms / 3600000;
+    const nivel = horas >= 12 ? 'critico' : horas >= 6 ? 'atencao' : 'normal';
+    const ativ = atividadesCache.find(a => a.codigo === r.atividade_codigo)?.nome || r.atividade_codigo;
+    return { r, ms, nivel, ativ };
+  });
+
+  wrap.innerHTML = `
+    <div class="tbl-wrap">
+      <table class="dtbl">
+        <thead><tr><th>Colaborador</th><th>Setor</th><th>Atividade</th><th>Pedido</th><th>Aberto desde</th><th>Há quanto tempo</th><th></th></tr></thead>
+        <tbody>
+          ${linhas.map(({ r, ms, nivel, ativ }) => `
+            <tr class="mon-row-${nivel}">
+              <td style="font-weight:700">${esc(r.colaboradores?.nome || r.matricula)}</td>
+              <td>${esc(nomeSetor(r.colaboradores?.setor_cc))}</td>
+              <td>${esc(r.atividade_codigo)} — ${esc(ativ)}</td>
+              <td>${esc(r.pedidos?.numero_pedido || '—')}</td>
+              <td>${new Date(r.hora_inicio).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
+              <td><span class="pill pill-${nivel}">${formatarDuracao(ms)}</span></td>
+              <td><span class="btn" style="cursor:pointer" onclick="fecharAbertoRapido(${r.id})">Fechar agora</span></td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+async function carregarStatusHoje(){
+  const wrap = document.getElementById('monHoje');
+  const hoje = hojeStr();
+
+  const [{ data: colabs }, { data: hojeRows, error }] = await Promise.all([
+    sb.from('colaboradores').select('matricula,nome,cargo,setor_cc').eq('ativo', true).order('nome'),
+    sb.from('apontamentos_horas').select('matricula, hora_fim, horas').eq('data', hoje).neq('status', 'estornado'),
+  ]);
+
+  if (error){ wrap.innerHTML = `<div class="empty">Erro: ${esc(error.message)}</div>`; return; }
+
+  const porMatricula = {};
+  (hojeRows || []).forEach(r => {
+    if (!porMatricula[r.matricula]) porMatricula[r.matricula] = { horas: 0, aberto: false, sessoes: 0 };
+    porMatricula[r.matricula].sessoes++;
+    porMatricula[r.matricula].horas += Number(r.horas || 0);
+    if (!r.hora_fim) porMatricula[r.matricula].aberto = true;
+  });
+
+  wrap.innerHTML = `<div class="mon-status-grid">
+    ${(colabs || []).map(c => {
+      const info = porMatricula[c.matricula];
+      let status, classe;
+      if (info?.aberto){ status = '🔴 Em aberto'; classe = 'pill-critico'; }
+      else if (info){ status = `✅ ${info.sessoes} lançamento${info.sessoes !== 1 ? 's' : ''}`; classe = 'pill-ok'; }
+      else { status = '⚪ Sem apontamento hoje'; classe = 'pill-neutro'; }
+      return `<div class="mon-status-card">
+        <div class="mon-status-nome">${esc(c.nome)}</div>
+        <div class="mon-status-sub">${esc(c.cargo || '—')} · ${esc(nomeSetor(c.setor_cc))}</div>
+        <span class="pill ${classe}">${status}</span>
+        ${info ? `<div style="margin-top:6px;font-size:12px;color:var(--text2)" class="tabular">${info.horas.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}h hoje</div>` : ''}
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+async function fecharAbertoRapido(id){
+  const { data: r, error } = await sb
+    .from('apontamentos_horas')
+    .select('*, pedidos(numero_pedido)')
+    .eq('id', id).single();
+  if (error){ showMsg(error.message, false); return; }
+  editarCorrecao(r);
 }
 
 /* ══════════════════════════ CORREÇÕES (admin + producao/supervisor) ══════════════════════════ */
@@ -706,7 +844,12 @@ async function salvarCorrecao(){
   if (error){ showMsg(error.message, false); return; }
   fecharModal('ovCorrecao');
   showMsg('Apontamento salvo.', true);
-  buscarCorrecoes();
+  atualizarTelaAposCorrecao();
+}
+
+function atualizarTelaAposCorrecao(){
+  if (aba === 'correcoes') buscarCorrecoes();
+  else if (aba === 'monitoramento') carregarMonitoramento();
 }
 
 async function estornarApontamento(){
@@ -717,7 +860,7 @@ async function estornarApontamento(){
   if (error){ showMsg(error.message, false); return; }
   fecharModal('ovCorrecao');
   showMsg('Apontamento estornado.', true);
-  buscarCorrecoes();
+  atualizarTelaAposCorrecao();
 }
 
 /* ══════════════════════════ RELATÓRIOS (ao vivo, interativo) ══════════════════════════ */
