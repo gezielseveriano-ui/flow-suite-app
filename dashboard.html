@@ -365,6 +365,11 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
       <button class="cr-tab active" id="crTabSetor" onclick="mudarAbaCR('setor')">Por Setor</button>
       <button class="cr-tab" id="crTabMes" onclick="mudarAbaCR('mes')">Por Mês</button>
     </div>
+    <div class="cr-tabs" id="crFiltroMesWrap" style="align-items:center">
+      <label style="font-size:12px;color:var(--text2);align-self:center">Mês:</label>
+      <input type="month" id="crMesSetor" style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg3);color:var(--text);font-size:12.5px" onchange="crSelecionarMes(this.value)">
+      <button class="cr-tab" id="crBtnTodosMeses" onclick="crLimparMes()">Todos os meses (total)</button>
+    </div>
     <div class="modal-cr-chart"><canvas id="crChart"></canvas></div>
     <div id="crSummary"></div>
   </div>
@@ -390,6 +395,7 @@ let DB = {};              // DB[pedido][tag][produto] = [itens...]
 let PEDIDOS_INFO = {};    // numero_pedido -> row from pedidos
 let CAPACIDADE = {};      // setor -> capacidade_mensal_ton (kg)
 let REALIZADO_POR_MES = {}; // 'YYYY-MM' -> kg expedido naquele mês (todos os setores)
+let REALIZADO_POR_SETOR_MES = {}; // setor -> 'YYYY-MM' -> kg expedido naquele mês
 let allPedidos = [];
 let state = { tela: 'geral', pedido: null, tag: null, produto: null };
 const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
@@ -460,9 +466,12 @@ async function carregarDados(){
 
   // realizado (kg expedido) por mês-calendário, pro gráfico "Capacidade x
   // Realizado" — usa a data do romaneio (data_criacao) como data de expedição.
+  // REALIZADO_POR_SETOR_MES é a mesma coisa, mas quebrada por setor também,
+  // pra dar pra filtrar "Por Setor" num mês/ano específico.
   const itensPorId = {};
   itensRes.data.forEach(it => { itensPorId[it.id] = it; });
   REALIZADO_POR_MES = {};
+  REALIZADO_POR_SETOR_MES = {};
   romItensRes.data.forEach(ri => {
     const rom = romaneiosPorId[ri.romaneio_id];
     const item = itensPorId[ri.item_id];
@@ -470,6 +479,8 @@ async function carregarDados(){
     const pesoKg = Number(ri.quantidade_expedida) * Number(item.peso_unitario || 0);
     const mesKey = rom.data_criacao.slice(0, 7); // 'YYYY-MM'
     REALIZADO_POR_MES[mesKey] = (REALIZADO_POR_MES[mesKey] || 0) + pesoKg;
+    if (!REALIZADO_POR_SETOR_MES[item.produto]) REALIZADO_POR_SETOR_MES[item.produto] = {};
+    REALIZADO_POR_SETOR_MES[item.produto][mesKey] = (REALIZADO_POR_SETOR_MES[item.produto][mesKey] || 0) + pesoKg;
   });
 
   // max percentual por item+etapa
@@ -720,7 +731,9 @@ function renderCapacidade(){
    que aquilo saiu de fato — carga programada/fabricada ainda não conta). ── */
 let crChart = null;
 let crModo = 'setor';
+let crMesFiltro = null; // null = todos os meses (total); senão 'YYYY-MM'
 const crFt = kg => (kg/1000).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+const crNomesMeses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 
 function abrirCapacidadeRealizado(){
   document.getElementById('ovCapacidadeRealizado').classList.add('show');
@@ -729,14 +742,30 @@ function abrirCapacidadeRealizado(){
 function fecharCapacidadeRealizado(){
   document.getElementById('ovCapacidadeRealizado').classList.remove('show');
 }
+function crSelecionarMes(valor){
+  crMesFiltro = valor || null;
+  document.getElementById('crMesSetor').value = crMesFiltro || '';
+  renderCRPorSetor();
+}
+function crLimparMes(){
+  crMesFiltro = null;
+  document.getElementById('crMesSetor').value = '';
+  renderCRPorSetor();
+}
 function mudarAbaCR(modo){
   crModo = modo;
   document.getElementById('crTabSetor').classList.toggle('active', modo === 'setor');
   document.getElementById('crTabMes').classList.toggle('active', modo === 'mes');
+  document.getElementById('crFiltroMesWrap').style.display = modo === 'setor' ? 'flex' : 'none';
   renderCR();
 }
 function renderCR(){
   if (crModo === 'mes') renderCRPorMes(); else renderCRPorSetor();
+}
+
+function realizadoSetor(k, s){
+  if (!crMesFiltro) return s[k].expedido;
+  return (REALIZADO_POR_SETOR_MES[k] && REALIZADO_POR_SETOR_MES[k][crMesFiltro]) || 0;
 }
 
 function renderCRPorSetor(){
@@ -744,13 +773,16 @@ function renderCRPorSetor(){
   const ativos = SETORES.filter(k => s[k].cap > 0);
 
   let totCap = 0, totReal = 0;
-  ativos.forEach(k => { totCap += s[k].cap; totReal += s[k].expedido; });
+  ativos.forEach(k => { totCap += s[k].cap; totReal += realizadoSetor(k, s); });
   const pctTotal = totCap > 0 ? Math.min(100, totReal/totCap*100) : 0;
+
+  const [anoSel, mesSel] = crMesFiltro ? crMesFiltro.split('-') : [null, null];
+  const labelRealizado = crMesFiltro ? `Realizado em ${crNomesMeses[Number(mesSel)-1]}/${anoSel}` : 'Realizado (total expedido)';
 
   document.getElementById('crSummary').innerHTML = `
     <div class="cr-summary-grid">
-      <div class="cr-summary-card"><div class="lbl"><i class="ti ti-speedometer"></i> Capacidade total</div><div class="val" style="color:var(--blue)">${crFt(totCap)} t</div></div>
-      <div class="cr-summary-card"><div class="lbl"><i class="ti ti-truck"></i> Realizado (expedido)</div><div class="val" style="color:var(--green)">${crFt(totReal)} t</div></div>
+      <div class="cr-summary-card"><div class="lbl"><i class="ti ti-speedometer"></i> Capacidade ${crMesFiltro ? 'no mês' : 'total'}</div><div class="val" style="color:var(--blue)">${crFt(totCap)} t</div></div>
+      <div class="cr-summary-card"><div class="lbl"><i class="ti ti-truck"></i> ${labelRealizado}</div><div class="val" style="color:var(--green)">${crFt(totReal)} t</div></div>
       <div class="cr-summary-card"><div class="lbl"><i class="ti ti-chart-pie"></i> % realizado</div><div class="val" style="color:${pctTotal>=100?'var(--green)':(pctTotal>=50?'var(--amber)':'var(--blue)')}">${pctTotal.toFixed(0)}%</div></div>
     </div>`;
 
@@ -763,7 +795,7 @@ function renderCRPorSetor(){
       labels: ativos,
       datasets: [
         { label:'Capacidade', data: ativos.map(k=>+(s[k].cap/1000).toFixed(2)), backgroundColor:'rgba(37,99,235,0.55)', borderRadius:5, borderSkipped:false },
-        { label:'Realizado', data: ativos.map(k=>+(s[k].expedido/1000).toFixed(2)), backgroundColor:'rgba(16,185,129,0.85)', borderRadius:5, borderSkipped:false },
+        { label:'Realizado', data: ativos.map(k=>+(realizadoSetor(k, s)/1000).toFixed(2)), backgroundColor:'rgba(16,185,129,0.85)', borderRadius:5, borderSkipped:false },
       ]
     },
     plugins: [ChartDataLabels],
