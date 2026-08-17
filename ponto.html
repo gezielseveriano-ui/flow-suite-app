@@ -610,7 +610,7 @@ async function carregarAbertos(){
 
   if (error){ wrap.innerHTML = `<div class="empty">Erro: ${esc(error.message)}</div>`; return; }
   if (!data.length){
-    wrap.innerHTML = `<div class="rel-panel" style="text-align:center;color:var(--green);font-weight:700;padding:1.5rem">✓ Nenhum apontamento aberto no momento — todo mundo fechou certinho.</div>`;
+    wrap.innerHTML = `<div class="rel-panel" style="text-align:center;color:var(--green);font-weight:700;padding:1.5rem">✓ Nenhum apontamento em aberto no momento.</div>`;
     return;
   }
 
