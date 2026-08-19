@@ -414,6 +414,15 @@ async function renderFornecedoresCapacidade(){
     return;
   }
 
+  // setor cujo nome bate com um fornecedor já cadastrado (ex: "RMF" é ao
+  // mesmo tempo um valor antigo do enum setor_producao E um fornecedor novo)
+  // é a MESMA empresa — não lista duas capacidades editáveis pra ela, senão
+  // fica sem saber qual das duas vale. A partir de agora edita só pelo lado
+  // "Fornecedores terceirizados"; o valor antigo de capacidade_setor fica
+  // parado no banco (histórico), sem sumir, só sem aparecer aqui.
+  const nomesFornecedores = new Set((fornecedores || []).map(f => f.nome.trim().toUpperCase()));
+  const setoresSemFornecedor = (setores || []).filter(s => !nomesFornecedores.has(s.setor.trim().toUpperCase()));
+
   const formNovoFornecedor = novoFornecedorProducaoAberto ? `
     <div class="pos-card">
       <div class="edit-form">
@@ -438,7 +447,7 @@ async function renderFornecedoresCapacidade(){
     <div class="tbl-inner" style="margin-bottom:24px"><table class="dtbl">
       <thead><tr><th>Setor</th><th class="r">Capacidade (t/mês)</th><th></th></tr></thead>
       <tbody>
-        ${(setores || []).map(s => `<tr>
+        ${setoresSemFornecedor.map(s => `<tr>
           <td><strong>${esc(s.setor)}</strong></td>
           <td class="r"><input type="number" step="0.01" min="0" id="capSetor-${esc(s.setor)}" value="${s.capacidade_mensal_ton ?? 0}" style="width:100px;text-align:right"></td>
           <td><span class="btn btn-sm" onclick="salvarCapacidadeSetor('${esc(s.setor)}')">Salvar</span></td>
