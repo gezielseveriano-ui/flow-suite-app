@@ -277,6 +277,7 @@ setTimeout(() => {
   if (typeof posicionarBarraFlutuante === 'function') setTimeout(posicionarBarraFlutuante, 180);
 }, 5000);
 let remessaAtual = null; // {id, numero, pedido_id}
+let mostrandoFornecedores = false;
 
 function showMsg(text, ok){
   const box = document.getElementById('msgBox');
@@ -302,6 +303,13 @@ async function init(){
 
 function renderNav(){
   const nav = document.getElementById('navBar');
+  if (mostrandoFornecedores){
+    nav.innerHTML = `
+      <span class="nav-crumb" onclick="voltarLista()">Pedidos</span>
+      <span class="nav-sep">/</span>
+      <span class="nav-crumb active">Fornecedores e Capacidade</span>`;
+    return;
+  }
   if (!pedidoAtual){
     nav.innerHTML = `<span class="nav-crumb active">Pedidos</span>`;
     return;
@@ -324,7 +332,13 @@ function renderNav(){
 function voltarLista(){
   pedidoAtual = null;
   remessaAtual = null;
+  mostrandoFornecedores = false;
   renderListaPedidos();
+}
+
+function abrirFornecedoresCapacidade(){
+  mostrandoFornecedores = true;
+  renderFornecedoresCapacidade();
 }
 
 function voltarRemessas(){
@@ -333,12 +347,16 @@ function voltarRemessas(){
 }
 
 async function renderListaPedidos(){
+  mostrandoFornecedores = false;
   renderNav();
   const content = document.getElementById('content');
   content.innerHTML = `
     <div class="toolbar">
       <h2>Pedidos cadastrados</h2>
-      <span style="font-size:12.5px;color:var(--text3)">Pedidos novos nascem no módulo Contratos</span>
+      <div style="display:flex;align-items:center;gap:12px">
+        <span style="font-size:12.5px;color:var(--text3)">Pedidos novos nascem no módulo Contratos</span>
+        <button class="btn" onclick="abrirFornecedoresCapacidade()">⚙️ Fornecedores e Capacidade</button>
+      </div>
     </div>
     <div class="grid" id="pedidosGrid"><div class="empty">Carregando...</div></div>`;
 
@@ -372,6 +390,125 @@ function abrirPedido(p){
   pedidoAtual = p;
   remessaAtual = null;
   renderRemessasPCP();
+}
+
+// ── FORNECEDORES E CAPACIDADE ───────────────────────────────────────────────
+// Capacidade (tanto de setor interno quanto de fornecedor terceirizado) é
+// sempre um número fixo digitado manualmente aqui — o sistema nunca calcula
+// ou ajusta sozinho, só o PCP muda quando a capacidade real muda (ex: perdeu
+// um caldeireiro). O Dashboard só lê esses valores pra montar o gráfico.
+let novoFornecedorProducaoAberto = false;
+
+async function renderFornecedoresCapacidade(){
+  renderNav();
+  const content = document.getElementById('content');
+  content.innerHTML = `<div class="toolbar"><h2>Fornecedores e Capacidade</h2></div><div class="empty">Carregando...</div>`;
+
+  const [{ data: setores, error: errSetores }, { data: fornecedores, error: errForn }] = await Promise.all([
+    sb.from('capacidade_setor').select('*').order('setor'),
+    sb.from('fornecedores_producao').select('*').order('nome'),
+  ]);
+
+  if (errSetores || errForn){
+    content.innerHTML = `<div class="empty">Erro ao carregar: ${esc((errSetores || errForn).message)}</div>`;
+    return;
+  }
+
+  const formNovoFornecedor = novoFornecedorProducaoAberto ? `
+    <div class="pos-card">
+      <div class="edit-form">
+        <div class="field-row">
+          <div class="field"><label>Nome do fornecedor</label><input id="novoFornNome" placeholder="ex: AXION"></div>
+          <div class="field"><label>Capacidade máxima (t)</label><input id="novoFornCap" type="number" step="0.01" min="0" value="0"></div>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <span class="btn btn-sm" onclick="novoFornecedorProducaoAberto=false; renderFornecedoresCapacidade()">Cancelar</span>
+          <span class="btn btn-sm btn-primary" onclick="salvarNovoFornecedorProducao()">Salvar fornecedor</span>
+        </div>
+      </div>
+    </div>` : `<span class="btn btn-primary" onclick="novoFornecedorProducaoAberto=true; renderFornecedoresCapacidade()">+ Novo fornecedor</span>`;
+
+  content.innerHTML = `
+    <div class="toolbar">
+      <h2>Fornecedores e Capacidade</h2>
+      <span style="font-size:12.5px;color:var(--text3)">Capacidade é sempre digitada manualmente — o sistema não calcula sozinho</span>
+    </div>
+
+    <h3 style="margin:4px 0 8px">Capacidade por setor (produção interna MDE)</h3>
+    <div class="tbl-inner" style="margin-bottom:24px"><table class="dtbl">
+      <thead><tr><th>Setor</th><th class="r">Capacidade (t/mês)</th><th></th></tr></thead>
+      <tbody>
+        ${(setores || []).map(s => `<tr>
+          <td><strong>${esc(s.setor)}</strong></td>
+          <td class="r"><input type="number" step="0.01" min="0" id="capSetor-${esc(s.setor)}" value="${s.capacidade_mensal_ton ?? 0}" style="width:100px;text-align:right"></td>
+          <td><span class="btn btn-sm" onclick="salvarCapacidadeSetor('${esc(s.setor)}')">Salvar</span></td>
+        </tr>`).join('')}
+      </tbody>
+    </table></div>
+
+    <h3 style="margin:4px 0 8px">Fornecedores terceirizados</h3>
+    <div class="tbl-inner" style="margin-bottom:12px"><table class="dtbl">
+      <thead><tr><th>Nome</th><th class="r">Capacidade máxima (t)</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+        ${(fornecedores || []).map(f => `<tr>
+          <td><strong>${esc(f.nome)}</strong></td>
+          <td class="r"><input type="number" step="0.01" min="0" id="capForn-${f.id}" value="${f.capacidade_maxima_ton ?? 0}" style="width:100px;text-align:right"></td>
+          <td>${f.ativo ? '<span class="badge-subido">ATIVO</span>' : '<span class="badge-descida">INATIVO</span>'}</td>
+          <td style="display:flex;gap:6px">
+            <span class="btn btn-sm" onclick="salvarCapacidadeFornecedor(${f.id})">Salvar</span>
+            <span class="btn btn-sm" onclick="toggleAtivoFornecedorProducao(${f.id}, ${!f.ativo})">${f.ativo ? 'Desativar' : 'Ativar'}</span>
+          </td>
+        </tr>`).join('')}
+      </tbody>
+    </table></div>
+    ${formNovoFornecedor}`;
+}
+
+async function salvarCapacidadeSetor(setor){
+  const valor = Number(document.getElementById(`capSetor-${setor}`).value) || 0;
+  const { error } = await sb.from('capacidade_setor').update({ capacidade_mensal_ton: valor }).eq('setor', setor);
+  if (error){ showMsg('Erro ao salvar capacidade: ' + error.message, false); return; }
+  showMsg(`Capacidade de ${setor} atualizada.`, true);
+  await renderFornecedoresCapacidade();
+}
+
+async function salvarCapacidadeFornecedor(id){
+  const valor = Number(document.getElementById(`capForn-${id}`).value) || 0;
+  const { error } = await sb.from('fornecedores_producao').update({ capacidade_maxima_ton: valor }).eq('id', id);
+  if (error){ showMsg('Erro ao salvar capacidade: ' + error.message, false); return; }
+  showMsg('Capacidade do fornecedor atualizada.', true);
+  await renderFornecedoresCapacidade();
+}
+
+async function toggleAtivoFornecedorProducao(id, novoAtivo){
+  const { error } = await sb.from('fornecedores_producao').update({ ativo: novoAtivo }).eq('id', id);
+  if (error){ showMsg('Erro ao atualizar status: ' + error.message, false); return; }
+  showMsg(novoAtivo ? 'Fornecedor ativado.' : 'Fornecedor desativado.', true);
+  FORNECEDORES_PRODUCAO_CACHE = null;
+  await renderFornecedoresCapacidade();
+}
+
+async function salvarNovoFornecedorProducao(){
+  const nome = document.getElementById('novoFornNome').value.trim();
+  const capacidade = Number(document.getElementById('novoFornCap').value) || 0;
+  if (!nome){ showMsg('Informe o nome do fornecedor.', false); return; }
+  const { error } = await sb.from('fornecedores_producao').insert({ nome, capacidade_maxima_ton: capacidade });
+  if (error){ showMsg('Erro ao cadastrar fornecedor: ' + error.message, false); return; }
+  novoFornecedorProducaoAberto = false;
+  FORNECEDORES_PRODUCAO_CACHE = null;
+  showMsg('Fornecedor cadastrado.', true);
+  await renderFornecedoresCapacidade();
+}
+
+// cache simples pro <select> de fornecedor na lista de itens (evita refetch a
+// cada renderização da tabela) — invalidado sempre que um fornecedor é
+// criado/ativado/desativado acima.
+let FORNECEDORES_PRODUCAO_CACHE = null;
+async function carregarFornecedoresProducao(){
+  if (FORNECEDORES_PRODUCAO_CACHE) return FORNECEDORES_PRODUCAO_CACHE;
+  const { data } = await sb.from('fornecedores_producao').select('*').order('nome');
+  FORNECEDORES_PRODUCAO_CACHE = data || [];
+  return FORNECEDORES_PRODUCAO_CACHE;
 }
 
 async function renderRemessasPCP(){
@@ -533,11 +670,13 @@ async function renderItensGerados(){
   if (error){ wrap.innerHTML = `<div class="empty">Erro ao carregar itens: ${esc(error.message)}</div>`; return; }
   if (!data.length){ wrap.innerHTML = `<div class="empty">Nenhum item gerado ainda — leia os desenhos da Engenharia acima (marcados como Fabricação) pra gerar os itens de produção.</div>`; return; }
 
+  const fornecedores = await carregarFornecedoresProducao();
+
   wrap.innerHTML = `
     <div class="tbl-inner">
     <table class="dtbl">
       <thead><tr>
-        <th>Cód. MDE</th><th>Desenho MDE</th><th>Desenho Cliente</th><th>Descrição</th><th>TAG</th><th>Remessa</th><th>Setor</th>
+        <th>Cód. MDE</th><th>Desenho MDE</th><th>Desenho Cliente</th><th>Descrição</th><th>TAG</th><th>Remessa</th><th>Setor</th><th>Fornecedor</th>
         <th class="r">Peso unit. (kg)</th><th class="r">Qtd.</th><th class="r">Peso total (kg)</th>
         <th>Status</th>
       </tr></thead>
@@ -550,6 +689,12 @@ async function renderItensGerados(){
           <td>${esc(it.tag)}</td>
           <td>${esc(it.remessa || '—')}</td>
           <td>${esc(it.produto)}</td>
+          <td>
+            <select onchange="mudarFornecedorItem(${it.id}, this.value)" style="font-size:12px;padding:3px 6px">
+              <option value=""${!it.fornecedor_producao_id ? ' selected' : ''}>MDE (interno)</option>
+              ${fornecedores.map(f => `<option value="${f.id}"${it.fornecedor_producao_id === f.id ? ' selected' : ''}${!f.ativo && it.fornecedor_producao_id !== f.id ? ' disabled' : ''}>${esc(f.nome)}${!f.ativo ? ' (inativo)' : ''}</option>`).join('')}
+            </select>
+          </td>
           <td class="r">${Number(it.peso_unitario).toLocaleString('pt-BR')}</td>
           <td class="r">${Number(it.quantidade).toLocaleString('pt-BR')}</td>
           <td class="r">${Number(it.peso_total).toLocaleString('pt-BR')}</td>
@@ -558,6 +703,19 @@ async function renderItensGerados(){
       </tbody>
     </table>
     </div>`;
+}
+
+// atribuir fornecedor de produção a um item (NULL = volta pra produção
+// interna MDE) — a checagem de capacidade excedida acontece no banco
+// (atribuir_fornecedor_producao, ver sql/059) pra não dar pra burlar; se
+// bloquear, o re-render abaixo desfaz a escolha no <select> sozinho (a linha
+// volta a refletir o que está de verdade salvo no banco).
+async function mudarFornecedorItem(itemId, valorSelecionado){
+  const fornecedorId = valorSelecionado ? Number(valorSelecionado) : null;
+  const { error } = await sb.rpc('atribuir_fornecedor_producao', { p_item_id: itemId, p_fornecedor_id: fornecedorId });
+  if (error){ showMsg('Erro ao atribuir fornecedor: ' + error.message, false); }
+  else { showMsg('Fornecedor do item atualizado.', true); }
+  await renderItensGerados();
 }
 
 // ── LEITURA DO DESENHO (transcrição automática pro sistema) ────────────────
