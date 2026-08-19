@@ -1066,8 +1066,10 @@ async function salvarNovoSubproduto(desenhoId, posicaoId){
 async function sincronizarItensPCP(desenho, posicoesAtuais){
   // posição "descida" (ex: engenharia mandou fabricar só uma parte por vez)
   // não gera item nenhum pro PCP — nem ela, nem os subprodutos que tiver
-  // subido dentro dela — como se não tivesse sido lançada.
-  posicoesAtuais = posicoesAtuais.filter(p => !p.descida);
+  // subido dentro dela — como se não tivesse sido lançada. Ordena por id
+  // (ordem de criação) pra dar uma sequência estável de ocorrência quando a
+  // mesma letra se repete (ver `chaveOcorrencia` abaixo).
+  posicoesAtuais = posicoesAtuais.filter(p => !p.descida).sort((a, b) => a.id - b.id);
 
   if (!desenho.is_fabricacao){
     return posicoesAtuais.length ? ' — desenho não marcado como Fabricação, não gerei itens pro PCP.' : '';
@@ -1088,11 +1090,29 @@ async function sincronizarItensPCP(desenho, posicoesAtuais){
   const { data: itensExistentes, error: errBusca } = await sb
     .from('itens')
     .select('id, posicao_engenharia, status_expedicao')
-    .eq('desenho_engenharia_id', desenho.id);
+    .eq('desenho_engenharia_id', desenho.id)
+    .order('id');
   if (errBusca) throw errBusca;
 
+  // a letra sozinha não é uma chave única dentro do desenho — o mesmo
+  // desenho pode ter mais de uma posição com a letra "A" de verdade (peças
+  // de corte repetidas, ex: 3 chapas "73759-A" com quantidades diferentes).
+  // Casar só pela letra faz um item "engolir" o outro: só o último
+  // processado sobrevive em `porPosicao`, os demais viram órfãos invisíveis
+  // — nunca são achados de novo (nem pra atualizar, nem pra limpar quando a
+  // posição de origem é descida/excluída). A chave real é letra + ordem de
+  // ocorrência (1ª "A", 2ª "A"...), contada na mesma ordem estável (por id)
+  // tanto nos itens já existentes quanto nas posições atuais logo abaixo —
+  // continua vinculando pela LETRA entre releituras do desenho (é o que a
+  // migration 024 já garantia), só resolve o empate quando ela se repete.
+  function criarContadorOcorrencia(){
+    const contagem = {};
+    return (letra) => `${letra}#${contagem[letra] = (contagem[letra] || 0) + 1}`;
+  }
+
   const porPosicao = {};
-  (itensExistentes || []).forEach(it => { if (it.posicao_engenharia) porPosicao[it.posicao_engenharia] = it; });
+  const chaveExistente = criarContadorOcorrencia();
+  (itensExistentes || []).forEach(it => { if (it.posicao_engenharia) porPosicao[chaveExistente(it.posicao_engenharia)] = it; });
 
   // subprodutos "subidos" (ver regra subir/descer) viram posição independente
   // pro PCP também — com peso e progresso próprios — usando um código
@@ -1110,9 +1130,10 @@ async function sincronizarItensPCP(desenho, posicoesAtuais){
   // multiplica de novo pela quantidade da posição-mãe aqui.
   const { data: subsSubidosBruto, error: errSubs } = await sb
     .from('desenhos_engenharia_subprodutos')
-    .select('posicao_id, item, descricao, quantidade, peso_unitario, peso_total, desenhos_engenharia_posicoes!inner(posicao, quantidade, desenho_id, descida)')
+    .select('id, posicao_id, item, descricao, quantidade, peso_unitario, peso_total, desenhos_engenharia_posicoes!inner(posicao, quantidade, desenho_id, descida)')
     .eq('desenhos_engenharia_posicoes.desenho_id', desenho.id)
-    .eq('subido', true);
+    .eq('subido', true)
+    .order('id');
   if (errSubs) throw errSubs;
   // se a posição-mãe está descida (fora de produção por enquanto), o
   // subproduto subido dela também não vira item — some junto com a mãe.
@@ -1146,16 +1167,18 @@ async function sincronizarItensPCP(desenho, posicoesAtuais){
 
   const hoje = new Date().toISOString().slice(0, 10);
   const posicoesVistas = new Set();
+  const chaveAtual = criarContadorOcorrencia();
   let criados = 0, atualizados = 0;
 
   for (const pos of todasPosicoes){
-    posicoesVistas.add(pos.posicao);
+    const chave = chaveAtual(pos.posicao);
+    posicoesVistas.add(chave);
     // multiplica pela "quantidade a fabricar" que a Engenharia informou (ex:
     // "FABRICAR 3x CONFORME DESENHO" — cada posição da lista de material do
     // desenho é fabricada 3 vezes, não só 1).
     const quantidade = (pos.quantidade ?? 1) * (desenho.quantidade_fabricar || 1);
     const pesoUnitario = pos.peso_unitario ?? pos.peso_total ?? 0;
-    const existente = porPosicao[pos.posicao];
+    const existente = porPosicao[chave];
 
     if (existente){
       const { error } = await sb.from('itens').update({
@@ -1195,8 +1218,8 @@ async function sincronizarItensPCP(desenho, posicoesAtuais){
   }
 
   let removidos = 0, preservadosOrfaos = 0;
-  for (const [letra, it] of Object.entries(porPosicao)){
-    if (posicoesVistas.has(letra)) continue;
+  for (const [chaveOrfao, it] of Object.entries(porPosicao)){
+    if (posicoesVistas.has(chaveOrfao)) continue;
     const { count: nEtapas } = await sb.from('etapas_avanco').select('id', { count: 'exact', head: true }).eq('item_id', it.id);
     const semProgresso = (nEtapas || 0) === 0 && it.status_expedicao === 'pendente';
     if (semProgresso){
