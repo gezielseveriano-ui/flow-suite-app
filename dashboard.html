@@ -657,7 +657,15 @@ function calcSetores(){
   allPedidos.forEach(p => Object.values(DB[p]).forEach(tags => Object.entries(tags).forEach(([prod,itens]) => {
     const setor = prod.trim().toUpperCase();
     if(!s[setor]) return;
-    itens.forEach(it => { s[setor].cargaProg+=it.pesoTotal; s[setor].expedido+=it.expedido; s[setor].pesoPendExp+=it.pendExp; });
+    itens.forEach(it => {
+      // item já mandado pra um fornecedor terceirizado sai da conta do setor
+      // interno (mesmo que a Engenharia tenha classificado como ESTRUTURA) --
+      // senão conta duas vezes: aqui E de novo lá embaixo, na conta do
+      // fornecedor. É exatamente o "abater" que estourar ESTRUTURA e mandar
+      // uma parte pra AXION precisa fazer.
+      if (it.fornecedor_producao_id) return;
+      s[setor].cargaProg+=it.pesoTotal; s[setor].expedido+=it.expedido; s[setor].pesoPendExp+=it.pendExp;
+    });
   })));
 
   Object.values(FORNECEDORES_PRODUCAO).forEach(f => {
