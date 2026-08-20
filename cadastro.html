@@ -715,13 +715,14 @@ async function renderItensGerados(){
 }
 
 // atribuir fornecedor de produção a um item (NULL = volta pra produção
-// interna MDE) — a checagem de capacidade excedida acontece no banco
-// (atribuir_fornecedor_producao, ver sql/059) pra não dar pra burlar; se
-// bloquear, o re-render abaixo desfaz a escolha no <select> sozinho (a linha
-// volta a refletir o que está de verdade salvo no banco).
+// interna MDE) — update simples, igual o campo produto/setor já é
+// atualizado (protegido pela mesma policy itens_update_pcp_admin). Sem
+// checagem de capacidade aqui: estourar não é bloqueado, só fica vermelho
+// no Dashboard (mesma lógica que já vale pros setores internos hoje — ver
+// sql/060).
 async function mudarFornecedorItem(itemId, valorSelecionado){
   const fornecedorId = valorSelecionado ? Number(valorSelecionado) : null;
-  const { error } = await sb.rpc('atribuir_fornecedor_producao', { p_item_id: itemId, p_fornecedor_id: fornecedorId });
+  const { error } = await sb.from('itens').update({ fornecedor_producao_id: fornecedorId }).eq('id', itemId);
   if (error){ showMsg('Erro ao atribuir fornecedor: ' + error.message, false); }
   else { showMsg('Fornecedor do item atualizado.', true); }
   await renderItensGerados();
