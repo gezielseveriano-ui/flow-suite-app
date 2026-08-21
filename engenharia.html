@@ -266,7 +266,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
   <!-- NÍVEL 3: desenhos da remessa (upload + lista filtrada) -->
   <div id="viewRemessa" style="display:none">
     <div class="breadcrumb"><a onclick="voltarPedidos()">Pedidos</a> / <a onclick="voltarRemessas()" id="remessaBreadcrumbPedido"></a> / <strong id="remessaBreadcrumbNumero"></strong>
-      <span class="btn" style="margin-left:8px;padding:3px 9px;font-size:11px" onclick="abrirEditarNomeRemessa()" title="Revisar nome da remessa">✏️ Nome</span>
+      <span class="btn" style="margin-left:8px;padding:3px 9px;font-size:11px" onclick="abrirEditarNomeRemessa()" title="Revisar número ou nome da remessa">✏️ Editar</span>
       <span class="btn" style="margin-left:4px;padding:3px 9px;font-size:11px;color:var(--red)" onclick="excluirRemessa()" title="Excluir esta remessa">🗑 Excluir</span>
     </div>
 
@@ -358,6 +358,10 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
     <div class="modal-sub" id="nomeRemessaSub">Dê um nome pra essa remessa — ajuda a identificar rápido o que está descendo (ex: "Ponte Treliça", "Chutes de Descarga").</div>
     <div class="err-box" id="errNomeRemessa"></div>
     <form id="formNomeRemessa">
+      <div class="field" id="fieldNumeroRemessa" style="display:none">
+        <label>Número da remessa *</label>
+        <input id="fdNumeroRemessa" type="number" min="1" step="1">
+      </div>
       <div class="field" id="fieldNomeRemessa" style="position:relative">
         <label>Nome da remessa *</label>
         <input id="fdNomeRemessa" required autocomplete="off" placeholder="Digite pra buscar ou criar um nome novo..." oninput="filtrarNomesRemessa()" onfocus="filtrarNomesRemessa()">
@@ -657,18 +661,27 @@ function gerarNovaRemessa(){
   document.getElementById('nomeRemessaSub').textContent = 'Dê um nome pra essa remessa — ajuda a identificar rápido o que está descendo (ex: "Ponte Treliça", "Chutes de Descarga").';
   document.getElementById('btnCriarRemessa').textContent = 'Criar remessa';
   document.getElementById('formNomeRemessa').reset();
+  document.getElementById('fieldNumeroRemessa').style.display = 'none';
   document.getElementById('fdNomeRemessa').required = true;
   document.getElementById('errNomeRemessa').classList.remove('show');
   fecharDropdownNomeRemessa();
   abrirModal('ovNomeRemessa');
 }
 
+// número só é editável aqui (revisão de uma remessa já criada) — na criação
+// continua sendo sempre o próximo sequencial, sem opção de escolher. Serve
+// pro caso de alguém subir os desenhos na remessa errada por engano: em vez
+// de excluir tudo e lançar de novo, só corrige o número. O banco já garante
+// não duplicar (unique por pedido+número), então só precisa mostrar o erro
+// se a pessoa tentar trocar pra um número que já existe nesse pedido.
 function abrirEditarNomeRemessa(){
   nomeRemessaModo = 'editar';
-  document.getElementById('nomeRemessaTitulo').textContent = `Revisar nome — Remessa ${remessaAtual.numero}`;
-  document.getElementById('nomeRemessaSub').textContent = 'Altere o nome dessa remessa. Deixe em branco pra remover o nome.';
+  document.getElementById('nomeRemessaTitulo').textContent = `Revisar remessa ${remessaAtual.numero}`;
+  document.getElementById('nomeRemessaSub').textContent = 'Altere o número e/ou o nome dessa remessa. Nome em branco remove o nome.';
   document.getElementById('btnCriarRemessa').textContent = 'Salvar';
   document.getElementById('formNomeRemessa').reset();
+  document.getElementById('fieldNumeroRemessa').style.display = '';
+  document.getElementById('fdNumeroRemessa').value = remessaAtual.numero;
   document.getElementById('fdNomeRemessa').value = remessaAtual.nome || '';
   document.getElementById('fdNomeRemessa').required = false;
   document.getElementById('errNomeRemessa').classList.remove('show');
@@ -771,12 +784,26 @@ document.getElementById('formNomeRemessa').addEventListener('submit', async (e) 
   const btn = document.getElementById('btnCriarRemessa');
 
   if (nomeRemessaModo === 'editar'){
+    const numero = Number(document.getElementById('fdNumeroRemessa').value);
+    if (!numero || numero < 1 || !Number.isInteger(numero)){
+      errBox.textContent = 'Informe um número de remessa válido.';
+      errBox.classList.add('show');
+      return;
+    }
+
     btn.disabled = true; btn.textContent = 'Salvando...';
-    const { data, error } = await sb.from('remessas').update({ nome: nome || null }).eq('id', remessaAtual.id).select().single();
+    // revisar_remessa (não um update direto): também propaga o número novo
+    // pro campo texto legado em desenhos_engenharia.remessa/itens.remessa,
+    // que não atualiza sozinho -- ver sql/062.
+    const { data, error } = await sb.rpc('revisar_remessa', {
+      p_remessa_id: remessaAtual.id, p_novo_numero: numero, p_novo_nome: nome || null,
+    });
     btn.disabled = false; btn.textContent = 'Salvar';
 
     if (error){
-      errBox.textContent = 'Erro ao salvar: ' + error.message;
+      errBox.textContent = error.code === '23505'
+        ? `Já existe a Remessa ${numero} nesse pedido — escolha outro número.`
+        : 'Erro ao salvar: ' + error.message;
       errBox.classList.add('show');
       return;
     }
