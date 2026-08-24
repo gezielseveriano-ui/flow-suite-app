@@ -322,8 +322,8 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
       </div>
       <div class="field-row">
         <div class="field" style="grid-column:1/-1">
-          <label>Arquivo do desenho (DWG/DXF/PDF)</label>
-          <input id="fdArquivo" type="file" accept=".dwg,.dxf,.pdf">
+          <label>Arquivo do desenho ou documento (DWG/DXF/PDF/Word/Excel)</label>
+          <input id="fdArquivo" type="file" accept=".dwg,.dxf,.pdf,.doc,.docx,.xls,.xlsx,.xlsm">
           <div id="fdArquivoAtual" style="font-size:11px;color:var(--text2);margin-top:5px"></div>
           <div id="fdLeituraStatus" style="font-size:11px;margin-top:5px"></div>
         </div>
@@ -382,7 +382,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
     <div class="modal-sub" id="substSub"></div>
     <div class="err-box" id="errSubstituir"></div>
     <form id="formSubstituir">
-      <div class="field" style="margin-bottom:12px"><label>Novo arquivo (DWG/DXF/PDF) *</label><input id="subArquivo" type="file" accept=".dwg,.dxf,.pdf" required></div>
+      <div class="field" style="margin-bottom:12px"><label>Novo arquivo (DWG/DXF/PDF/Word/Excel) *</label><input id="subArquivo" type="file" accept=".dwg,.dxf,.pdf,.doc,.docx,.xls,.xlsx,.xlsm" required></div>
       <div class="field"><label>Revisão</label><input id="subRevisao"></div>
       <div class="modal-actions">
         <button type="button" class="btn" onclick="fecharModal('ovSubstituir')">Cancelar</button>
@@ -481,6 +481,10 @@ function parseNum(str){
 // usando o mesmo serviço local de leitura que o PCP usa. NÃO lê a lista de
 // material/posições aqui — isso continua sendo trabalho exclusivo do PCP.
 const DWG_SERVICE_URL = 'http://localhost:8000';
+
+function ehArquivoDeDesenho(nome){
+  return /\.(dwg|dxf|pdf)$/i.test(nome || '');
+}
 
 function limparCamposAutoLidos(){
   document.querySelectorAll('.campo-auto-lido').forEach(el => el.classList.remove('campo-auto-lido'));
@@ -594,7 +598,15 @@ async function init(){
 
   document.getElementById('fdArquivo').addEventListener('change', (e) => {
     const file = e.target.files[0];
-    if (file) lerMetadadosDoArquivo(file);
+    if (!file) return;
+    if (ehArquivoDeDesenho(file.name)){
+      lerMetadadosDoArquivo(file);
+    } else {
+      limparCamposAutoLidos();
+      const status = document.getElementById('fdLeituraStatus');
+      status.style.color = 'var(--text2)';
+      status.textContent = 'Esse tipo de arquivo não é lido automaticamente — preencha os campos manualmente.';
+    }
   });
 }
 
