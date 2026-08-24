@@ -4,10 +4,16 @@ const SUPABASE_KEY = 'sb_publishable_2SElqmz9NJs8Cy2NdaGBag_cVeoz4gx';
 
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// setores válidos (devem bater exatamente com o enum setor_producao do banco)
+// setores válidos (precisam existir como linha em public.setores_producao,
+// que tem FK a partir de itens.produto/desenhos_engenharia.setor/
+// capacidade_setor.setor -- salvar um setor que não está cadastrado lá
+// falha). RMF/TECMETAL/CSM saíram da lista da Engenharia -- viraram
+// fornecedores terceirizados (ver fornecedores_producao/PCP), não é mais a
+// Engenharia quem escolhe isso. DOCUMENTOS é pra anexos que não são desenho
+// de fabricação (Word/Excel/PDF de apoio).
 const SETORES = [
   'ESTRUTURA', 'USINAGEM', 'TAMBOR', 'ROLOS', 'BASES ROLETES',
-  'REVESTIMENTO', 'RMF', 'TECMETAL', 'CSM', 'COMERCIAL'
+  'REVESTIMENTO', 'COMERCIAL', 'DOCUMENTOS'
 ];
 
 // as 9 etapas fixas, na ordem correta
