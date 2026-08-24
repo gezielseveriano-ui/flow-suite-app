@@ -412,7 +412,6 @@ async function init(){
   document.getElementById('userAvatar').textContent = (AUTH.nome || '').trim().split(/\s+/).map(p => p[0]).slice(0, 2).join('').toUpperCase() || '··';
   iniciarSininho('sininhoWrap');
   iniciarCartinha('cartinhaWrap');
-  await carregarSetoresProducao();
   await carregarDados();
 }
 

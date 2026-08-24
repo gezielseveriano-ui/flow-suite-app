@@ -398,21 +398,19 @@ function abrirPedido(p){
 // ou ajusta sozinho, só o PCP muda quando a capacidade real muda (ex: perdeu
 // um caldeireiro). O Dashboard só lê esses valores pra montar o gráfico.
 let novoFornecedorProducaoAberto = false;
-let novoSetorProducaoAberto = false;
 
 async function renderFornecedoresCapacidade(){
   renderNav();
   const content = document.getElementById('content');
   content.innerHTML = `<div class="toolbar"><h2>Fornecedores e Capacidade</h2></div><div class="empty">Carregando...</div>`;
 
-  const [{ data: setores, error: errSetores }, { data: fornecedores, error: errForn }, { data: setoresProducao, error: errSetoresProducao }] = await Promise.all([
+  const [{ data: setores, error: errSetores }, { data: fornecedores, error: errForn }] = await Promise.all([
     sb.from('capacidade_setor').select('*').order('setor'),
     sb.from('fornecedores_producao').select('*').order('nome'),
-    sb.from('setores_producao').select('*').order('nome'),
   ]);
 
-  if (errSetores || errForn || errSetoresProducao){
-    content.innerHTML = `<div class="empty">Erro ao carregar: ${esc((errSetores || errForn || errSetoresProducao).message)}</div>`;
+  if (errSetores || errForn){
+    content.innerHTML = `<div class="empty">Erro ao carregar: ${esc((errSetores || errForn).message)}</div>`;
     return;
   }
 
@@ -439,40 +437,13 @@ async function renderFornecedoresCapacidade(){
       </div>
     </div>` : `<span class="btn btn-primary" onclick="novoFornecedorProducaoAberto=true; renderFornecedoresCapacidade()">+ Novo fornecedor</span>`;
 
-  const formNovoSetor = novoSetorProducaoAberto ? `
-    <div class="pos-card">
-      <div class="edit-form">
-        <div class="field-row">
-          <div class="field"><label>Nome do setor</label><input id="novoSetorNome" placeholder="ex: DOCUMENTOS"></div>
-        </div>
-        <div style="display:flex;gap:8px;justify-content:flex-end">
-          <span class="btn btn-sm" onclick="novoSetorProducaoAberto=false; renderFornecedoresCapacidade()">Cancelar</span>
-          <span class="btn btn-sm btn-primary" onclick="salvarNovoSetorProducao()">Salvar setor</span>
-        </div>
-      </div>
-    </div>` : `<span class="btn btn-primary" onclick="novoSetorProducaoAberto=true; renderFornecedoresCapacidade()">+ Novo setor</span>`;
-
   content.innerHTML = `
     <div class="toolbar">
       <h2>Fornecedores e Capacidade</h2>
       <span style="font-size:12.5px;color:var(--text3)">Capacidade é sempre digitada manualmente — o sistema não calcula sozinho</span>
     </div>
 
-    <h3 style="margin:4px 0 8px">Setores de produção</h3>
-    <div style="font-size:12.5px;color:var(--text3);margin-bottom:8px">Lista usada no campo "Setor de produção" da Engenharia. Desativar não apaga nada — só some da lista pra desenhos novos; desenhos antigos que já usam esse setor continuam normais.</div>
-    <div class="tbl-inner" style="margin-bottom:12px"><table class="dtbl">
-      <thead><tr><th>Nome</th><th>Status</th><th></th></tr></thead>
-      <tbody>
-        ${(setoresProducao || []).map(s => `<tr>
-          <td><strong>${esc(s.nome)}</strong></td>
-          <td>${s.ativo ? '<span class="badge-subido">ATIVO</span>' : '<span class="badge-descida">INATIVO</span>'}</td>
-          <td><span class="btn btn-sm" onclick="toggleAtivoSetorProducao('${esc(s.nome)}', ${!s.ativo})">${s.ativo ? 'Desativar' : 'Ativar'}</span></td>
-        </tr>`).join('')}
-      </tbody>
-    </table></div>
-    ${formNovoSetor}
-
-    <h3 style="margin:24px 0 8px">Capacidade por setor (produção interna MDE)</h3>
+    <h3 style="margin:4px 0 8px">Capacidade por setor (produção interna MDE)</h3>
     <div class="tbl-inner" style="margin-bottom:24px"><table class="dtbl">
       <thead><tr><th>Setor</th><th class="r">Capacidade (t/mês)</th><th></th></tr></thead>
       <tbody>
@@ -500,26 +471,6 @@ async function renderFornecedoresCapacidade(){
       </tbody>
     </table></div>
     ${formNovoFornecedor}`;
-}
-
-async function toggleAtivoSetorProducao(nome, novoAtivo){
-  const { error } = await sb.from('setores_producao').update({ ativo: novoAtivo }).eq('nome', nome);
-  if (error){ showMsg('Erro ao atualizar status: ' + error.message, false); return; }
-  showMsg(novoAtivo ? 'Setor ativado.' : 'Setor desativado.', true);
-  await renderFornecedoresCapacidade();
-}
-
-async function salvarNovoSetorProducao(){
-  const nome = document.getElementById('novoSetorNome').value.trim().toUpperCase();
-  if (!nome){ showMsg('Informe o nome do setor.', false); return; }
-  const { error } = await sb.from('setores_producao').insert({ nome });
-  if (error){ showMsg('Erro ao cadastrar setor: ' + error.message, false); return; }
-  // já deixa pronta a linha de capacidade (0 t/mês) pra aparecer editável na
-  // tabela "Capacidade por setor" logo abaixo, sem precisar de outro passo
-  await sb.from('capacidade_setor').insert({ setor: nome, capacidade_mensal_ton: 0 });
-  novoSetorProducaoAberto = false;
-  showMsg('Setor cadastrado.', true);
-  await renderFornecedoresCapacidade();
 }
 
 async function salvarCapacidadeSetor(setor){
