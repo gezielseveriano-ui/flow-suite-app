@@ -292,8 +292,8 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
         <div class="field" id="fieldRevisao"><label>Revisão *</label><input id="fdRevisao" required placeholder="ex: 0"></div>
         <div class="field" id="fieldQtdFabricar"><label>Quantidade a fabricar</label><input id="fdQtdFabricar" type="number" step="1" min="0" value="0" title="Obrigatório (mínimo 1) quando o desenho é classificado como Fabricação. Pode ficar 0 se for só Conhecimento/Compra. ex: FABRICAR 3x CONFORME DESENHO — multiplica a quantidade de cada posição lida do desenho"></div>
         <div class="field" id="fieldPesoDesenho"><label>Peso do desenho, unitário (kg) *</label><input id="fdPesoDesenho" type="number" step="0.001" min="0" required title="Peso de UMA unidade do conjunto completo (ex: um chute pesa 200kg) — não confundir com o peso de cada item interno, que vem automático na leitura"></div>
-        <div class="field"><label>Setor de produção *</label>
-          <select id="fdSetor" required><option value="">— selecione —</option></select>
+        <div class="field" id="fieldSetor"><label>Setor de produção</label>
+          <select id="fdSetor" title="Obrigatório quando o desenho é classificado como Fabricação. Pode ficar em branco se for só Conhecimento/Compra."><option value="">— selecione —</option></select>
         </div>
       </div>
       <div class="field-row">
@@ -486,6 +486,21 @@ function ehArquivoDeDesenho(nome){
   return /\.(dwg|dxf|pdf)$/i.test(nome || '');
 }
 
+// remonta as opções do <select> de Setor de Produção a partir do que foi
+// cadastrado (Cadastro > Setores de Produção) -- lista todo mundo (ativo e
+// inativo), mas desabilita quem tá inativo, EXCETO se for o setor já
+// selecionado nesse desenho (senão editar um desenho antigo com um setor
+// desativado depois ficaria sem valor nenhum selecionado). Mesmo padrão do
+// <select> de fornecedor em cadastro.html.
+function renderSelectSetor(valorSelecionado){
+  const sel = document.getElementById('fdSetor');
+  sel.innerHTML = '<option value="">— selecione —</option>' +
+    (SETORES_PRODUCAO_TODOS || []).map(s => `<option value="${esc(s.nome)}"
+      ${s.nome === valorSelecionado ? ' selected' : ''}
+      ${!s.ativo && s.nome !== valorSelecionado ? ' disabled' : ''}
+    >${esc(s.nome)}${!s.ativo ? ' (inativo)' : ''}</option>`).join('');
+}
+
 function limparCamposAutoLidos(){
   document.querySelectorAll('.campo-auto-lido').forEach(el => el.classList.remove('campo-auto-lido'));
   confirmacaoLeituraOk = false;
@@ -586,13 +601,8 @@ async function init(){
   iniciarSininho('sininhoWrap');
   iniciarCartinha('cartinhaWrap');
 
-  const selSetor = document.getElementById('fdSetor');
-  SETORES.forEach(s => {
-    const opt = document.createElement('option');
-    opt.value = s;
-    opt.textContent = s;
-    selSetor.appendChild(opt);
-  });
+  await carregarSetoresProducao();
+  renderSelectSetor('');
 
   await renderPedidos();
 
@@ -1246,6 +1256,7 @@ function cancelarEdicao(){
   document.getElementById('fdArquivoAtual').textContent = '';
   document.getElementById('fdLeituraStatus').textContent = '';
   document.getElementById('formDesenho').reset();
+  renderSelectSetor('');
   carregarTagsDoPedido([], false);
   limparCamposAutoLidos();
 }
@@ -1265,7 +1276,7 @@ async function editarDesenho(id){
   document.getElementById('fdRevisao').value = d.revisao || '';
   document.getElementById('fdQtdFabricar').value = d.quantidade_fabricar ?? '0';
   document.getElementById('fdPesoDesenho').value = d.peso_unitario_desenho ?? '';
-  document.getElementById('fdSetor').value = d.setor || '';
+  renderSelectSetor(d.setor || '');
   document.getElementById('fdFabricacao').checked = !!d.is_fabricacao;
   document.getElementById('fdConhecimento').checked = !!d.is_conhecimento;
   document.getElementById('fdCompra').checked = !!d.is_compra;
@@ -1311,6 +1322,12 @@ document.getElementById('formDesenho').addEventListener('submit', async (e) => {
 
   const qtdFabricar = parseNum(document.getElementById('fdQtdFabricar').value) ?? 0;
   if (fabricacao && qtdFabricar < 1){ showMsg('Informe a Quantidade a fabricar (mínimo 1) — o desenho está marcado como Fabricação.', false); marcarErro('fieldQtdFabricar'); return; }
+
+  if (fabricacao && !document.getElementById('fdSetor').value){
+    showMsg('Selecione o Setor de Produção — obrigatório quando o desenho está marcado como Fabricação.', false);
+    marcarErro('fieldSetor');
+    return;
+  }
 
   const editando = !!desenhoEditandoId;
 

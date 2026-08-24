@@ -4,11 +4,28 @@ const SUPABASE_KEY = 'sb_publishable_2SElqmz9NJs8Cy2NdaGBag_cVeoz4gx';
 
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// setores válidos (devem bater exatamente com o enum setor_producao do banco)
-const SETORES = [
+// setores de produção -- cadastrados em public.setores_producao (Cadastro >
+// Setores de Produção), não mais um enum fixo. `SETORES` só lista os ATIVOS
+// (nomes) pra quem só precisa da lista simples (ex: gráfico de capacidade do
+// Dashboard); `SETORES_PRODUCAO_TODOS` traz todas as linhas (ativo/inativo)
+// pra quem precisa montar um <select> que também mostra o setor de um
+// registro antigo mesmo se ele foi desativado depois (ex: Engenharia). Os
+// valores abaixo são só um fallback pra antes da 1ª chamada de
+// carregarSetoresProducao() completar.
+let SETORES = [
   'ESTRUTURA', 'USINAGEM', 'TAMBOR', 'ROLOS', 'BASES ROLETES',
   'REVESTIMENTO', 'RMF', 'TECMETAL', 'CSM', 'COMERCIAL'
 ];
+let SETORES_PRODUCAO_TODOS = [];
+
+async function carregarSetoresProducao(){
+  const { data, error } = await sb.from('setores_producao').select('*').order('nome');
+  if (!error && data){
+    SETORES_PRODUCAO_TODOS = data;
+    SETORES = data.filter(s => s.ativo).map(s => s.nome);
+  }
+  return SETORES_PRODUCAO_TODOS;
+}
 
 // as 9 etapas fixas, na ordem correta
 const ETAPAS = [
