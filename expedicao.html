@@ -502,6 +502,7 @@ async function renderItensPedido(){
     </table>
     <div class="footer-bar">
       <span class="sel-count" id="selCount">0 itens selecionados</span>
+      <input id="notaFiscalInput" placeholder="Nº Nota Fiscal *" style="max-width:180px" title="Obrigatório -- número da nota fiscal emitida pra esse embarque">
       <button class="btn btn-primary" id="btnGerar" onclick="gerarRomaneio()" disabled>Gerar Romaneio</button>
     </div>`;
 
@@ -574,8 +575,16 @@ function atualizarContagem(){
 
 async function gerarRomaneio(){
   const btn = document.getElementById('btnGerar');
-  btn.disabled = true; btn.textContent = 'Gerando...';
   clearMsg();
+
+  const notaFiscal = document.getElementById('notaFiscalInput').value.trim();
+  if (!notaFiscal){
+    showMsg('Informe o número da Nota Fiscal antes de gerar o romaneio.', false);
+    document.getElementById('notaFiscalInput').focus();
+    return;
+  }
+
+  btn.disabled = true; btn.textContent = 'Gerando...';
 
   const p_itens = [...itensSelecionados].map(id => ({
     item_id: id,
@@ -592,6 +601,7 @@ async function gerarRomaneio(){
   const { data, error } = await sb.rpc('criar_romaneio', {
     p_pedido_id: pedidoAtual.id,
     p_itens,
+    p_nota_fiscal: notaFiscal,
   });
 
   if (error){
@@ -603,7 +613,7 @@ async function gerarRomaneio(){
   itensSelecionados = new Set();
   limparDraft();
   const dataStr = new Date(data.data_criacao).toLocaleDateString('pt-BR');
-  const rotulo = `${data.numero} — Pedido ${pedidoAtual.numero_pedido}${pedidoAtual.cliente ? ' · ' + pedidoAtual.cliente : ''} · ${dataStr}`;
+  const rotulo = `${data.numero} — Pedido ${pedidoAtual.numero_pedido}${pedidoAtual.cliente ? ' · ' + pedidoAtual.cliente : ''} · ${dataStr} · NF ${data.nota_fiscal}`;
   await renderItensPedido();
   showMsg(`Romaneio gerado com sucesso: ${rotulo}`, true);
 }
@@ -614,7 +624,7 @@ async function renderHistorico(){
   const content = document.getElementById('content');
   content.innerHTML = `
     <div class="search-row">
-      <input id="filtroHistorico" placeholder="Filtrar por romaneio, pedido ou cliente..." autocomplete="off" oninput="aplicarFiltroTabela('filtroHistorico','histWrap')">
+      <input id="filtroHistorico" placeholder="Filtrar por romaneio, nota fiscal, pedido ou cliente..." autocomplete="off" oninput="aplicarFiltroTabela('filtroHistorico','histWrap')">
     </div>
     <div class="tbl-wrap" id="histWrap"><div class="empty">Carregando...</div></div>`;
 
@@ -630,13 +640,17 @@ async function renderHistorico(){
   wrap.innerHTML = `
     <table class="dtbl">
       <thead><tr>
-        <th>Romaneio</th><th>Pedido</th><th>Cliente</th><th>Data</th><th></th>
+        <th>Romaneio</th><th>Nota Fiscal</th><th>Pedido</th><th>Cliente</th><th>Data</th><th></th>
       </tr></thead>
       <tbody>
         ${data.map(r => {
-          const chave = `${r.numero||''} ${r.pedidos?.numero_pedido||''} ${r.pedidos?.cliente||''}`.toLowerCase();
+          const chave = `${r.numero||''} ${r.nota_fiscal||''} ${r.pedidos?.numero_pedido||''} ${r.pedidos?.cliente||''}`.toLowerCase();
           return `<tr data-search="${esc(chave)}">
           <td><strong>${esc(r.numero)}</strong></td>
+          <td>
+            <input type="text" id="nf-${r.id}" value="${esc(r.nota_fiscal || '')}" placeholder="—" style="width:110px" onkeydown="if(event.key==='Enter')salvarNotaFiscal(${r.id})">
+            <span class="btn" style="cursor:pointer;padding:4px 10px;font-size:12px" onclick="salvarNotaFiscal(${r.id})">${r.nota_fiscal ? 'Salvar' : 'Definir'}</span>
+          </td>
           <td>${esc(r.pedidos?.numero_pedido || '')}</td>
           <td>${esc(r.pedidos?.cliente || '')}</td>
           <td>${new Date(r.data_criacao).toLocaleString('pt-BR')}</td>
@@ -646,6 +660,16 @@ async function renderHistorico(){
       </tbody>
     </table>
     <div id="romaneioItensWrap" style="margin-top:1.25rem"></div>`;
+}
+
+async function salvarNotaFiscal(romaneioId){
+  const input = document.getElementById(`nf-${romaneioId}`);
+  const valor = input.value.trim();
+  if (!valor){ showMsg('Informe o número da nota fiscal.', false); return; }
+  const { error } = await sb.rpc('editar_nota_fiscal_romaneio', { p_romaneio_id: romaneioId, p_nota_fiscal: valor });
+  if (error){ showMsg('Erro ao salvar nota fiscal: ' + error.message, false); return; }
+  showMsg('Nota fiscal salva.', true);
+  await renderHistorico();
 }
 
 async function verItensRomaneio(romaneioId, numero){
@@ -668,6 +692,7 @@ async function verItensRomaneio(romaneioId, numero){
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px">
       <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
         <span style="font-size:20px;font-weight:800;color:var(--blue);background:var(--blue-dim);padding:4px 12px;border-radius:8px">${esc(numero)}</span>
+        <span style="font-size:12px;color:var(--text2)">NF ${esc(romaneio.nota_fiscal || '— não informada')}</span>
         <span style="font-size:12px;color:var(--text2)">Pedido ${esc(romaneio.pedidos?.numero_pedido||'')}${romaneio.pedidos?.cliente ? ' · ' + esc(romaneio.pedidos.cliente) : ''}</span>
       </div>
       <div style="display:flex;gap:8px">

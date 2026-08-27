@@ -439,7 +439,7 @@ async function carregarDados(){
     buscarTudo('etapas_avanco', 'item_id, etapa, percentual'),
     buscarTudo('capacidade_setor', '*'),
     buscarTudo('romaneio_itens', 'item_id, romaneio_id, quantidade_expedida'),
-    buscarTudo('romaneios', 'id, numero, pedido_id, data_criacao'),
+    buscarTudo('romaneios', 'id, numero, nota_fiscal, pedido_id, data_criacao'),
     buscarTudo('fornecedores_producao', '*'),
   ]);
 
@@ -470,7 +470,7 @@ async function carregarDados(){
     qtdExpedidaPorItem[ri.item_id] = (qtdExpedidaPorItem[ri.item_id] || 0) + Number(ri.quantidade_expedida);
     const rom = romaneiosPorId[ri.romaneio_id];
     if (!expedicoesPorItem[ri.item_id]) expedicoesPorItem[ri.item_id] = [];
-    expedicoesPorItem[ri.item_id].push({ numero: rom?.numero || null, data: rom?.data_criacao || null, qtd: Number(ri.quantidade_expedida) });
+    expedicoesPorItem[ri.item_id].push({ numero: rom?.numero || null, notaFiscal: rom?.nota_fiscal || null, data: rom?.data_criacao || null, qtd: Number(ri.quantidade_expedida) });
   });
 
   // realizado (kg expedido) por mês-calendário, pro gráfico "Capacidade x
@@ -1264,7 +1264,7 @@ function renderRelatorioGeral(){
   document.getElementById('headerArea').innerHTML = `
   <div class="toolbar">
     <button class="btn" onclick="irPedido()">← ${esc(state.pedido)}</button>
-    <input class="filter-input" style="flex:1;min-width:260px" id="filtroRelGeral" placeholder="🔍 Filtrar por produto, desenho, desenho cliente, tag, remessa, status ou LE..." oninput="aplicarFiltroDash('filtroRelGeral','relGeralWrap')">
+    <input class="filter-input" style="flex:1;min-width:260px" id="filtroRelGeral" placeholder="🔍 Filtrar por produto, desenho, desenho cliente, tag, remessa, status, LE ou nota fiscal..." oninput="aplicarFiltroDash('filtroRelGeral','relGeralWrap')">
   </div>`;
 
   const itens = todosItensDoPedido(state.pedido);
@@ -1272,8 +1272,9 @@ function renderRelatorioGeral(){
   const expedidos = itens.filter(it => it.status_expedicao === 'expedido');
 
   const linha = it => {
-    const les = (it.expedicoes || []).map(e => e.numero).filter(Boolean).join(', ') || '—';
-    const chave = `${state.pedido} ${cli?.cliente||''} ${it.produto||''} ${it.desenho||''} ${it.desenho_cliente||''} ${it.tag||''} ${it.remessa||''} ${it.status_expedicao||''} ${les}`.toLowerCase();
+    const les = (it.expedicoes || []).map(e => e.numero ? `${e.numero}${e.notaFiscal ? ' (NF ' + e.notaFiscal + ')' : ''}` : null).filter(Boolean).join(', ') || '—';
+    const notasFiscais = (it.expedicoes || []).map(e => e.notaFiscal).filter(Boolean).join(' ');
+    const chave = `${state.pedido} ${cli?.cliente||''} ${it.produto||''} ${it.desenho||''} ${it.desenho_cliente||''} ${it.tag||''} ${it.remessa||''} ${it.status_expedicao||''} ${les} ${notasFiscais}`.toLowerCase();
     const statusHtml = it.status_expedicao === 'expedido' ? '<span class="status-badge sb-ok">Expedido</span>'
       : it.status_expedicao === 'parcial' ? '<span class="status-badge sb-info">Em Aberto (parcial)</span>'
       : '<span class="status-badge sb-info">Em Aberto</span>';
@@ -1320,7 +1321,7 @@ function renderItensExpedidos(){
   document.getElementById('headerArea').innerHTML = `
   <div class="toolbar">
     <button class="btn" onclick="irPedido()">← ${esc(state.pedido)}</button>
-    <input class="filter-input" style="flex:1;min-width:260px" id="filtroItensExp" placeholder="🔍 Filtrar por romaneio/LE, desenho, desenho cliente, tag, remessa ou produto..." oninput="aplicarFiltroDash('filtroItensExp','itensExpWrap')">
+    <input class="filter-input" style="flex:1;min-width:260px" id="filtroItensExp" placeholder="🔍 Filtrar por romaneio/LE, nota fiscal, desenho, desenho cliente, tag, remessa ou produto..." oninput="aplicarFiltroDash('filtroItensExp','itensExpWrap')">
   </div>`;
 
   const itens = todosItensDoPedido(state.pedido);
@@ -1329,11 +1330,12 @@ function renderItensExpedidos(){
   linhas.sort((a, b) => new Date(a.exp.data || 0) - new Date(b.exp.data || 0));
 
   const rowsHtml = linhas.map(({ it, exp }) => {
-    const chave = `${state.pedido} ${cli?.cliente||''} ${exp.numero||''} ${it.produto||''} ${it.desenho||''} ${it.desenho_cliente||''} ${it.tag||''} ${it.remessa||''}`.toLowerCase();
+    const chave = `${state.pedido} ${cli?.cliente||''} ${exp.numero||''} ${exp.notaFiscal||''} ${it.produto||''} ${it.desenho||''} ${it.desenho_cliente||''} ${it.tag||''} ${it.remessa||''}`.toLowerCase();
     return `<tr data-search="${esc(chave)}">
       <td>${esc(state.pedido)}</td>
       <td>${esc(cli?.cliente || '')}</td>
       <td><strong>${esc(exp.numero || '—')}</strong></td>
+      <td>${esc(exp.notaFiscal || '—')}</td>
       <td>${exp.data ? new Date(exp.data).toLocaleDateString('pt-BR') : '—'}</td>
       <td>${esc(it.desenho || '')}</td>
       <td>${esc(it.desenho_cliente || '—')}</td>
@@ -1349,9 +1351,9 @@ function renderItensExpedidos(){
     <div class="section-title">Itens Expedidos — ${esc(state.pedido)}${cli?.cliente ? ' · ' + esc(cli.cliente) : ''}</div>
     <div id="itensExpWrap" class="tbl-wrap"><table class="dtbl">
       <thead><tr>
-        <th>Pedido</th><th>Cliente</th><th>Romaneio/LE</th><th>Data expedição</th><th>Desenho MDE</th><th>Desenho Cliente</th><th>Produto</th><th>TAG</th><th>Remessa</th><th class="r">Qtd. expedida</th>
+        <th>Pedido</th><th>Cliente</th><th>Romaneio/LE</th><th>Nota Fiscal</th><th>Data expedição</th><th>Desenho MDE</th><th>Desenho Cliente</th><th>Produto</th><th>TAG</th><th>Remessa</th><th class="r">Qtd. expedida</th>
       </tr></thead>
-      <tbody>${rowsHtml || `<tr><td colspan="10" class="empty">Nenhum item expedido ainda para este pedido.</td></tr>`}</tbody>
+      <tbody>${rowsHtml || `<tr><td colspan="11" class="empty">Nenhum item expedido ainda para este pedido.</td></tr>`}</tbody>
     </table></div>
     </div>`;
   setStatus(`Itens Expedidos · ${state.pedido} · ${linhas.length} lançamentos de expedição`);
