@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="icon" href="assets/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-title" content="Flow Suite">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Flow Suite — Almoxarifado</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- SheetJS (não ExcelJS) -- testado contra um export real do Sapiens: o
+     ExcelJS (usado na Expedição) não consegue nem abrir esse arquivo
+     (planilha malformada, comum em relatório de sistema legado exportado
+     pra Excel) -- SheetJS lê sem problema. -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+:root{
+  --navy:#0b1e33; --navy2:#102A43; --navy3:#173a5e;
+  --bg:#F8FAFC; --bg2:#ffffff; --bg3:#F1F5F9; --bg4:#E9EDF3;
+  --border:#E5E7EB; --border-strong:#CBD5E1; --text:#111827; --text2:#6B7280; --text3:#9CA3AF;
+  --blue:#1D4ED8; --blue-dim:#DBEAFE; --blue-hover:#1E40AF; --header-bg:#102A43;
+  --green:#10B981; --green-dim:#D1FAE5;
+  --amber:#b5690a; --amber-dim:#faedd9;
+  --red:#DC2626; --red-dim:#FEE2E2;
+  --radius:16px; --radius-sm:10px;
+  --shadow-sm:0 1px 2px rgba(16,24,40,.04), 0 1px 3px rgba(16,24,40,.06);
+  --shadow-md:0 8px 20px rgba(16,24,40,.10), 0 2px 6px rgba(16,24,40,.05);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:14px;-webkit-font-smoothing:antialiased}
+
+.app-shell{min-height:100vh;display:flex;flex-direction:column}
+.app-header{display:flex;align-items:center;justify-content:space-between;height:60px;padding:0 22px;background:var(--header-bg);border-bottom:1px solid var(--border);flex-shrink:0;position:sticky;top:0;z-index:100}
+.app-header-brand{display:flex;align-items:center;gap:10px}
+.app-header-brand .logo-full{height:42px;width:auto;flex-shrink:0;display:block}
+.app-header-right{display:flex;align-items:center;gap:12px}
+.header-user{font-size:12px;color:rgba(255,255,255,.6);text-align:right;line-height:1.3}
+.header-user strong{color:#fff;font-weight:600;display:block;font-size:12.5px}
+.icon-btn{width:32px;height:32px;border-radius:9px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:#fff;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+.icon-btn:hover{background:rgba(255,255,255,.16)}
+.icon-btn svg{width:15px;height:15px}
+.avatar{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#4f8ef7,#7c6cf0);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;flex-shrink:0}
+
+.app-body{flex:1;display:flex;min-height:0}
+.sidebar{width:222px;flex-shrink:0;background:var(--navy2);border-right:1px solid var(--border);display:flex;flex-direction:column;justify-content:space-between;padding:16px 10px;transition:width .15s ease}
+.app-shell.sidebar-collapsed .sidebar{width:68px}
+.app-shell.sidebar-collapsed .nav-label,.app-shell.sidebar-collapsed .collapse-label{display:none}
+.sidebar-nav{display:flex;flex-direction:column;gap:2px}
+.nav-item{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:10px;color:rgba(255,255,255,.66);text-decoration:none;font-size:13.5px;font-weight:500;white-space:nowrap;overflow:hidden}
+.nav-item svg{width:17px;height:17px;flex-shrink:0}
+.nav-item:hover{background:rgba(255,255,255,.07);color:#fff}
+.nav-item.active{background:var(--blue);color:#fff;font-weight:600}
+.collapse-btn{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;color:rgba(255,255,255,.45);background:none;border:none;cursor:pointer;font-size:12.5px;width:100%;font-family:inherit}
+.collapse-btn:hover{background:rgba(255,255,255,.07);color:#fff}
+.collapse-btn svg{width:15px;height:15px;transition:transform .15s;flex-shrink:0}
+.app-shell.sidebar-collapsed .collapse-btn svg{transform:rotate(180deg)}
+
+.sidebar-fab{position:fixed;bottom:20px;left:16px;z-index:260;width:46px;height:46px;border-radius:50%;background:var(--navy2);border:1px solid rgba(255,255,255,.15);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:var(--shadow-md);transition:background .12s,transform .12s}
+.sidebar-fab:hover{background:var(--navy3);transform:scale(1.06)}
+.sidebar-fab svg{width:20px;height:20px;transition:transform .2s;flex-shrink:0}
+.app-shell.sidebar-collapsed .sidebar-fab svg{transform:rotate(180deg)}
+
+.content{flex:1;min-width:0;padding:1.75rem 2rem;overflow-y:auto}
+
+.btn{display:inline-block;padding:8px 15px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg2);color:var(--text);font-size:12.5px;cursor:pointer;font-weight:500;transition:border-color .12s,color .12s}
+.btn:hover{border-color:var(--blue);color:var(--blue)}
+.btn-primary{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}
+.btn-primary:hover{background:var(--blue-hover);border-color:var(--blue-hover);color:#fff}
+.btn-primary:disabled{opacity:.5;cursor:default}
+
+.notice{margin:0 0 1.25rem;padding:11px 16px;background:var(--amber-dim);color:var(--amber);border-radius:var(--radius-sm);font-size:12.5px;border:1px solid rgba(181,105,10,.15)}
+
+.nav-bar{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--text2);margin-bottom:16px}
+.search-row{display:flex;gap:10px;margin-bottom:1.25rem;flex-wrap:wrap;align-items:center}
+.search-row input, .search-row select{padding:10px 13px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg2);color:var(--text);font-size:13px}
+.search-row input:focus, .search-row select:focus{outline:none;border-color:var(--blue)}
+.search-row input.main{flex:1;min-width:220px;padding:13px 16px;font-size:16px}
+.empty{text-align:center;padding:3rem 2rem;color:var(--text2);font-size:13px}
+
+.tbl-wrap{overflow-x:auto;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-sm)}
+.dtbl{width:100%;border-collapse:collapse;font-size:12px}
+.dtbl thead th{text-align:left;padding:8px 10px;color:var(--text2);border-bottom:1px solid var(--border);font-weight:500;white-space:nowrap;background:var(--bg3);position:sticky;top:0}
+.dtbl tbody tr{border-bottom:1px solid var(--border)}
+.dtbl tbody tr:hover td{background:var(--bg3)}
+.dtbl tbody td{padding:7px 10px;vertical-align:middle;white-space:nowrap}
+.desc-cell{max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2)}
+.dtbl td.r{text-align:right;font-variant-numeric:tabular-nums}
+.status-badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:10px;font-weight:600;white-space:nowrap}
+.sb-pendente{background:var(--red-dim);color:var(--red)}
+.sb-parcial{background:var(--amber-dim);color:var(--amber)}
+.sb-total{background:var(--green-dim);color:var(--green)}
+.sem-link{color:var(--text3);font-style:italic}
+
+.edit-input{width:70px;padding:5px 7px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);color:var(--text);font-size:12px;text-align:right}
+.edit-input.txt{width:110px;text-align:left}
+.edit-input:focus{outline:none;border-color:var(--blue)}
+
+.msg-box{margin:0 0 1rem;padding:10px 14px;border-radius:var(--radius-sm);font-size:13px;display:none}
+.msg-box.show{display:block}
+.msg-box.err{background:var(--red-dim);color:var(--red)}
+.msg-box.ok{background:var(--green-dim);color:var(--green)}
+
+.modal-overlay{position:fixed;inset:0;background:rgba(15,23,42,.55);display:none;align-items:flex-start;justify-content:center;z-index:400;padding:3rem 1rem;overflow-y:auto}
+.modal-overlay.show{display:flex}
+.modal-box{background:var(--bg2);border-radius:var(--radius);max-width:1100px;width:100%;box-shadow:var(--shadow-md);padding:1.5rem}
+.modal-title{font-size:16px;font-weight:700;margin-bottom:.5rem}
+.modal-sub{font-size:12.5px;color:var(--text2);margin-bottom:1rem}
+.modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:1.25rem}
+.resumo-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:1px;background:var(--border);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:1.25rem}
+.resumo-stat{background:var(--bg2);padding:.9rem 1rem}
+.resumo-stat .k{font-size:10.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.3rem}
+.resumo-stat .v{font-size:1.2rem;font-weight:700}
+.resumo-stat.err .v{color:var(--red)}
+.resumo-stat.warn .v{color:var(--amber)}
+.resumo-stat.ok .v{color:var(--green)}
+</style>
+</head>
+<body>
+
+<div class="app-shell" id="appShell">
+  <header class="app-header">
+    <div class="app-header-brand">
+      <img class="logo-full" src="assets/logo.png" alt="Flow Suite">
+    </div>
+    <div class="app-header-right">
+      <span class="header-user">Logado como<strong id="userNome">...</strong></span>
+      <div id="sininhoWrap"></div>
+      <div id="cartinhaWrap"></div>
+      <button class="icon-btn" title="Início" onclick="window.location.href='index.html'">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 9.5 10 3l7 6.5M5 8v8h10V8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <button class="icon-btn" title="Sair" onclick="logout()">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 3H4v14h4M13 6l4 4-4 4M6.5 10H17" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="avatar" id="userAvatar">··</div>
+    </div>
+  </header>
+  <div class="app-body">
+    <aside class="sidebar">
+      <nav class="sidebar-nav">
+        <a class="nav-item" href="index.html">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 9.5 10 3l7 6.5M5 8v8h10V8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="nav-label">Início</span>
+        </a>
+        <a class="nav-item" href="contratos.html">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 2.5h6l3 3v12h-9z" stroke-linejoin="round"/><path d="M12 2.5V6h3M8 10h4M8 13h4M8 7h1.5" stroke-linecap="round"/></svg>
+          <span class="nav-label">Contratos</span>
+        </a>
+        <a class="nav-item" href="engenharia.html">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m3 17 8-8m0 0 4-4 2 2-4 4m-4-4 4 4M6 14l-1 3 3-1" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="nav-label">Engenharia</span>
+        </a>
+        <a class="nav-item" href="cadastro.html">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M7 3h6a1 1 0 0 1 1 1v1H6V4a1 1 0 0 1 1-1Z" stroke-linejoin="round"/><path d="M6 4H5a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1h-1M7 10h6M7 13h4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="nav-label">PCP</span>
+        </a>
+        <a class="nav-item" href="apontamento.html">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 17V9l4-3 4 3v8M11 17V6l3-2 3 2v11" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="nav-label">Produção</span>
+        </a>
+        <a class="nav-item" href="ponto.html">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10.5" r="7"/><path d="M10 6.5v4l3 2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="nav-label">Apontamento de Horas</span>
+        </a>
+        <a class="nav-item" href="expedicao.html">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 6h9v8H2zM11 9h4l3 3v2h-7z" stroke-linejoin="round"/><circle cx="6" cy="15.5" r="1.4"/><circle cx="14" cy="15.5" r="1.4"/></svg>
+          <span class="nav-label">Expedição</span>
+        </a>
+        <a class="nav-item" href="industrializacao.html">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m10 2 7 3.5v9L10 18l-7-3.5v-9L10 2Z" stroke-linejoin="round"/><path d="M10 2v16M3 5.5 10 9l7-3.5M10 9v9" stroke-linejoin="round"/></svg>
+          <span class="nav-label">Industrialização</span>
+        </a>
+        <a class="nav-item active" href="almoxarifado.html">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 4h14M3 4v12M17 4v12M3 8h14M3 12h14M3 16h14" stroke-linecap="round"/></svg>
+          <span class="nav-label">Almoxarifado</span>
+        </a>
+        <a class="nav-item" href="dashboard.html">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 15V9M10 15V4M16 15v-6" stroke-linecap="round"/></svg>
+          <span class="nav-label">Dashboard</span>
+        </a>
+      </nav>
+      <button class="collapse-btn" onclick="alternarSidebar(true)">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12.5 4 7 10l5.5 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span class="collapse-label">Recolher menu</span>
+      </button>
+    </aside>
+    <button class="sidebar-fab" id="sidebarFab" onclick="alternarSidebar(true)" title="Mostrar/ocultar menu">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12.5 4 7 10l5.5 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <main class="content">
+      <div class="nav-bar"><span class="nav-crumb active">Almoxarifado — Solicitações de Compra</span></div>
+      <div id="msgBox" class="msg-box"></div>
+
+      <div class="search-row">
+        <input class="main" id="filtroPrincipal" placeholder="🔍 Filtrar por SC, item, OC, pedido, código, descrição, fornecedor, requisitante, NF..." oninput="aplicarFiltros()">
+        <select id="filtroStatus" onchange="aplicarFiltros()">
+          <option value="">Status: todos</option>
+          <option value="pendente">Pendente</option>
+          <option value="parcial">Parcialmente recebido</option>
+          <option value="total">Totalmente recebido</option>
+        </select>
+        <span class="btn btn-primary" onclick="document.getElementById('inputImportarSapiens').click()">📥 Importar Arquivo do Sapiens</span>
+        <input type="file" id="inputImportarSapiens" accept=".xlsx" style="display:none" onchange="onArquivoSapiensSelecionado(this)">
+      </div>
+
+      <div class="tbl-wrap" id="tblWrap"><div class="empty">Carregando...</div></div>
+    </main>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modalPreview">
+  <div class="modal-box">
+    <div class="modal-title">Conferir importação antes de confirmar</div>
+    <div class="modal-sub" id="previewSub"></div>
+    <div id="previewErros"></div>
+    <div class="tbl-wrap" style="max-height:420px;overflow-y:auto">
+      <table class="dtbl">
+        <thead><tr><th>SC</th><th>Item</th><th>Pedido</th><th>Código</th><th>Descrição</th><th class="r">Qtd. Solic.</th><th>OC</th><th>Fornecedor</th></tr></thead>
+        <tbody id="previewTbody"></tbody>
+      </table>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="fecharPreview()">Cancelar</button>
+      <button class="btn btn-primary" id="btnConfirmarImportacao" onclick="confirmarImportacaoSapiens()">Confirmar importação</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/supabase-client.js?v=2"></script>
+<script>
+let AUTH = null;
+let TODOS_ITENS = [];
+
+let sidebarMexidoManualmente = false;
+function alternarSidebar(manual){
+  document.getElementById('appShell').classList.toggle('sidebar-collapsed');
+  if (manual) sidebarMexidoManualmente = true;
+}
+setTimeout(() => {
+  if (sidebarMexidoManualmente) return;
+  document.getElementById('appShell').classList.add('sidebar-collapsed');
+}, 5000);
+
+function showMsg(text, ok){
+  const box = document.getElementById('msgBox');
+  box.textContent = text;
+  box.className = 'msg-box show ' + (ok ? 'ok' : 'err');
+}
+function clearMsg(){ document.getElementById('msgBox').classList.remove('show'); }
+
+async function init(){
+  AUTH = await exigirLogin(['almoxarifado', 'admin']);
+  if (!AUTH) return;
+  document.getElementById('userNome').textContent = AUTH.nome;
+  document.getElementById('userAvatar').textContent = (AUTH.nome || '').trim().split(/\s+/).map(p => p[0]).slice(0, 2).join('').toUpperCase() || '··';
+  iniciarSininho('sininhoWrap');
+  iniciarCartinha('cartinhaWrap');
+  await carregarItens();
+}
+
+async function carregarItens(){
+  const wrap = document.getElementById('tblWrap');
+  wrap.innerHTML = `<div class="empty">Carregando...</div>`;
+  const { data, error } = await sb
+    .from('almoxarifado_itens')
+    .select('*, pedidos(numero_pedido, cliente)')
+    .order('sc', { ascending: false })
+    .order('item_seq');
+  if (error){ wrap.innerHTML = `<div class="empty">Erro: ${esc(error.message)}</div>`; return; }
+  TODOS_ITENS = data;
+  aplicarFiltros();
+}
+
+function badgeStatus(s){
+  if (s === 'total') return '<span class="status-badge sb-total">Totalmente recebido</span>';
+  if (s === 'parcial') return '<span class="status-badge sb-parcial">Parcial</span>';
+  return '<span class="status-badge sb-pendente">Pendente</span>';
+}
+
+function aplicarFiltros(){
+  const q = document.getElementById('filtroPrincipal').value.trim().toLowerCase();
+  const statusF = document.getElementById('filtroStatus').value;
+  const itens = TODOS_ITENS.filter(it => {
+    if (statusF && it.status_recebimento !== statusF) return false;
+    if (!q) return true;
+    const chave = `${it.sc} ${it.item_seq} ${it.oc||''} ${it.pedido_bruto||''} ${it.pedidos?.numero_pedido||''} ${it.codigo_produto||''} ${it.descricao||''} ${it.fornecedor||''} ${it.requisitante||''} ${it.nf||''} ${it.nf_sistema||''} ${it.situacao_oc||''}`.toLowerCase();
+    return chave.includes(q);
+  });
+  renderTabela(itens);
+}
+
+function renderTabela(itens){
+  const wrap = document.getElementById('tblWrap');
+  if (!itens.length){ wrap.innerHTML = `<div class="empty">Nenhum item importado ainda. Clique em "Importar Arquivo do Sapiens" pra começar.</div>`; return; }
+
+  wrap.innerHTML = `
+    <table class="dtbl">
+      <thead><tr>
+        <th>SC</th><th>Item</th><th>Pedido</th><th>Família</th><th>Código</th><th>Descrição</th>
+        <th>Fornecedor</th><th>OC</th><th>Sit. OC</th><th>Requisitante</th><th>Desenho</th>
+        <th class="r">Qtd. Solic.</th><th class="r">Qtd. Recebida</th><th class="r">Qtd. Pendente</th>
+        <th>NF</th><th>Observação</th><th>Status</th><th></th>
+      </tr></thead>
+      <tbody>
+        ${itens.map(it => `
+        <tr id="row-${it.id}">
+          <td>${it.sc}</td>
+          <td>${it.item_seq}</td>
+          <td>${it.pedidos?.numero_pedido ? esc(it.pedidos.numero_pedido) : (it.pedido_bruto ? `<span class="sem-link" title="Não achei pedido ${esc(it.pedido_bruto)} cadastrado no sistema">${esc(it.pedido_bruto)} ⚠</span>` : '—')}</td>
+          <td>${esc(it.familia || '—')}</td>
+          <td>${esc(it.codigo_produto || '—')}</td>
+          <td class="desc-cell" title="${esc(it.descricao||'')}">${esc(it.descricao || '—')}</td>
+          <td>${esc(it.fornecedor || '—')}</td>
+          <td>${esc(it.oc || '—')}</td>
+          <td>${esc(it.situacao_oc || '—')}</td>
+          <td>${esc(it.requisitante || '—')}</td>
+          <td>${esc(it.desenho || '—')}</td>
+          <td class="r">${Number(it.quantidade_solicitada).toLocaleString('pt-BR')}</td>
+          <td class="r"><input class="edit-input" id="qtd-${it.id}" type="number" step="0.001" min="0" value="${it.quantidade_recebida}"></td>
+          <td class="r">${Number(it.quantidade_pendente).toLocaleString('pt-BR')}</td>
+          <td><input class="edit-input txt" id="nf-${it.id}" value="${esc(it.nf || '')}"></td>
+          <td><input class="edit-input txt" id="obs-${it.id}" value="${esc(it.observacao || '')}"></td>
+          <td>${badgeStatus(it.status_recebimento)}</td>
+          <td><span class="btn" onclick="salvarRecebimento(${it.id})">Salvar</span></td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+async function salvarRecebimento(id){
+  const qtd = parseFloat(document.getElementById(`qtd-${id}`).value);
+  const nf = document.getElementById(`nf-${id}`).value;
+  const obs = document.getElementById(`obs-${id}`).value;
+  if (isNaN(qtd) || qtd < 0){ showMsg('Quantidade recebida inválida.', false); return; }
+  const { error } = await sb.rpc('editar_recebimento_almoxarifado', {
+    p_id: id, p_quantidade_recebida: qtd, p_nf: nf, p_observacao: obs,
+  });
+  if (error){ showMsg('Erro ao salvar: ' + error.message, false); return; }
+  showMsg('Recebimento atualizado.', true);
+  await carregarItens();
+}
+
+// ── IMPORTAÇÃO DO ARQUIVO DO SAPIENS ────────────────────────────────────────
+// O export do Sapiens é um RELATÓRIO impresso, não uma planilha limpa: tem
+// título de empresa, título do relatório, e linhas "Data Prevista :" que se
+// repetem espalhadas o arquivo inteiro (agrupamento do relatório por data).
+// Detecta linha de dado de verdade só pela combinação SC (número grande) +
+// Item/Sequência (número pequeno) nas duas primeiras colunas -- o resto (o
+// layout das colunas seguintes) foi mapeado a partir de uma exportação real,
+// mas pode variar entre exportações; por isso SEMPRE mostra a prévia antes
+// de confirmar (ver renderPreview), pra alguém que conhece os dados
+// conferir antes de gravar.
+let ITENS_PARA_IMPORTAR = [];
+let ITENS_COM_ERRO = [];
+
+function pareceUsername(v){
+  return typeof v === 'string' && /^[a-z]+\.[a-z]+$/i.test(v.trim());
+}
+function pareceData(v){
+  if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v)) return v.slice(0, 10);
+  if (typeof v === 'number' && v > 20000 && v < 60000){
+    // serial de data do Excel
+    const d = XLSX.SSF.parse_date_code(v);
+    if (d) return `${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`;
+  }
+  return null;
+}
+
+async function onArquivoSapiensSelecionado(inputEl){
+  const file = inputEl.files[0];
+  if (!file) return;
+  inputEl.value = '';
+  clearMsg();
+
+  try {
+    const buffer = await file.arrayBuffer();
+    const wb = XLSX.read(buffer, { type: 'array' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    if (!ws) throw new Error('Planilha vazia ou em formato não reconhecido.');
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
+
+    const itens = [];
+    const erros = [];
+
+    for (const row of rows){
+      const sc = row[0];
+      const itemSeq = row[1];
+
+      // linha de dado de verdade: SC (número grande) e Item/Sequência
+      // numéricos -- descarta título, cabeçalho de coluna e as linhas
+      // "Data Prevista :" que se repetem no meio do arquivo inteiro
+      if (typeof sc !== 'number' || typeof itemSeq !== 'number') continue;
+      if (!Number.isInteger(sc) || sc < 100) continue;
+
+      const codigoProduto = row[2];
+      const descricao = row[3];
+      const um = row[7];
+      const qtdSolic = row[8];
+      const dataSolic = row[9];
+      const oc = row[10];
+      const dataPrevOC = row[11];
+      const sitOC = row[12];
+      const pedido = row[13];
+
+      if (qtdSolic == null || descricao == null){
+        erros.push({ sc, item: itemSeq, motivo: 'Sem descrição ou quantidade solicitada' });
+        continue;
+      }
+
+      // as colunas depois de "Pedido" variam de posição entre exportações
+      // (relatório de sistema legado) -- varre o resto da linha caçando por
+      // formato de valor em vez de posição fixa.
+      // Fornecedor e NF Sistema não têm um formato reconhecível na exportação
+      // que calibrei esse parser contra (não distinguem de outros textos
+      // soltos do relatório) -- ficam em branco até o Sapiens exportar isso
+      // de um jeito identificável, ou até editar manualmente aqui na tela.
+      let desenho = null, solicitante = null, familia = null, fornecedor = null, nfSistema = null;
+      for (let c = 14; c < row.length; c++){
+        const val = row[c];
+        if (val == null || val === '') continue;
+        if (typeof val === 'string' && pareceUsername(val)) { solicitante = solicitante || val; continue; }
+        if (typeof val === 'string' && /^[A-Z]{2,4}$/.test(val.trim())) { familia = familia || val.trim(); continue; }
+        if (typeof val === 'string' && /[A-Z]-?\d{3,}/.test(val) && val.length < 40) { desenho = desenho || val; continue; }
+      }
+
+      itens.push({
+        sc, item_seq: itemSeq,
+        pedido_bruto: pedido != null ? String(pedido).replace(/\.0$/, '') : null,
+        familia, oc: oc != null ? String(oc) : null,
+        data_prevista_entrega: pareceData(dataPrevOC),
+        codigo_produto: codigoProduto != null ? String(codigoProduto) : null,
+        descricao: String(descricao),
+        data_solicitacao: pareceData(dataSolic),
+        pc: um != null ? String(um) : null,
+        quantidade_solicitada: Number(qtdSolic) || 0,
+        desenho, requisitante: solicitante,
+        situacao_oc: sitOC != null ? String(sitOC) : null,
+        nf_sistema: nfSistema, fornecedor,
+      });
+    }
+
+    if (!itens.length && !erros.length) throw new Error('Não achei nenhuma linha reconhecível (SC + Item) no arquivo.');
+
+    ITENS_PARA_IMPORTAR = itens;
+    ITENS_COM_ERRO = erros;
+    renderPreview();
+  } catch (err) {
+    showMsg('Erro ao ler a planilha: ' + (err.message || err), false);
+  }
+}
+
+function renderPreview(){
+  document.getElementById('previewSub').textContent =
+    `${ITENS_PARA_IMPORTAR.length} linha(s) reconhecida(s) pra importar` +
+    (ITENS_COM_ERRO.length ? ` · ${ITENS_COM_ERRO.length} linha(s) ignorada(s) por erro` : '');
+
+  document.getElementById('previewErros').innerHTML = ITENS_COM_ERRO.length ? `
+    <div class="notice">
+      ${ITENS_COM_ERRO.length} linha(s) não importadas: ${ITENS_COM_ERRO.map(e => `SC ${e.sc ?? '—'} / Item ${e.item ?? '—'} (${esc(e.motivo)})`).join('; ')}
+    </div>` : '';
+
+  document.getElementById('previewTbody').innerHTML = ITENS_PARA_IMPORTAR.map(it => `
+    <tr>
+      <td>${it.sc}</td><td>${it.item_seq}</td><td>${esc(it.pedido_bruto || '—')}</td>
+      <td>${esc(it.codigo_produto || '—')}</td>
+      <td class="desc-cell" title="${esc(it.descricao)}">${esc(it.descricao)}</td>
+      <td class="r">${it.quantidade_solicitada}</td>
+      <td>${esc(it.oc || '—')}</td><td>${esc(it.fornecedor || '—')}</td>
+    </tr>`).join('');
+
+  document.getElementById('modalPreview').classList.add('show');
+}
+function fecharPreview(){
+  document.getElementById('modalPreview').classList.remove('show');
+  ITENS_PARA_IMPORTAR = []; ITENS_COM_ERRO = [];
+}
+
+async function confirmarImportacaoSapiens(){
+  if (!ITENS_PARA_IMPORTAR.length){ fecharPreview(); return; }
+  const btn = document.getElementById('btnConfirmarImportacao');
+  btn.disabled = true; btn.textContent = 'Importando...';
+
+  const { data, error } = await sb.rpc('importar_almoxarifado', { p_itens: ITENS_PARA_IMPORTAR });
+
+  btn.disabled = false; btn.textContent = 'Confirmar importação';
+
+  if (error){ showMsg('Erro ao importar: ' + error.message, false); return; }
+
+  showMsg(`Importação concluída — ${data.novos} novo(s), ${data.atualizados} atualizado(s).`, true);
+  fecharPreview();
+  await carregarItens();
+}
+</script>
+</body>
+</html>
