@@ -492,6 +492,12 @@ async function confirmarImportacaoSapiens(){
   fecharPreview();
   await carregarItens();
 }
+
+init().catch(err => {
+  document.getElementById('tblWrap').innerHTML =
+    `<div class="empty">Erro ao iniciar a página: ${esc(err.message || err)}</div>`;
+  console.error('Erro no init():', err);
+});
 </script>
 </body>
 </html>
