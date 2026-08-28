@@ -640,6 +640,37 @@ function setorTableHTML(map, onClickFn){
   </table></div></div>`;
 }
 
+/* ── SETOR TABLE POR QUANTIDADE (peças/un.) ──
+   Peso sozinho não basta pra Bases Roletes e Tambor -- o chão de fábrica
+   conta peça por peça nesses setores, não só tonelada. Mesmas colunas do
+   dashboard antigo (FactoryView): produção, expedida, na empresa (=
+   pendente = produção - expedida), por setor. */
+function setorAggQtd(items){
+  let qtdProd=0, qtdExp=0;
+  items.forEach(it => { qtdProd+=Number(it.quantidade)||0; qtdExp+=it.qtdExpedida||0; });
+  return { qtdProd, qtdExp, qtdPend: Math.max(0, qtdProd-qtdExp) };
+}
+function setorTableQtdHTML(map){
+  const setores = Object.keys(map).sort();
+  const fn = n => Number(n).toLocaleString('pt-BR');
+  let totProd=0, totExp=0, totPend=0;
+  const rows = setores.map(setor => {
+    const a = setorAggQtd(map[setor]);
+    totProd+=a.qtdProd; totExp+=a.qtdExp; totPend+=a.qtdPend;
+    return `<tr>
+      <td><strong style="color:var(--text)">${esc(setor)}</strong></td>
+      <td class="r" style="color:var(--amber)">${fn(a.qtdProd)}</td>
+      <td class="r" style="color:var(--teal)">${fn(a.qtdExp)}</td>
+      <td class="r" style="color:var(--red)">${fn(a.qtdPend)}</td>
+    </tr>`;
+  }).join('');
+  return `<div class="cap-table-box"><div style="overflow-x:auto"><table class="ctbl">
+    <thead><tr><th>Setor</th><th class="r">Qtde produção (un.)</th><th class="r">Qtde expedida (un.)</th><th class="r">Qtde na empresa (un.)</th></tr></thead>
+    <tbody>${rows}</tbody>
+    <tfoot><tr><td>TOTAL</td><td class="r" style="color:var(--amber)">${fn(totProd)}</td><td class="r" style="color:var(--teal)">${fn(totExp)}</td><td class="r" style="color:var(--red)">${fn(totPend)}</td></tr></tfoot>
+  </table></div></div>`;
+}
+
 /* ── CAPACIDADE (geral, todos os pedidos) ──
    Fornecedores terceirizados (fornecedores_producao, ex: RMF/AXION) entram
    NA MESMA lista/gráfico que os setores internos, não num painel à parte --
@@ -1049,6 +1080,7 @@ function renderPedido(){
 
   const mapaSetores = setoresDoPedido(state.pedido);
   h += `<div class="section" style="padding-top:1.25rem"><div class="section-title">Setores do pedido — carga programada, expedido, pendente e avanço</div>${setorTableHTML(mapaSetores, null)}</div>`;
+  h += `<div class="section"><div class="section-title">Controle de quantidade — peças (un.)</div>${setorTableQtdHTML(mapaSetores)}</div>`;
   h += `<div class="section"><div class="section-title">TAGs do pedido — clique para ver os setores</div><div class="cards-grid">`;
   tk.sort().forEach(tag => {
     const itensTag = itensFlat(tags[tag]);
