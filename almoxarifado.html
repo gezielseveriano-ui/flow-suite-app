@@ -574,18 +574,40 @@ function fecharPreview(){
   ITENS_PARA_IMPORTAR = []; ITENS_COM_ERRO = [];
 }
 
+// manda em lotes de 300 -- não é limite de quantidade (o arquivo pode ter
+// quantas linhas precisar), é só pra cada requisição ao Supabase ficar
+// pequena e rápida em vez de 1 chamada gigante que arrisca estourar tempo/
+// tamanho de requisição com volumes grandes.
+const TAMANHO_LOTE_IMPORTACAO = 300;
+function emLotes(lista, tamanho){
+  const lotes = [];
+  for (let i = 0; i < lista.length; i += tamanho) lotes.push(lista.slice(i, i + tamanho));
+  return lotes;
+}
+
 async function confirmarImportacaoSapiens(){
   if (!ITENS_PARA_IMPORTAR.length){ fecharPreview(); return; }
   const btn = document.getElementById('btnConfirmarImportacao');
-  btn.disabled = true; btn.textContent = 'Importando...';
+  btn.disabled = true;
 
-  const { data, error } = await sb.rpc('importar_almoxarifado', { p_itens: ITENS_PARA_IMPORTAR });
+  const lotes = emLotes(ITENS_PARA_IMPORTAR, TAMANHO_LOTE_IMPORTACAO);
+  let novos = 0, atualizados = 0, processados = 0;
+  try {
+    for (const lote of lotes){
+      btn.textContent = `Importando... ${processados}/${ITENS_PARA_IMPORTAR.length}`;
+      const { data, error } = await sb.rpc('importar_almoxarifado', { p_itens: lote });
+      if (error) throw error;
+      novos += data.novos; atualizados += data.atualizados;
+      processados += lote.length;
+    }
+  } catch (error) {
+    btn.disabled = false; btn.textContent = 'Confirmar importação';
+    showMsg(`Erro ao importar (${processados}/${ITENS_PARA_IMPORTAR.length} linhas já foram gravadas antes do erro): ` + error.message, false);
+    return;
+  }
 
   btn.disabled = false; btn.textContent = 'Confirmar importação';
-
-  if (error){ showMsg('Erro ao importar: ' + error.message, false); return; }
-
-  showMsg(`Importação concluída — ${data.novos} novo(s), ${data.atualizados} atualizado(s).`, true);
+  showMsg(`Importação concluída — ${novos} novo(s), ${atualizados} atualizado(s).`, true);
   fecharPreview();
   await carregarItens();
 }
@@ -657,15 +679,26 @@ function fecharPreviewFornecedor(){
 async function confirmarImportacaoFornecedor(){
   if (!ITENS_FORNECEDOR_PARA_IMPORTAR.length){ fecharPreviewFornecedor(); return; }
   const btn = document.getElementById('btnConfirmarImportacaoFornecedor');
-  btn.disabled = true; btn.textContent = 'Importando...';
+  btn.disabled = true;
 
-  const { data, error } = await sb.rpc('importar_fornecedores_almoxarifado', { p_itens: ITENS_FORNECEDOR_PARA_IMPORTAR });
+  const lotes = emLotes(ITENS_FORNECEDOR_PARA_IMPORTAR, TAMANHO_LOTE_IMPORTACAO);
+  let atualizados = 0, naoAchados = 0, processados = 0;
+  try {
+    for (const lote of lotes){
+      btn.textContent = `Importando... ${processados}/${ITENS_FORNECEDOR_PARA_IMPORTAR.length}`;
+      const { data, error } = await sb.rpc('importar_fornecedores_almoxarifado', { p_itens: lote });
+      if (error) throw error;
+      atualizados += data.atualizados; naoAchados += data.nao_achados;
+      processados += lote.length;
+    }
+  } catch (error) {
+    btn.disabled = false; btn.textContent = 'Confirmar importação';
+    showMsg(`Erro ao importar fornecedores (${processados}/${ITENS_FORNECEDOR_PARA_IMPORTAR.length} linhas já foram gravadas antes do erro): ` + error.message, false);
+    return;
+  }
 
   btn.disabled = false; btn.textContent = 'Confirmar importação';
-
-  if (error){ showMsg('Erro ao importar fornecedores: ' + error.message, false); return; }
-
-  showMsg(`Fornecedores atualizados — ${data.atualizados} item(ns) atualizado(s)${data.nao_achados ? `, ${data.nao_achados} não encontrado(s) no sistema (ainda não importados pelo relatório principal)` : ''}.`, true);
+  showMsg(`Fornecedores atualizados — ${atualizados} item(ns) atualizado(s)${naoAchados ? `, ${naoAchados} não encontrado(s) no sistema (ainda não importados pelo relatório principal)` : ''}.`, true);
   fecharPreviewFornecedor();
   await carregarItens();
 }
