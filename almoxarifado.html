@@ -203,6 +203,8 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
         </select>
         <span class="btn btn-primary" onclick="document.getElementById('inputImportarSapiens').click()">📥 Importar Arquivo do Sapiens</span>
         <input type="file" id="inputImportarSapiens" accept=".xlsx" style="display:none" onchange="onArquivoSapiensSelecionado(this)">
+        <span class="btn btn-primary" onclick="document.getElementById('inputImportarFornecedor').click()" title="Relatório de Ordem de Compra do Sapiens (1 O.C. por exportação) -- preenche o Fornecedor casando por SC+Item">🏭 Importar Fornecedores (O.C.)</span>
+        <input type="file" id="inputImportarFornecedor" accept=".xlsx" style="display:none" onchange="onArquivoFornecedorSelecionado(this)">
         <span class="btn btn-primary" id="btnExportarItens" onclick="exportarItensSelecionadosExcel()" style="opacity:.5;pointer-events:none">📤 Exportar selecionados (Excel)</span>
       </div>
 
@@ -225,6 +227,23 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
     <div class="modal-actions">
       <button class="btn" onclick="fecharPreview()">Cancelar</button>
       <button class="btn btn-primary" id="btnConfirmarImportacao" onclick="confirmarImportacaoSapiens()">Confirmar importação</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modalPreviewFornecedor">
+  <div class="modal-box">
+    <div class="modal-title">Conferir fornecedores antes de confirmar</div>
+    <div class="modal-sub" id="previewForSub"></div>
+    <div class="tbl-wrap" style="max-height:420px;overflow-y:auto">
+      <table class="dtbl">
+        <thead><tr><th>SC</th><th>Item</th><th>O.C.</th><th>Fornecedor</th></tr></thead>
+        <tbody id="previewForTbody"></tbody>
+      </table>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="fecharPreviewFornecedor()">Cancelar</button>
+      <button class="btn btn-primary" id="btnConfirmarImportacaoFornecedor" onclick="confirmarImportacaoFornecedor()">Confirmar importação</button>
     </div>
   </div>
 </div>
@@ -556,6 +575,86 @@ async function confirmarImportacaoSapiens(){
 
   showMsg(`Importação concluída — ${data.novos} novo(s), ${data.atualizados} atualizado(s).`, true);
   fecharPreview();
+  await carregarItens();
+}
+
+// ── IMPORTAÇÃO DO 2º RELATÓRIO (ORDEM DE COMPRA -- FORNECEDOR) ─────────────
+// Relatório "SCOC104" do Sapiens -- cobre 1 O.C. por exportação, mas cada
+// linha já traz SC e Seq.SC (colunas 17 e 18), então casa direto pela mesma
+// chave de negócio do módulo (sc, item_seq) -- sem precisar de tabela
+// auxiliar por número de O.C. Mesma lógica de detectar linha de dado real
+// (SC e O.C. numéricos nas colunas certas) do 1º relatório, ignorando título,
+// cabeçalho e as linhas "Entrega:" que se repetem no meio do arquivo.
+let ITENS_FORNECEDOR_PARA_IMPORTAR = [];
+
+async function onArquivoFornecedorSelecionado(inputEl){
+  const file = inputEl.files[0];
+  if (!file) return;
+  inputEl.value = '';
+  clearMsg();
+
+  try {
+    const buffer = await file.arrayBuffer();
+    const wb = XLSX.read(buffer, { type: 'array' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    if (!ws) throw new Error('Planilha vazia ou em formato não reconhecido.');
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
+
+    const itens = [];
+    for (const row of rows){
+      const oc = row[0];
+      const sc = row[17];
+      const itemSeq = row[18];
+      // linha de dado real: O.C. e SC numéricos -- descarta título, cabeçalho
+      // de coluna e as linhas "Entrega:" que agrupam o relatório por data
+      if (typeof oc !== 'number' || typeof sc !== 'number' || typeof itemSeq !== 'number') continue;
+
+      const fornecedor = row[6];
+      itens.push({
+        sc, item_seq: itemSeq,
+        oc: String(oc),
+        fornecedor: fornecedor != null ? String(fornecedor).trim() : null,
+      });
+    }
+
+    if (!itens.length) throw new Error('Não achei nenhuma linha reconhecível (O.C. + SC + Item) no arquivo.');
+
+    ITENS_FORNECEDOR_PARA_IMPORTAR = itens;
+    renderPreviewFornecedor();
+  } catch (err) {
+    showMsg('Erro ao ler a planilha: ' + (err.message || err), false);
+  }
+}
+
+function renderPreviewFornecedor(){
+  document.getElementById('previewForSub').textContent =
+    `${ITENS_FORNECEDOR_PARA_IMPORTAR.length} linha(s) reconhecida(s) -- só atualiza itens que já existem no sistema (casando por SC+Item), não cria linha nova.`;
+
+  document.getElementById('previewForTbody').innerHTML = ITENS_FORNECEDOR_PARA_IMPORTAR.map(it => `
+    <tr>
+      <td>${it.sc}</td><td>${it.item_seq}</td><td>${esc(it.oc || '—')}</td><td>${esc(it.fornecedor || '—')}</td>
+    </tr>`).join('');
+
+  document.getElementById('modalPreviewFornecedor').classList.add('show');
+}
+function fecharPreviewFornecedor(){
+  document.getElementById('modalPreviewFornecedor').classList.remove('show');
+  ITENS_FORNECEDOR_PARA_IMPORTAR = [];
+}
+
+async function confirmarImportacaoFornecedor(){
+  if (!ITENS_FORNECEDOR_PARA_IMPORTAR.length){ fecharPreviewFornecedor(); return; }
+  const btn = document.getElementById('btnConfirmarImportacaoFornecedor');
+  btn.disabled = true; btn.textContent = 'Importando...';
+
+  const { data, error } = await sb.rpc('importar_fornecedores_almoxarifado', { p_itens: ITENS_FORNECEDOR_PARA_IMPORTAR });
+
+  btn.disabled = false; btn.textContent = 'Confirmar importação';
+
+  if (error){ showMsg('Erro ao importar fornecedores: ' + error.message, false); return; }
+
+  showMsg(`Fornecedores atualizados — ${data.atualizados} item(ns) atualizado(s)${data.nao_achados ? `, ${data.nao_achados} não encontrado(s) no sistema (ainda não importados pelo relatório principal)` : ''}.`, true);
+  fecharPreviewFornecedor();
   await carregarItens();
 }
 
