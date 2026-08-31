@@ -203,6 +203,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
         </select>
         <span class="btn btn-primary" onclick="document.getElementById('inputImportarSapiens').click()">📥 Importar Arquivo do Sapiens</span>
         <input type="file" id="inputImportarSapiens" accept=".xlsx" style="display:none" onchange="onArquivoSapiensSelecionado(this)">
+        <span class="btn btn-primary" id="btnExportarItens" onclick="exportarItensSelecionadosExcel()" style="opacity:.5;pointer-events:none">📤 Exportar selecionados (Excel)</span>
       </div>
 
       <div class="tbl-wrap" id="tblWrap"><div class="empty">Carregando...</div></div>
@@ -232,6 +233,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 <script>
 let AUTH = null;
 let TODOS_ITENS = [];
+let itensSelecionados = new Set(); // ids marcados na tabela, pra exportar em Excel
 
 let sidebarMexidoManualmente = false;
 function alternarSidebar(manual){
@@ -295,9 +297,15 @@ function renderTabela(itens){
   const wrap = document.getElementById('tblWrap');
   if (!itens.length){ wrap.innerHTML = `<div class="empty">Nenhum item importado ainda. Clique em "Importar Arquivo do Sapiens" pra começar.</div>`; return; }
 
+  window.__itensRenderizados = itens;
+  const idsVisiveis = new Set(itens.map(it => it.id));
+  itensSelecionados.forEach(id => { if (!idsVisiveis.has(id)) itensSelecionados.delete(id); });
+  const todosMarcados = itens.every(it => itensSelecionados.has(it.id));
+
   wrap.innerHTML = `
     <table class="dtbl">
       <thead><tr>
+        <th><input type="checkbox" id="chkTodosItens" ${todosMarcados ? 'checked' : ''} onchange="toggleTodosItens(this.checked)"></th>
         <th>SC</th><th>Item</th><th>Pedido</th><th>Família</th><th>Código</th><th>Descrição</th>
         <th>Fornecedor</th><th>OC</th><th>Sit. OC</th><th>Requisitante</th><th>Desenho</th>
         <th class="r">Qtd. Solic.</th><th class="r">Qtd. Recebida</th><th class="r">Qtd. Pendente</th>
@@ -306,6 +314,7 @@ function renderTabela(itens){
       <tbody>
         ${itens.map(it => `
         <tr id="row-${it.id}">
+          <td><input type="checkbox" class="chkItem" ${itensSelecionados.has(it.id) ? 'checked' : ''} onchange="toggleItemSelecionado(${it.id}, this.checked)"></td>
           <td>${it.sc}</td>
           <td>${it.item_seq}</td>
           <td>${it.pedidos?.numero_pedido ? esc(it.pedidos.numero_pedido) : (it.pedido_bruto ? `<span class="sem-link" title="Não achei pedido ${esc(it.pedido_bruto)} cadastrado no sistema">${esc(it.pedido_bruto)} ⚠</span>` : '—')}</td>
@@ -327,6 +336,60 @@ function renderTabela(itens){
         </tr>`).join('')}
       </tbody>
     </table>`;
+  atualizarBotaoExportarItens();
+}
+
+// ── SELECIONAR ITENS E EXPORTAR EM EXCEL ────────────────────────────────────
+function toggleItemSelecionado(id, marcado){
+  if (marcado) itensSelecionados.add(id); else itensSelecionados.delete(id);
+  const chkTodos = document.getElementById('chkTodosItens');
+  if (chkTodos) chkTodos.checked = (window.__itensRenderizados || []).every(it => itensSelecionados.has(it.id));
+  atualizarBotaoExportarItens();
+}
+
+function toggleTodosItens(marcado){
+  (window.__itensRenderizados || []).forEach(it => marcado ? itensSelecionados.add(it.id) : itensSelecionados.delete(it.id));
+  document.querySelectorAll('.chkItem').forEach(chk => chk.checked = marcado);
+  atualizarBotaoExportarItens();
+}
+
+function atualizarBotaoExportarItens(){
+  const btn = document.getElementById('btnExportarItens');
+  if (!btn) return;
+  const n = itensSelecionados.size;
+  btn.textContent = n ? `📤 Exportar ${n} selecionado(s) (Excel)` : '📤 Exportar selecionados (Excel)';
+  btn.style.opacity = n ? '1' : '.5';
+  btn.style.pointerEvents = n ? 'auto' : 'none';
+}
+
+function exportarItensSelecionadosExcel(){
+  const itens = TODOS_ITENS.filter(it => itensSelecionados.has(it.id));
+  if (!itens.length) return;
+
+  const linhas = itens.map(it => ({
+    'SC': it.sc,
+    'Item': it.item_seq,
+    'Pedido': it.pedidos?.numero_pedido || it.pedido_bruto || '',
+    'Família': it.familia || '',
+    'Código': it.codigo_produto || '',
+    'Descrição': it.descricao || '',
+    'Fornecedor': it.fornecedor || '',
+    'OC': it.oc || '',
+    'Sit. OC': it.situacao_oc || '',
+    'Requisitante': it.requisitante || '',
+    'Desenho': it.desenho || '',
+    'Qtd. Solic.': Number(it.quantidade_solicitada) || 0,
+    'Qtd. Recebida': Number(it.quantidade_recebida) || 0,
+    'Qtd. Pendente': Number(it.quantidade_pendente) || 0,
+    'NF': it.nf || '',
+    'Observação': it.observacao || '',
+    'Status': it.status_recebimento === 'total' ? 'Totalmente recebido' : it.status_recebimento === 'parcial' ? 'Parcial' : 'Pendente',
+  }));
+
+  const ws = XLSX.utils.json_to_sheet(linhas);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Almoxarifado');
+  XLSX.writeFile(wb, `Almoxarifado_selecionados_${new Date().toISOString().slice(0,10)}.xlsx`);
 }
 
 async function salvarRecebimento(id){
