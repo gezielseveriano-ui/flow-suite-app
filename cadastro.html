@@ -11,6 +11,7 @@
 <title>Flow Suite — Cadastro</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
 :root{
   --navy:#0b1e33; --navy2:#102A43; --navy3:#173a5e;
@@ -282,6 +283,7 @@ setTimeout(() => {
 }, 5000);
 let remessaAtual = null; // {id, numero, pedido_id}
 let mostrandoFornecedores = false;
+let itensSelecionados = new Set(); // ids de `itens` marcados na tabela "Itens gerados", pra exportar em Excel
 
 function showMsg(text, ok){
   const box = document.getElementById('msgBox');
@@ -569,6 +571,7 @@ async function confirmarRecebimentoPCP(){
 }
 
 async function renderDetalhePedido(){
+  itensSelecionados = new Set();
   renderNav();
   const content = document.getElementById('content');
   const statusRecebimento = `
@@ -684,17 +687,28 @@ async function renderItensGerados(){
   if (!data.length){ wrap.innerHTML = `<div class="empty">Nenhum item gerado ainda — leia os desenhos da Engenharia acima (marcados como Fabricação) pra gerar os itens de produção.</div>`; return; }
 
   const fornecedores = await carregarFornecedoresProducao();
+  window.__itensGeradosAtual = data;
+  // mantém marcado só o que ainda existe na tabela (evita ids "fantasma" de
+  // itens que sumiram numa releitura de desenho entre uma seleção e outra)
+  const idsAtuais = new Set(data.map(it => it.id));
+  itensSelecionados.forEach(id => { if (!idsAtuais.has(id)) itensSelecionados.delete(id); });
+  const todosMarcados = data.length > 0 && data.every(it => itensSelecionados.has(it.id));
 
   wrap.innerHTML = `
+    <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+      <button type="button" class="btn btn-primary" id="btnExportarItens" onclick="exportarItensSelecionadosExcel()" disabled>📥 Exportar selecionados (Excel)</button>
+    </div>
     <div class="tbl-inner">
     <table class="dtbl">
       <thead><tr>
+        <th><input type="checkbox" id="chkTodosItens" ${todosMarcados ? 'checked' : ''} onchange="toggleTodosItens(this.checked)"></th>
         <th>Cód. MDE</th><th>Desenho MDE</th><th>Desenho Cliente</th><th>Descrição</th><th>TAG</th><th>Remessa</th><th>Setor</th><th>Fornecedor</th>
         <th class="r">Peso unit. (kg)</th><th class="r">Qtd.</th><th class="r">Peso total (kg)</th>
         <th>Status</th>
       </tr></thead>
       <tbody>
         ${data.map(it => `<tr>
+          <td><input type="checkbox" class="chkItem" ${itensSelecionados.has(it.id) ? 'checked' : ''} onchange="toggleItemSelecionado(${it.id}, this.checked)"></td>
           <td>${it.codigo_mde}</td>
           <td>${esc(it.desenho)}</td>
           <td>${esc(it.desenho_cliente)}</td>
@@ -716,6 +730,56 @@ async function renderItensGerados(){
       </tbody>
     </table>
     </div>`;
+  atualizarBotaoExportarItens();
+}
+
+// ── SELECIONAR ITENS E EXPORTAR EM EXCEL ────────────────────────────────────
+function toggleItemSelecionado(id, marcado){
+  if (marcado) itensSelecionados.add(id); else itensSelecionados.delete(id);
+  const chkTodos = document.getElementById('chkTodosItens');
+  if (chkTodos) chkTodos.checked = (window.__itensGeradosAtual || []).every(it => itensSelecionados.has(it.id));
+  atualizarBotaoExportarItens();
+}
+
+function toggleTodosItens(marcado){
+  (window.__itensGeradosAtual || []).forEach(it => marcado ? itensSelecionados.add(it.id) : itensSelecionados.delete(it.id));
+  document.querySelectorAll('.chkItem').forEach(chk => chk.checked = marcado);
+  atualizarBotaoExportarItens();
+}
+
+function atualizarBotaoExportarItens(){
+  const btn = document.getElementById('btnExportarItens');
+  if (!btn) return;
+  const n = itensSelecionados.size;
+  btn.textContent = n ? `📥 Exportar ${n} selecionado(s) (Excel)` : '📥 Exportar selecionados (Excel)';
+  btn.disabled = n === 0;
+}
+
+function exportarItensSelecionadosExcel(){
+  const itens = (window.__itensGeradosAtual || []).filter(it => itensSelecionados.has(it.id));
+  if (!itens.length) return;
+
+  const statusLabel = { pendente: 'Pendente', parcial: 'Parcial', expedido: 'Expedido' };
+  const linhas = itens.map(it => ({
+    'Cód. MDE': it.codigo_mde,
+    'Desenho MDE': it.desenho || '',
+    'Desenho Cliente': it.desenho_cliente || '',
+    'Descrição': it.descricao || '',
+    'TAG': it.tag || '',
+    'Remessa': it.remessa || '',
+    'Setor': it.produto || '',
+    'Peso unit. (kg)': Number(it.peso_unitario) || 0,
+    'Qtd.': Number(it.quantidade) || 0,
+    'Peso total (kg)': Number(it.peso_total) || 0,
+    'Status': statusLabel[it.status_expedicao] || it.status_expedicao || '',
+  }));
+
+  const ws = XLSX.utils.json_to_sheet(linhas);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Itens');
+  const nomePedido = (pedidoAtual?.numero_pedido || 'pedido').replace(/[^\w.\-]/g, '_');
+  const nomeRemessa = remessaAtual?.numero ?? '';
+  XLSX.writeFile(wb, `Itens_${nomePedido}_Remessa${nomeRemessa}.xlsx`);
 }
 
 // atribuir fornecedor de produção a um item (NULL = volta pra produção
