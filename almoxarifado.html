@@ -284,13 +284,25 @@ async function init(){
 async function carregarItens(){
   const wrap = document.getElementById('tblWrap');
   wrap.innerHTML = `<div class="empty">Carregando...</div>`;
-  const { data, error } = await sb
-    .from('almoxarifado_itens')
-    .select('*, pedidos(numero_pedido, cliente)')
-    .order('sc', { ascending: false })
-    .order('item_seq');
-  if (error){ wrap.innerHTML = `<div class="empty">Erro: ${esc(error.message)}</div>`; return; }
-  TODOS_ITENS = data;
+  // o Supabase limita a 1000 linhas por página por padrão -- com o
+  // almoxarifado passando de 1000 itens, uma busca sem paginação trunca
+  // silenciosamente os últimos (menor SC, por causa do order desc), sem erro
+  // nenhum. Busca em páginas de 1000 até esgotar.
+  let todos = [];
+  let de = 0;
+  while (true) {
+    const { data, error } = await sb
+      .from('almoxarifado_itens')
+      .select('*, pedidos(numero_pedido, cliente)')
+      .order('sc', { ascending: false })
+      .order('item_seq')
+      .range(de, de + 999);
+    if (error){ wrap.innerHTML = `<div class="empty">Erro: ${esc(error.message)}</div>`; return; }
+    todos = todos.concat(data);
+    if (data.length < 1000) break;
+    de += 1000;
+  }
+  TODOS_ITENS = todos;
   aplicarFiltros();
 }
 
