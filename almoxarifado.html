@@ -306,8 +306,8 @@ function renderTabela(itens){
     <table class="dtbl">
       <thead><tr>
         <th><input type="checkbox" id="chkTodosItens" ${todosMarcados ? 'checked' : ''} onchange="toggleTodosItens(this.checked)"></th>
-        <th>SC</th><th>Item</th><th>Pedido</th><th>Família</th><th>Código</th><th>Descrição</th>
-        <th>Fornecedor</th><th>OC</th><th>Sit. OC</th><th>Requisitante</th><th>Desenho</th>
+        <th>SC</th><th>Item</th><th>Pedido</th><th>Família</th><th>Descrição</th>
+        <th>Fornecedor</th><th>OC</th><th>Sit. OC</th><th>Desenho</th>
         <th class="r">Qtd. Solic.</th><th class="r">Qtd. Recebida</th><th class="r">Qtd. Pendente</th>
         <th>NF</th><th>Data Receb. NF</th><th>Observação</th><th>Status</th><th></th>
       </tr></thead>
@@ -319,12 +319,10 @@ function renderTabela(itens){
           <td>${it.item_seq}</td>
           <td>${it.pedidos?.numero_pedido ? esc(it.pedidos.numero_pedido) : (it.pedido_bruto ? `<span class="sem-link" title="Não achei pedido ${esc(it.pedido_bruto)} cadastrado no sistema">${esc(it.pedido_bruto)} ⚠</span>` : '—')}</td>
           <td>${esc(it.familia || '—')}</td>
-          <td>${esc(it.codigo_produto || '—')}</td>
           <td class="desc-cell" title="${esc(it.descricao||'')}">${esc(it.descricao || '—')}</td>
           <td>${esc(it.fornecedor || '—')}</td>
           <td>${esc(it.oc || '—')}</td>
           <td>${esc(it.situacao_oc || '—')}</td>
-          <td>${esc(it.requisitante || '—')}</td>
           <td>${esc(it.desenho || '—')}</td>
           <td class="r">${Number(it.quantidade_solicitada).toLocaleString('pt-BR')}</td>
           <td class="r"><input class="edit-input" id="qtd-${it.id}" type="number" step="0.001" min="0" value="${it.quantidade_recebida}"></td>
@@ -382,6 +380,8 @@ function exportarItensSelecionadosExcel(){
     'Qtd. Solic.': Number(it.quantidade_solicitada) || 0,
     'Qtd. Recebida': Number(it.quantidade_recebida) || 0,
     'Qtd. Pendente': Number(it.quantidade_pendente) || 0,
+    'Data Geração (SC)': it.data_solicitacao || '',
+    'Data Previsão Entrega': it.data_prevista_entrega || '',
     'NF': it.nf || '',
     'Data Receb. NF': it.data_recebimento_nf || '',
     'Observação': it.observacao || '',
