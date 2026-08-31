@@ -69,6 +69,10 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 .btn-primary{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}
 .btn-primary:hover{background:var(--blue-hover);border-color:var(--blue-hover);color:#fff}
 .btn-primary:disabled{opacity:.5;cursor:default}
+.btn-suja{background:var(--red);border-color:var(--red);color:#fff;font-weight:600;animation:pulsaSuja 1.4s ease-in-out infinite}
+.btn-suja:hover{background:var(--red);border-color:var(--red);color:#fff}
+@keyframes pulsaSuja{0%,100%{opacity:1}50%{opacity:.6}}
+@media (prefers-reduced-motion: reduce){.btn-suja{animation:none}}
 
 .notice{margin:0 0 1.25rem;padding:11px 16px;background:var(--amber-dim);color:var(--amber);border-radius:var(--radius-sm);font-size:12.5px;border:1px solid rgba(181,105,10,.15)}
 
@@ -356,13 +360,13 @@ function renderTabela(itens){
           <td>${esc(it.situacao_oc || '—')}</td>
           <td>${esc(it.desenho || '—')}</td>
           <td class="r">${Number(it.quantidade_solicitada).toLocaleString('pt-BR')}</td>
-          <td class="r"><input class="edit-input" id="qtd-${it.id}" type="number" step="0.001" min="0" value="${it.quantidade_recebida}"></td>
-          <td class="r">${Number(it.quantidade_pendente).toLocaleString('pt-BR')}</td>
-          <td><input class="edit-input txt" id="nf-${it.id}" value="${esc(it.nf || '')}"></td>
-          <td><input class="edit-input" id="dataNf-${it.id}" type="date" value="${it.data_recebimento_nf || ''}"></td>
-          <td><input class="edit-input txt" id="obs-${it.id}" value="${esc(it.observacao || '')}"></td>
-          <td>${badgeStatus(it.status_recebimento)}</td>
-          <td><span class="btn" onclick="salvarRecebimento(${it.id})">Salvar</span></td>
+          <td class="r"><input class="edit-input" id="qtd-${it.id}" type="number" step="0.001" min="0" value="${it.quantidade_recebida}" oninput="marcarLinhaSuja(${it.id})" onblur="salvarRecebimento(${it.id}, {silencioso:true})"></td>
+          <td class="r" id="qtdPend-${it.id}">${Number(it.quantidade_pendente).toLocaleString('pt-BR')}</td>
+          <td><input class="edit-input txt" id="nf-${it.id}" value="${esc(it.nf || '')}" oninput="marcarLinhaSuja(${it.id})" onblur="salvarRecebimento(${it.id}, {silencioso:true})"></td>
+          <td><input class="edit-input" id="dataNf-${it.id}" type="date" value="${it.data_recebimento_nf || ''}" oninput="marcarLinhaSuja(${it.id})" onblur="salvarRecebimento(${it.id}, {silencioso:true})"></td>
+          <td><input class="edit-input txt" id="obs-${it.id}" value="${esc(it.observacao || '')}" oninput="marcarLinhaSuja(${it.id})" onblur="salvarRecebimento(${it.id}, {silencioso:true})"></td>
+          <td id="status-${it.id}">${badgeStatus(it.status_recebimento)}</td>
+          <td><span class="btn" id="btnSalvar-${it.id}" onclick="salvarRecebimento(${it.id})">Salvar</span></td>
         </tr>`).join('')}
       </tbody>
     </table>`;
@@ -425,19 +429,71 @@ function exportarItensSelecionadosExcel(){
   XLSX.writeFile(wb, `Almoxarifado_selecionados_${new Date().toISOString().slice(0,10)}.xlsx`);
 }
 
-async function salvarRecebimento(id){
-  const qtd = parseFloat(document.getElementById(`qtd-${id}`).value);
+// ── SALVAR RECEBIMENTO -- com auto-save (sem precisar clicar) ──────────────
+// Digitar em qualquer campo já marca a linha como "não salva" (botão fica
+// vermelho pulsando) e agenda um auto-save em 2s de silêncio; sair do campo
+// (blur) salva na hora, sem esperar. Assim, se a luz cair no meio de vários
+// lançamentos, só o que foi digitado nos últimos 2s do campo em foco corre
+// risco de se perder -- tudo antes disso já está gravado.
+//
+// NUNCA chama carregarItens() aqui (recarregaria a tabela inteira e apagaria
+// o texto ainda não salvo de QUALQUER outra linha que a pessoa esteja
+// digitando ao mesmo tempo) -- atualiza só a linha salva, direto no DOM e no
+// array TODOS_ITENS em memória.
+let linhasSujas = new Set();
+let timersAutoSalvar = {};
+
+function marcarLinhaSuja(id){
+  linhasSujas.add(id);
+  const btn = document.getElementById(`btnSalvar-${id}`);
+  if (btn) btn.classList.add('btn-suja');
+  clearTimeout(timersAutoSalvar[id]);
+  timersAutoSalvar[id] = setTimeout(() => salvarRecebimento(id, { silencioso: true }), 2000);
+}
+
+async function salvarRecebimento(id, { silencioso = false } = {}){
+  clearTimeout(timersAutoSalvar[id]);
+  delete timersAutoSalvar[id];
+
+  const campoQtd = document.getElementById(`qtd-${id}`);
+  if (!campoQtd) return; // linha não existe mais na tela (filtro mudou enquanto o auto-save esperava)
+
+  const qtd = parseFloat(campoQtd.value);
   const nf = document.getElementById(`nf-${id}`).value;
   const obs = document.getElementById(`obs-${id}`).value;
   const dataNf = document.getElementById(`dataNf-${id}`).value || null;
-  if (isNaN(qtd) || qtd < 0){ showMsg('Quantidade recebida inválida.', false); return; }
+  if (isNaN(qtd) || qtd < 0){ if (!silencioso) showMsg('Quantidade recebida inválida.', false); return; }
+
   const { error } = await sb.rpc('editar_recebimento_almoxarifado', {
     p_id: id, p_quantidade_recebida: qtd, p_nf: nf, p_observacao: obs, p_data_recebimento_nf: dataNf,
   });
   if (error){ showMsg('Erro ao salvar: ' + error.message, false); return; }
-  showMsg('Recebimento atualizado.', true);
-  await carregarItens();
+
+  const item = TODOS_ITENS.find(it => it.id === id);
+  if (item){
+    item.quantidade_recebida = qtd;
+    item.nf = nf || null;
+    item.observacao = obs || null;
+    item.data_recebimento_nf = dataNf;
+    item.quantidade_pendente = Math.max(0, Number(item.quantidade_solicitada) - qtd);
+    item.status_recebimento = qtd <= 0 ? 'pendente' : (item.quantidade_pendente <= 0 ? 'total' : 'parcial');
+    const celPend = document.getElementById(`qtdPend-${id}`);
+    if (celPend) celPend.textContent = item.quantidade_pendente.toLocaleString('pt-BR');
+    const celStatus = document.getElementById(`status-${id}`);
+    if (celStatus) celStatus.innerHTML = badgeStatus(item.status_recebimento);
+  }
+
+  linhasSujas.delete(id);
+  const btn = document.getElementById(`btnSalvar-${id}`);
+  if (btn) btn.classList.remove('btn-suja');
+  if (!silencioso) showMsg('Recebimento atualizado.', true);
 }
+
+// avisa antes de fechar/sair da página se ainda tiver linha não salva --
+// último fio de segurança além do auto-save de 2s.
+window.addEventListener('beforeunload', (e) => {
+  if (linhasSujas.size > 0){ e.preventDefault(); e.returnValue = ''; }
+});
 
 // ── IMPORTAÇÃO DO ARQUIVO DO SAPIENS ────────────────────────────────────────
 // O export do Sapiens é um RELATÓRIO impresso, não uma planilha limpa: tem
