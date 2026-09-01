@@ -612,26 +612,34 @@ function setorAgg(items){
   items.forEach(it => { cargaProg+=it.pesoTotal; expedido+=it.expedido; pendExp+=it.pendExp; somaAvanco+=it.avancoPct; });
   return { cargaProg, expedido, pendExp, avanco: items.length ? somaAvanco/items.length : null, n: items.length };
 }
-// separarFornecedor=true tira o item do setor original e conta ele numa
-// linha própria com o nome do fornecedor terceirizado (ex: 24t mandadas pra
-// AXION saem de ESTRUTURA e viram uma linha "AXION" de 24t) -- vale pra
-// qualquer fornecedor cadastrado em fornecedores_producao, não só um. Fica
-// opcional (default false) porque o PDF pro cliente não deve expor pra quem
-// terceirizamos.
-function setoresDoPedido(pedido, separarFornecedor){
-  const tags = DB[pedido]||{}; const map={};
-  Object.values(tags).forEach(setObj => Object.entries(setObj).forEach(([setor,itens]) => {
-    itens.forEach(it => {
-      let chave = setor;
-      if (separarFornecedor && it.fornecedor_producao_id){
-        const forn = FORNECEDORES_PRODUCAO[it.fornecedor_producao_id];
-        if (forn) chave = forn.nome;
-      }
-      if(!map[chave]) map[chave]=[];
-      map[chave].push(it);
-    });
-  }));
+// chave de agrupamento de um item: nome do fornecedor terceirizado se tiver
+// um atribuído (qualquer fornecedor, não só um), senão o setor original --
+// mesma regra pra visão por pedido e por TAG, e também pra resolver de volta
+// os itens ao clicar numa linha (renderProduto), então os dois lados sempre
+// batem, inclusive no caso de um setor antigo e um fornecedor atual terem o
+// mesmo nome (ex: RMF) -- aí os dois se fundem na mesma linha de propósito.
+function chaveSetorOuFornecedor(it){
+  if (it.fornecedor_producao_id){
+    const forn = FORNECEDORES_PRODUCAO[it.fornecedor_producao_id];
+    if (forn) return forn.nome;
+  }
+  return it.produto;
+}
+function agruparItens(itensLista, separarFornecedor){
+  const map = {};
+  itensLista.forEach(it => {
+    const chave = separarFornecedor ? chaveSetorOuFornecedor(it) : it.produto;
+    if (!map[chave]) map[chave] = [];
+    map[chave].push(it);
+  });
   return map;
+}
+// separarFornecedor=true tira o item do setor original e conta ele numa
+// linha própria com o nome do fornecedor (ex: 24t mandadas pra AXION saem de
+// ESTRUTURA e viram uma linha "AXION" de 24t). Fica opcional (default false)
+// porque o PDF pro cliente não deve expor pra quem terceirizamos.
+function setoresDoPedido(pedido, separarFornecedor){
+  return agruparItens(todosItensDoPedido(pedido), separarFornecedor);
 }
 function setorTableHTML(map, onClickFn){
   const setores = Object.keys(map).sort();
@@ -1423,15 +1431,17 @@ function renderTag(){
     { label:'Setores', val: Object.keys(prods).length, sub:'clique para detalhar' },
   ]);
   h += prHTML(pF, pE);
-  h += `<div class="section"><div class="section-title">Setores da TAG ${esc(state.tag)}</div>${setorTableHTML(prods, 'abrirProduto')}</div>`;
+  const mapaSetoresTag = agruparItens(itensTag, true);
+  h += `<div class="section"><div class="section-title">Setores da TAG ${esc(state.tag)}</div>${setorTableHTML(mapaSetoresTag, 'abrirProduto')}</div>`;
   document.getElementById('mainContent').innerHTML = h;
   setStatus(`${state.pedido} › ${state.tag} · ${Object.keys(prods).length} setores`);
 }
 
-/* ── PRODUTO/SETOR ── */
+/* ── PRODUTO/SETOR (ou fornecedor, quando a chave clicada é um nome de
+   fornecedor em vez de um setor real -- ver chaveSetorOuFornecedor) ── */
 function renderProduto(){
   document.getElementById('headerArea').innerHTML = '';
-  const itens = DB[state.pedido][state.tag][state.produto];
+  const itens = itensFlat(DB[state.pedido][state.tag]).filter(it => chaveSetorOuFornecedor(it) === state.produto);
   const tP = itens.reduce((a,i)=>a+i.pesoTotal,0), tF = itens.reduce((a,i)=>a+i.fabricado,0), tE = itens.reduce((a,i)=>a+i.expedido,0), tPE = itens.reduce((a,i)=>a+i.pendExp,0);
   const pF = tP>0?Math.min(100,tF/tP*100):0, pE = tP>0?Math.min(100,tE/tP*100):0;
   const ip = itens.filter(it => it.pendExp>0);
