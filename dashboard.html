@@ -612,11 +612,24 @@ function setorAgg(items){
   items.forEach(it => { cargaProg+=it.pesoTotal; expedido+=it.expedido; pendExp+=it.pendExp; somaAvanco+=it.avancoPct; });
   return { cargaProg, expedido, pendExp, avanco: items.length ? somaAvanco/items.length : null, n: items.length };
 }
-function setoresDoPedido(pedido){
+// separarFornecedor=true tira o item do setor original e conta ele numa
+// linha própria com o nome do fornecedor terceirizado (ex: 24t mandadas pra
+// AXION saem de ESTRUTURA e viram uma linha "AXION" de 24t) -- vale pra
+// qualquer fornecedor cadastrado em fornecedores_producao, não só um. Fica
+// opcional (default false) porque o PDF pro cliente não deve expor pra quem
+// terceirizamos.
+function setoresDoPedido(pedido, separarFornecedor){
   const tags = DB[pedido]||{}; const map={};
   Object.values(tags).forEach(setObj => Object.entries(setObj).forEach(([setor,itens]) => {
-    if(!map[setor]) map[setor]=[];
-    map[setor]=map[setor].concat(itens);
+    itens.forEach(it => {
+      let chave = setor;
+      if (separarFornecedor && it.fornecedor_producao_id){
+        const forn = FORNECEDORES_PRODUCAO[it.fornecedor_producao_id];
+        if (forn) chave = forn.nome;
+      }
+      if(!map[chave]) map[chave]=[];
+      map[chave].push(it);
+    });
   }));
   return map;
 }
@@ -1082,7 +1095,7 @@ function renderPedido(){
     <button class="btn-report" id="btnPdfPedido" onclick="gerarPdfPedido()"><i class="ti ti-file-type-pdf"></i> Relatório do Pedido (PDF p/ cliente)</button>
   </div>`;
 
-  const mapaSetores = setoresDoPedido(state.pedido);
+  const mapaSetores = setoresDoPedido(state.pedido, true);
   h += `<div class="section" style="padding-top:1.25rem"><div class="section-title">Setores do pedido — carga programada, expedido, pendente e avanço</div>${setorTableHTML(mapaSetores, null)}</div>`;
   h += `<div class="section"><div class="section-title">Controle de quantidade — peças (un.)</div>${setorTableQtdHTML(mapaSetores)}</div>`;
   h += `<div class="section"><div class="section-title">TAGs do pedido — clique para ver os setores</div><div class="cards-grid">`;
