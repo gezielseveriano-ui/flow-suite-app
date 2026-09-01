@@ -566,6 +566,29 @@ function selecionarPedido(p){
 }
 
 // ── PRODUTOS/SETORES DO PEDIDO ───────────────────────────────────────────────
+// Um item atribuído a um fornecedor terceirizado (Fornecedor no PCP, ex:
+// AXION) vira uma "caixa" própria com o nome do fornecedor, em vez de
+// continuar contando dentro do setor original -- senão não tem onde apontar
+// o avanço do que ele está fabricando. Vale pra qualquer fornecedor
+// cadastrado em Fornecedores e Capacidade, não só um; mesma regra usada no
+// Dashboard (chaveSetorOuFornecedor).
+async function buscarChaveDosItens(pedidoId){
+  const [{ data: leves, error }, { data: fornecedores }] = await Promise.all([
+    sb.from('itens').select('id, produto, fornecedor_producao_id').eq('pedido_id', pedidoId),
+    sb.from('fornecedores_producao').select('id, nome'),
+  ]);
+  const nomeFornecedorPorId = {};
+  (fornecedores || []).forEach(f => { nomeFornecedorPorId[f.id] = f.nome; });
+  const chaveDe = (it) => {
+    if (it.fornecedor_producao_id){
+      const nome = nomeFornecedorPorId[it.fornecedor_producao_id];
+      if (nome) return nome;
+    }
+    return it.produto;
+  };
+  return { error, leves: leves || [], chaveDe };
+}
+
 async function browseProdutos(){
   ctx.produto = null;
   if (floatScrollEl) floatScrollEl.classList.remove('show');
@@ -577,10 +600,10 @@ async function browseProdutos(){
 
   renderRemessasPendentesBanner();
 
-  const { data, error } = await sb.from('itens').select('produto').eq('pedido_id', ctx.pedido.id);
+  const { error, leves, chaveDe } = await buscarChaveDosItens(ctx.pedido.id);
   const grid = document.getElementById('grid');
   if (error){ grid.innerHTML = `<div class="empty">Erro: ${esc(error.message)}</div>`; return; }
-  const produtos = [...new Set(data.map(r => r.produto))].sort();
+  const produtos = [...new Set(leves.map(chaveDe))].sort();
   if (!produtos.length){ grid.innerHTML = `<div class="empty">Nenhum item cadastrado neste pedido.</div>`; return; }
 
   grid.innerHTML = produtos.map(pr => `
@@ -668,11 +691,25 @@ async function renderGrid(destacarDesenho){
     </div>
     <div class="grid-wrap"><div class="empty">Carregando itens...</div></div>`;
 
+  // "ctx.produto" pode ser um setor real (ESTRUTURA) ou o nome de um
+  // fornecedor terceirizado (AXION) -- resolve os ids certos pela mesma
+  // regra usada em browseProdutos antes de buscar os dados completos.
+  const { error: errChave, leves, chaveDe } = await buscarChaveDosItens(ctx.pedido.id);
+  if (errChave){
+    document.querySelector('.grid-wrap').innerHTML = `<div class="empty">Erro: ${esc(errChave.message)}</div>`;
+    return;
+  }
+  const idsAlvo = leves.filter(it => chaveDe(it) === ctx.produto).map(it => it.id);
+  if (!idsAlvo.length){
+    document.querySelector('.grid-wrap').innerHTML = `<div class="empty">Nenhum item encontrado.</div>`;
+    return;
+  }
+
   const { data: itensData, error } = await sb
     .from('itens')
     .select('*, desenhos_engenharia(paralisado, paralisado_em, paralisado_motivo, desenho_cliente, nome_equipamento, revisao, quantidade_fabricar, observacao)')
     .eq('pedido_id', ctx.pedido.id)
-    .eq('produto', ctx.produto)
+    .in('id', idsAlvo)
     .order('tag')
     .order('desenho');
 
