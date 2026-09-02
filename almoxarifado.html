@@ -77,7 +77,21 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 .notice{margin:0 0 1.25rem;padding:11px 16px;background:var(--amber-dim);color:var(--amber);border-radius:var(--radius-sm);font-size:12.5px;border:1px solid rgba(181,105,10,.15)}
 
 .nav-bar{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--text2);margin-bottom:16px}
+.nav-crumb{cursor:pointer;padding:3px 8px;border-radius:6px}
+.nav-crumb:hover{background:var(--bg3);color:var(--text)}
+.nav-crumb.active{color:var(--blue);font-weight:600;cursor:default}
+.nav-crumb.active:hover{background:none}
+.nav-sep{color:var(--text3)}
 .search-row{display:flex;gap:10px;margin-bottom:1.25rem;flex-wrap:wrap;align-items:center}
+.cards-pedidos{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}
+.pedido-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:1rem 1.1rem;cursor:pointer;transition:all .15s;box-shadow:var(--shadow-sm)}
+.pedido-card:hover{border-color:var(--blue);background:var(--blue-dim);box-shadow:var(--shadow-md);transform:translateY(-2px)}
+.pedido-card.warn{border-color:rgba(181,105,10,.3)}
+.pedido-card.warn:hover{background:var(--amber-dim);border-color:var(--amber)}
+.pc-num{font-size:15px;font-weight:700;color:var(--text);margin-bottom:3px}
+.pc-cliente{font-size:12px;color:var(--blue);font-weight:600;margin-bottom:8px}
+.pc-stats{font-size:12px;color:var(--text2)}
+.pc-stats b{color:var(--text)}
 .search-row input, .search-row select{padding:10px 13px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg2);color:var(--text);font-size:13px}
 .search-row input:focus, .search-row select:focus{outline:none;border-color:var(--blue)}
 .search-row input.main{flex:1;min-width:220px;padding:13px 16px;font-size:16px}
@@ -194,25 +208,9 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
       <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12.5 4 7 10l5.5 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
     <main class="content">
-      <div class="nav-bar"><span class="nav-crumb active">Almoxarifado — Solicitações de Compra</span></div>
+      <div class="nav-bar" id="navBar"></div>
       <div id="msgBox" class="msg-box"></div>
-
-      <div class="search-row">
-        <input class="main" id="filtroPrincipal" placeholder="🔍 Filtrar por SC, item, OC, pedido, código, descrição, fornecedor, requisitante, NF..." oninput="aplicarFiltros()">
-        <select id="filtroStatus" onchange="aplicarFiltros()">
-          <option value="">Status: todos</option>
-          <option value="pendente">Pendente</option>
-          <option value="parcial">Parcialmente recebido</option>
-          <option value="total">Totalmente recebido</option>
-        </select>
-        <span class="btn btn-primary" onclick="document.getElementById('inputImportarSapiens').click()">📥 Importar Arquivo do Sapiens</span>
-        <input type="file" id="inputImportarSapiens" accept=".xlsx" style="display:none" onchange="onArquivoSapiensSelecionado(this)">
-        <span class="btn btn-primary" onclick="document.getElementById('inputImportarFornecedor').click()" title="Relatório de Ordem de Compra do Sapiens (1 O.C. por exportação) -- preenche o Fornecedor casando por SC+Item">🏭 Importar Fornecedores (O.C.)</span>
-        <input type="file" id="inputImportarFornecedor" accept=".xlsx" style="display:none" onchange="onArquivoFornecedorSelecionado(this)">
-        <span class="btn btn-primary" id="btnExportarItens" onclick="exportarItensSelecionadosExcel()" style="opacity:.5;pointer-events:none">📤 Exportar selecionados (Excel)</span>
-      </div>
-
-      <div class="tbl-wrap" id="tblWrap"><div class="empty">Carregando...</div></div>
+      <div id="content"><div class="empty">Carregando...</div></div>
     </main>
   </div>
 </div>
@@ -258,6 +256,18 @@ let AUTH = null;
 let TODOS_ITENS = [];
 let itensSelecionados = new Set(); // ids marcados na tabela, pra exportar em Excel
 
+// ── NAVEGAÇÃO POR PEDIDO ────────────────────────────────────────────────────
+// Com o volume de SCs crescendo (milhares de linhas), carregar a tabela
+// inteira de uma vez (como era antes) deixa a tela pesada e difícil de achar
+// algo específico. Agora a home só mostra cards de pedido (leve -- busca só
+// id/pedido_id/status pra contar, não a linha inteira) e só carrega os itens
+// completos quando entra num pedido, na "Sem pedido vinculado" ou faz uma
+// busca por SC/O.C. (a nota fiscal chega referenciando a O.C., por isso
+// precisa achar direto por ela sem precisar saber de qual pedido é).
+let VISAO = 'home'; // 'home' | 'pedido' | 'sem_pedido' | 'busca'
+let PEDIDO_ATUAL = null; // {id, numero, cliente}
+let TERMO_BUSCA_ATUAL = '';
+
 let sidebarMexidoManualmente = false;
 function alternarSidebar(manual){
   document.getElementById('appShell').classList.toggle('sidebar-collapsed');
@@ -282,31 +292,182 @@ async function init(){
   document.getElementById('userAvatar').textContent = (AUTH.nome || '').trim().split(/\s+/).map(p => p[0]).slice(0, 2).join('').toUpperCase() || '··';
   iniciarSininho('sininhoWrap');
   iniciarCartinha('cartinhaWrap');
-  await carregarItens();
+  await renderHome();
 }
 
-async function carregarItens(){
-  const wrap = document.getElementById('tblWrap');
-  wrap.innerHTML = `<div class="empty">Carregando...</div>`;
-  // o Supabase limita a 1000 linhas por página por padrão -- com o
-  // almoxarifado passando de 1000 itens, uma busca sem paginação trunca
-  // silenciosamente os últimos (menor SC, por causa do order desc), sem erro
-  // nenhum. Busca em páginas de 1000 até esgotar.
+function renderNav(){
+  const nav = document.getElementById('navBar');
+  if (VISAO === 'home'){
+    nav.innerHTML = `<span class="nav-crumb active">Almoxarifado — Pedidos</span>`;
+    return;
+  }
+  const rotulo = VISAO === 'pedido'
+    ? `Pedido ${esc(PEDIDO_ATUAL.numero)}${PEDIDO_ATUAL.cliente ? ' — ' + esc(PEDIDO_ATUAL.cliente) : ''}`
+    : VISAO === 'sem_pedido'
+    ? 'Sem pedido vinculado'
+    : `Busca: "${esc(TERMO_BUSCA_ATUAL)}"`;
+  nav.innerHTML = `<span class="nav-crumb" onclick="renderHome()">Pedidos</span><span class="nav-sep">/</span><span class="nav-crumb active">${rotulo}</span>`;
+}
+
+// busca só os 3 campos necessários pra contar por pedido (não a linha
+// inteira, que é pesada com descrição/etc) -- paginado pelo mesmo motivo de
+// sempre (Supabase limita a 1000 linhas por página por padrão).
+async function buscarContagemPorPedido(){
+  let leves = [];
+  let de = 0;
+  while (true){
+    const { data, error } = await sb.from('almoxarifado_itens').select('id, pedido_id, status_recebimento').range(de, de + 999);
+    if (error) throw error;
+    leves = leves.concat(data);
+    if (data.length < 1000) break;
+    de += 1000;
+  }
+  return leves;
+}
+
+async function renderHome(){
+  VISAO = 'home'; PEDIDO_ATUAL = null;
+  renderNav();
+  const content = document.getElementById('content');
+  content.innerHTML = `
+    <div class="search-row">
+      <span class="btn btn-primary" onclick="document.getElementById('inputImportarSapiens').click()">📥 Importar Arquivo do Sapiens</span>
+      <input type="file" id="inputImportarSapiens" accept=".xlsx" style="display:none" onchange="onArquivoSapiensSelecionado(this)">
+      <span class="btn btn-primary" onclick="document.getElementById('inputImportarFornecedor').click()" title="Relatório de Ordem de Compra do Sapiens (1 O.C. por exportação) -- preenche o Fornecedor casando por SC+Item">🏭 Importar Fornecedores (O.C.)</span>
+      <input type="file" id="inputImportarFornecedor" accept=".xlsx" style="display:none" onchange="onArquivoFornecedorSelecionado(this)">
+    </div>
+    <div class="search-row">
+      <input class="main" id="buscaRapida" placeholder="🔍 Buscar por SC ou O.C. (ex: 35198 ou 1429)..." onkeydown="if(event.key==='Enter') buscarPorScOuOc()">
+      <span class="btn btn-primary" onclick="buscarPorScOuOc()">Buscar</span>
+    </div>
+    <div class="cards-pedidos" id="cardsPedidos"><div class="empty">Carregando pedidos...</div></div>`;
+
+  let leves;
+  try { leves = await buscarContagemPorPedido(); }
+  catch (err) { document.getElementById('cardsPedidos').innerHTML = `<div class="empty">Erro: ${esc(err.message)}</div>`; return; }
+
+  const { data: pedidos, error: errPedidos } = await sb.from('pedidos').select('id, numero_pedido, cliente');
+  if (errPedidos){ document.getElementById('cardsPedidos').innerHTML = `<div class="empty">Erro: ${esc(errPedidos.message)}</div>`; return; }
+  const pedidoPorId = {};
+  (pedidos || []).forEach(p => { pedidoPorId[p.id] = p; });
+
+  const agg = {}; // pedido_id (ou 'SEM_PEDIDO') -> {total, pendentes}
+  leves.forEach(it => {
+    const chave = it.pedido_id || 'SEM_PEDIDO';
+    if (!agg[chave]) agg[chave] = { total: 0, pendentes: 0 };
+    agg[chave].total++;
+    if (it.status_recebimento !== 'total') agg[chave].pendentes++;
+  });
+
+  if (!leves.length){
+    document.getElementById('cardsPedidos').innerHTML = `<div class="empty">Nenhum item importado ainda. Clique em "Importar Arquivo do Sapiens" pra começar.</div>`;
+    return;
+  }
+
+  const cardsPedidos = Object.entries(agg)
+    .filter(([chave]) => chave !== 'SEM_PEDIDO')
+    .map(([pedidoId, a]) => ({ pedidoId: Number(pedidoId), numero: pedidoPorId[pedidoId]?.numero_pedido || `#${pedidoId}`, cliente: pedidoPorId[pedidoId]?.cliente || '', ...a }))
+    .sort((a, b) => b.pedidoId - a.pedidoId);
+
+  const semPedido = agg['SEM_PEDIDO'];
+
+  document.getElementById('cardsPedidos').innerHTML =
+    cardsPedidos.map(c => `
+      <div class="pedido-card" onclick="abrirPedido(${c.pedidoId}, '${esc(c.numero).replace(/'/g, "\\'")}', '${esc(c.cliente).replace(/'/g, "\\'")}')">
+        <div class="pc-num">${esc(c.numero)}</div>
+        ${c.cliente ? `<div class="pc-cliente">${esc(c.cliente)}</div>` : ''}
+        <div class="pc-stats"><b>${c.total}</b> item(ns) · ${c.pendentes ? `<span style="color:var(--red)">${c.pendentes} pendente(s)</span>` : `<span style="color:var(--green)">tudo recebido</span>`}</div>
+      </div>`).join('')
+    + (semPedido ? `
+      <div class="pedido-card warn" onclick="abrirSemPedido()">
+        <div class="pc-num">⚠ Sem pedido vinculado</div>
+        <div class="pc-stats"><b>${semPedido.total}</b> item(ns) · ${semPedido.pendentes} pendente(s)</div>
+      </div>` : '');
+}
+
+async function abrirPedido(pedidoId, numero, cliente){
+  VISAO = 'pedido'; PEDIDO_ATUAL = { id: pedidoId, numero, cliente };
+  renderNav();
+  document.getElementById('content').innerHTML = `<div class="empty">Carregando...</div>`;
+  try {
+    const itens = await buscarItensCompletos(q => q.eq('pedido_id', pedidoId));
+    renderDetalhe(itens);
+  } catch (err) {
+    document.getElementById('content').innerHTML = `<div class="empty">Erro: ${esc(err.message)}</div>`;
+  }
+}
+
+async function abrirSemPedido(){
+  VISAO = 'sem_pedido'; PEDIDO_ATUAL = null;
+  renderNav();
+  document.getElementById('content').innerHTML = `<div class="empty">Carregando...</div>`;
+  try {
+    const itens = await buscarItensCompletos(q => q.is('pedido_id', null));
+    renderDetalhe(itens);
+  } catch (err) {
+    document.getElementById('content').innerHTML = `<div class="empty">Erro: ${esc(err.message)}</div>`;
+  }
+}
+
+async function buscarPorScOuOc(){
+  const termo = document.getElementById('buscaRapida').value.trim();
+  if (!termo) return;
+  // remove qualquer caractere que não seja letra/número/ponto/traço antes de
+  // colocar no filtro .or() -- evita que vírgula/parêntese quebrem a sintaxe
+  // do PostgREST (ou façam a busca se comportar de um jeito inesperado).
+  const termoSeguro = termo.replace(/[^a-zA-Z0-9.\-]/g, '');
+  if (!termoSeguro){ showMsg('Digite um SC ou O.C. válido pra buscar.', false); return; }
+
+  VISAO = 'busca'; PEDIDO_ATUAL = null; TERMO_BUSCA_ATUAL = termo;
+  renderNav();
+  document.getElementById('content').innerHTML = `<div class="empty">Buscando...</div>`;
+  try {
+    const itens = await buscarItensCompletos(q => {
+      const partes = [`oc.ilike.%${termoSeguro}%`];
+      if (/^\d+$/.test(termoSeguro)) partes.push(`sc.eq.${termoSeguro}`);
+      return q.or(partes.join(','));
+    });
+    renderDetalhe(itens);
+  } catch (err) {
+    document.getElementById('content').innerHTML = `<div class="empty">Erro na busca: ${esc(err.message)}</div>`;
+  }
+}
+
+// busca as linhas completas (todas as colunas) já filtradas -- paginado, do
+// mesmo jeito, mas agora o filtro (por pedido, sem pedido, ou SC/OC) deixa o
+// resultado pequeno o bastante pra não precisar mais que 1 página quase
+// sempre.
+async function buscarItensCompletos(aplicarFiltro){
   let todos = [];
   let de = 0;
-  while (true) {
-    const { data, error } = await sb
-      .from('almoxarifado_itens')
-      .select('*, pedidos(numero_pedido, cliente)')
-      .order('sc', { ascending: false })
-      .order('item_seq')
-      .range(de, de + 999);
-    if (error){ wrap.innerHTML = `<div class="empty">Erro: ${esc(error.message)}</div>`; return; }
+  while (true){
+    let q = sb.from('almoxarifado_itens').select('*, pedidos(numero_pedido, cliente)').order('sc', { ascending: false }).order('item_seq');
+    q = aplicarFiltro(q);
+    const { data, error } = await q.range(de, de + 999);
+    if (error) throw error;
     todos = todos.concat(data);
     if (data.length < 1000) break;
     de += 1000;
   }
-  TODOS_ITENS = todos;
+  return todos;
+}
+
+function renderDetalhe(itens){
+  TODOS_ITENS = itens;
+  itensSelecionados = new Set();
+  const content = document.getElementById('content');
+  content.innerHTML = `
+    <div class="search-row">
+      <input class="main" id="filtroPrincipal" placeholder="🔍 Filtrar por SC, item, código, descrição, fornecedor, requisitante, NF..." oninput="aplicarFiltros()">
+      <select id="filtroStatus" onchange="aplicarFiltros()">
+        <option value="">Status: todos</option>
+        <option value="pendente">Pendente</option>
+        <option value="parcial">Parcialmente recebido</option>
+        <option value="total">Totalmente recebido</option>
+      </select>
+      <span class="btn btn-primary" id="btnExportarItens" onclick="exportarItensSelecionadosExcel()" style="opacity:.5;pointer-events:none">📤 Exportar selecionados (Excel)</span>
+    </div>
+    <div class="tbl-wrap" id="tblWrap"></div>`;
   aplicarFiltros();
 }
 
@@ -667,7 +828,7 @@ async function confirmarImportacaoSapiens(){
   btn.disabled = false; btn.textContent = 'Confirmar importação';
   showMsg(`Importação concluída — ${novos} novo(s), ${atualizados} atualizado(s).`, true);
   fecharPreview();
-  await carregarItens();
+  await renderHome();
 }
 
 // ── IMPORTAÇÃO DO 2º RELATÓRIO (ORDEM DE COMPRA -- FORNECEDOR) ─────────────
@@ -758,11 +919,11 @@ async function confirmarImportacaoFornecedor(){
   btn.disabled = false; btn.textContent = 'Confirmar importação';
   showMsg(`Fornecedores atualizados — ${atualizados} item(ns) atualizado(s)${naoAchados ? `, ${naoAchados} não encontrado(s) no sistema (ainda não importados pelo relatório principal)` : ''}.`, true);
   fecharPreviewFornecedor();
-  await carregarItens();
+  await renderHome();
 }
 
 init().catch(err => {
-  document.getElementById('tblWrap').innerHTML =
+  document.getElementById('content').innerHTML =
     `<div class="empty">Erro ao iniciar a página: ${esc(err.message || err)}</div>`;
   console.error('Erro no init():', err);
 });
