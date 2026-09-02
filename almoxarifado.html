@@ -341,7 +341,7 @@ function renderTabela(itens){
     <table class="dtbl">
       <thead><tr>
         <th><input type="checkbox" id="chkTodosItens" ${todosMarcados ? 'checked' : ''} onchange="toggleTodosItens(this.checked)"></th>
-        <th>SC</th><th>Item</th><th>Pedido</th><th>Família</th><th>Descrição</th>
+        <th>SC</th><th>Item</th><th>Pedido</th><th>Família</th><th>Descrição</th><th>UM</th>
         <th>Fornecedor</th><th>OC</th><th>Sit. OC</th><th>Desenho</th>
         <th class="r">Qtd. Solic.</th><th class="r">Qtd. Recebida</th><th class="r">Qtd. Pendente</th>
         <th>NF</th><th>Data Receb. NF</th><th>Observação</th><th>Status</th><th></th>
@@ -355,6 +355,7 @@ function renderTabela(itens){
           <td>${it.pedidos?.numero_pedido ? esc(it.pedidos.numero_pedido) : (it.pedido_bruto ? `<span class="sem-link" title="Não achei pedido ${esc(it.pedido_bruto)} cadastrado no sistema">${esc(it.pedido_bruto)} ⚠</span>` : '—')}</td>
           <td>${esc(it.familia || '—')}</td>
           <td class="desc-cell" title="${esc(it.descricao||'')}">${esc(it.descricao || '—')}</td>
+          <td>${esc(it.pc || '—')}</td>
           <td>${esc(it.fornecedor || '—')}</td>
           <td>${esc(it.oc || '—')}</td>
           <td>${esc(it.situacao_oc || '—')}</td>
@@ -407,6 +408,7 @@ function exportarItensSelecionadosExcel(){
     'Família': it.familia || '',
     'Código': it.codigo_produto || '',
     'Descrição': it.descricao || '',
+    'UM': it.pc || '',
     'Fornecedor': it.fornecedor || '',
     'OC': it.oc || '',
     'Sit. OC': it.situacao_oc || '',
