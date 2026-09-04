@@ -173,14 +173,6 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 .prog-bar{flex:1;height:8px;background:var(--bg4);border-radius:4px;overflow:hidden}
 .prog-fill{height:100%;border-radius:4px}
 .prog-pct{font-size:12px;font-weight:700;width:38px;text-align:right;flex-shrink:0}
-.mini-cards-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px}
-.mini-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:.85rem 1rem}
-.mini-card-name{font-size:12.5px;font-weight:600;color:var(--text);margin-bottom:8px}
-.mini-prog-row{display:flex;align-items:center;gap:7px;margin-top:5px}
-.mini-prog-label{font-size:9.5px;color:var(--text3);width:78px;flex-shrink:0}
-.mini-prog-bar{flex:1;height:5px;background:var(--bg4);border-radius:3px;overflow:hidden}
-.mini-prog-fill{height:100%;border-radius:3px}
-.mini-prog-pct{font-size:10.5px;font-weight:700;width:34px;text-align:right;flex-shrink:0}
 
 .section{padding:0 1.5rem 1.25rem}
 .section-title{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text2);margin-bottom:12px}
@@ -611,10 +603,6 @@ function prHTML(pF, pE){
     <div class="prog-row"><span class="prog-label"><i class="ti ti-truck"></i> Expedição</span><div class="prog-bar"><div class="prog-fill" style="width:${pE.toFixed(1)}%;background:linear-gradient(90deg,var(--green),var(--teal))"></div></div><span class="prog-pct" style="color:var(--green)">${pE.toFixed(0)}%</span></div>
   </div>`;
 }
-function miniProgHTML(pF, pE){
-  return `<div class="mini-prog-row"><span class="mini-prog-label">Em fabricação</span><div class="mini-prog-bar"><div class="mini-prog-fill" style="width:${pF.toFixed(1)}%;background:linear-gradient(90deg,var(--blue),var(--purple))"></div></div><span class="mini-prog-pct" style="color:var(--blue)">${pF.toFixed(0)}%</span></div>
-  <div class="mini-prog-row"><span class="mini-prog-label">Expedido</span><div class="mini-prog-bar"><div class="mini-prog-fill" style="width:${pE.toFixed(1)}%;background:linear-gradient(90deg,var(--green),var(--teal))"></div></div><span class="mini-prog-pct" style="color:var(--green)">${pE.toFixed(0)}%</span></div>`;
-}
 function resP(p){
   const tags = DB[p]; let peso=0, fab=0, exp=0, pE=0, nTags=Object.keys(tags).length;
   Object.values(tags).forEach(t => Object.values(t).forEach(itens => itens.forEach(i => {
@@ -631,20 +619,6 @@ function setorAgg(items){
   let cargaProg=0, expedido=0, pendExp=0, somaAvanco=0;
   items.forEach(it => { cargaProg+=it.pesoTotal; expedido+=it.expedido; pendExp+=it.pendExp; somaAvanco+=it.avancoPct; });
   return { cargaProg, expedido, pendExp, avanco: items.length ? somaAvanco/items.length : null, n: items.length };
-}
-// mini-cards de "em processo de fabricação" x "expedido" por setor -- pF/pE
-// ponderados pelo peso dos itens (mesma conta do resumo do pedido em resP),
-// não a média simples usada na coluna Avanço da tabela de setores.
-function setorMiniCardsHTML(map){
-  return `<div class="mini-cards-grid">${Object.keys(map).sort().map(setor => {
-    const itens = map[setor];
-    const peso = itens.reduce((a,i)=>a+i.pesoTotal,0);
-    const fab = itens.reduce((a,i)=>a+i.fabricado,0);
-    const exp = itens.reduce((a,i)=>a+i.expedido,0);
-    const pF = peso>0 ? Math.min(100,fab/peso*100) : 0;
-    const pE = peso>0 ? Math.min(100,exp/peso*100) : 0;
-    return `<div class="mini-card"><div class="mini-card-name">${esc(setor)}</div>${miniProgHTML(pF, pE)}</div>`;
-  }).join('')}</div>`;
 }
 // chave de agrupamento de um item: nome do fornecedor terceirizado se tiver
 // um atribuído (qualquer fornecedor, não só um), senão o setor original --
@@ -1203,17 +1177,12 @@ function renderPedido(){
 
   const mapaSetores = setoresDoPedido(state.pedido, true);
   h += `<div class="section" style="padding-top:1.25rem"><div class="section-title">Setores do pedido — carga programada, expedido, pendente e avanço</div>${setorTableHTML(mapaSetores, null)}</div>`;
-  h += `<div class="section"><div class="section-title">Setores do pedido — em processo de fabricação × expedido</div>${setorMiniCardsHTML(mapaSetores)}</div>`;
   h += `<div class="section"><div class="section-title">Controle de quantidade — peças (un.)</div>${setorTableQtdHTML(mapaSetores)}</div>`;
   h += `<div class="section"><div class="section-title">TAGs do pedido — clique para ver os setores</div><div class="cards-grid">`;
   tk.sort().forEach(tag => {
     const itensTag = itensFlat(tags[tag]);
     const tPeso = itensTag.reduce((a,i)=>a+i.pesoTotal,0);
-    const tFab = itensTag.reduce((a,i)=>a+i.fabricado,0);
-    const tExp = itensTag.reduce((a,i)=>a+i.expedido,0);
     const tPE = itensTag.reduce((a,i)=>a+i.pendExp,0);
-    const tPF = tPeso>0 ? Math.min(100,tFab/tPeso*100) : 0;
-    const tPE_pct = tPeso>0 ? Math.min(100,tExp/tPeso*100) : 0;
     const barW = tPeso>0 ? (tPeso/maxTP*100).toFixed(1) : 0;
     h += `<div class="card" onclick="abrirTag('${esc(tag)}')">
       <div class="card-name">${esc(tag)}</div>
@@ -1221,8 +1190,7 @@ function renderPedido(){
       <div class="card-ton">${fmt_t(tPeso)}</div>
       <div class="card-kg">${fmt_kg(tPeso)} kg</div>
       <div style="height:3px;background:var(--bg4);border-radius:2px;margin:9px 0"><div style="height:100%;width:${barW}%;background:var(--blue);border-radius:2px"></div></div>
-      ${miniProgHTML(tPF, tPE_pct)}
-      ${tPE>0?`<span class="pill pill-red" style="margin-top:8px">${fmt_t(tPE)} pend.</span>`:`<span class="pill pill-green" style="margin-top:8px">ok</span>`}
+      ${tPE>0?`<span class="pill pill-red">${fmt_t(tPE)} pend.</span>`:`<span class="pill pill-green">ok</span>`}
     </div>`;
   });
   h += `</div></div>`;
@@ -1341,7 +1309,43 @@ async function gerarPdfPedido(){
     }
     barraProgresso('Em processo de fabricação', s.pctFab, COR.green);
     barraProgresso('Expedição', s.pctExp, COR.amber);
-    y += 6;
+    y += 3;
+
+    // ── mini-gráfico discreto: em processo de fabricação × expedido por setor ──
+    doc.setFont(undefined,'normal'); doc.setFontSize(6.3); doc.setTextColor(...COR.inkSoft);
+    doc.text('POR SETOR — EM PROCESSO DE FABRICAÇÃO / EXPEDIDO', M, y);
+    y += 3.2;
+    function miniBarraSetor(x0, yTop, w, label, pF, pE){
+      doc.setFont(undefined,'bold'); doc.setFontSize(6.6); doc.setTextColor(...COR.ink);
+      doc.text(label, x0, yTop, { maxWidth: w-16 });
+      doc.setFont(undefined,'normal'); doc.setFontSize(6.2); doc.setTextColor(...COR.inkSoft);
+      doc.text(`${pF.toFixed(0)}% / ${pE.toFixed(0)}%`, x0+w, yTop, { align:'right' });
+      const barY1 = yTop+0.9, barY2 = yTop+2.6, barH = 1.4;
+      doc.setFillColor(...COR.line);
+      doc.roundedRect(x0, barY1, w, barH, 0.6, 0.6, 'F');
+      doc.roundedRect(x0, barY2, w, barH, 0.6, 0.6, 'F');
+      doc.setFillColor(...COR.green);
+      doc.roundedRect(x0, barY1, Math.max(1, w*Math.min(100,pF)/100), barH, 0.6, 0.6, 'F');
+      doc.setFillColor(...COR.amber);
+      doc.roundedRect(x0, barY2, Math.max(1, w*Math.min(100,pE)/100), barH, 0.6, 0.6, 'F');
+    }
+    const setoresMini = Object.keys(mapaSetores).sort();
+    const miniColW = (CW - 6) / 2;
+    const miniRowH = 6.6;
+    if (y + Math.ceil(setoresMini.length/2)*miniRowH > 270){ rodape(1); doc.addPage(); y = 20; }
+    setoresMini.forEach((setor, i) => {
+      const itens = mapaSetores[setor];
+      const peso = itens.reduce((a,it)=>a+it.pesoTotal,0);
+      const fab = itens.reduce((a,it)=>a+it.fabricado,0);
+      const exp = itens.reduce((a,it)=>a+it.expedido,0);
+      const pF = peso>0 ? fab/peso*100 : 0;
+      const pE = peso>0 ? exp/peso*100 : 0;
+      const col = i % 2, row = Math.floor(i/2);
+      const x0 = M + col*(miniColW+6);
+      const yRow = y + row*miniRowH;
+      miniBarraSetor(x0, yRow, miniColW, setor, pF, pE);
+    });
+    y += Math.ceil(setoresMini.length/2)*miniRowH + 4;
 
     // ── tabela por setor ──
     y = tituloSecao(y, 'Situação por setor');
