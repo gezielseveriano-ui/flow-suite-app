@@ -633,9 +633,15 @@ function chaveSetorOuFornecedor(it){
   }
   return it.produto;
 }
+// COMERCIAL fica fora das visões "por setor" (tabelas e gráficos) -- é item
+// comprado/de romaneio, não passa por chão de fábrica (ver sql/036), então
+// não é um setor de produção de verdade. Continua contando nos totais do
+// pedido e na lista de itens/expedição normalmente, só não vira uma linha
+// "setor" no meio de Estrutura/Rolos/etc.
 function agruparItens(itensLista, separarFornecedor){
   const map = {};
   itensLista.forEach(it => {
+    if (it.produto === 'COMERCIAL') return;
     const chave = separarFornecedor ? chaveSetorOuFornecedor(it) : it.produto;
     if (!map[chave]) map[chave] = [];
     map[chave].push(it);
