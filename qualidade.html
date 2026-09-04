@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="icon" href="assets/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-title" content="Flow Suite">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Flow Suite — Qualidade</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<style>
+:root{
+  --navy:#0b1e33; --navy2:#102A43; --navy3:#173a5e;
+  --bg:#F8FAFC; --bg2:#ffffff; --bg3:#F1F5F9; --bg4:#E9EDF3;
+  --border:#E5E7EB; --border-strong:#CBD5E1; --text:#111827; --text2:#6B7280; --text3:#9CA3AF;
+  --blue:#1D4ED8; --blue-dim:#DBEAFE; --blue-hover:#1E40AF; --header-bg:#102A43;
+  --green:#10B981; --green-dim:#D1FAE5;
+  --amber:#b5690a; --amber-dim:#faedd9;
+  --red:#DC2626; --red-dim:#FEE2E2;
+  --purple:#7c3aed; --purple-dim:#ede9fe;
+  --radius:16px; --radius-sm:10px;
+  --shadow-sm:0 1px 2px rgba(16,24,40,.04), 0 1px 3px rgba(16,24,40,.06);
+  --shadow-md:0 8px 20px rgba(16,24,40,.10), 0 2px 6px rgba(16,24,40,.05);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:14px;-webkit-font-smoothing:antialiased}
+
+.app-shell{min-height:100vh;display:flex;flex-direction:column}
+.app-header{display:flex;align-items:center;justify-content:space-between;height:60px;padding:0 22px;background:var(--header-bg);border-bottom:1px solid var(--border);flex-shrink:0;position:sticky;top:0;z-index:100}
+.app-header-brand{display:flex;align-items:center;gap:10px}
+.app-header-brand .logo-full{height:42px;width:auto;flex-shrink:0;display:block}
+.app-header-right{display:flex;align-items:center;gap:12px}
+.header-user{font-size:12px;color:rgba(255,255,255,.6);text-align:right;line-height:1.3}
+.header-user strong{color:#fff;font-weight:600;display:block;font-size:12.5px}
+.icon-btn{width:32px;height:32px;border-radius:9px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:#fff;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+.icon-btn:hover{background:rgba(255,255,255,.16)}
+.icon-btn svg{width:15px;height:15px}
+.avatar{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#4f8ef7,#7c6cf0);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;flex-shrink:0}
+
+.app-body{flex:1;display:flex;min-height:0}
+.sidebar{width:222px;flex-shrink:0;background:var(--navy2);border-right:1px solid var(--border);display:flex;flex-direction:column;justify-content:space-between;padding:16px 10px;transition:width .15s ease}
+.app-shell.sidebar-collapsed .sidebar{width:68px}
+.app-shell.sidebar-collapsed .nav-label,.app-shell.sidebar-collapsed .collapse-label{display:none}
+.sidebar-nav{display:flex;flex-direction:column;gap:2px}
+.nav-item{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:10px;color:rgba(255,255,255,.66);text-decoration:none;font-size:13.5px;font-weight:500;white-space:nowrap;overflow:hidden}
+.nav-item svg{width:17px;height:17px;flex-shrink:0}
+.nav-item:hover{background:rgba(255,255,255,.07);color:#fff}
+.nav-item.active{background:var(--blue);color:#fff;font-weight:600}
+.collapse-btn{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;color:rgba(255,255,255,.45);background:none;border:none;cursor:pointer;font-size:12.5px;width:100%;font-family:inherit}
+.collapse-btn:hover{background:rgba(255,255,255,.07);color:#fff}
+.collapse-btn svg{width:15px;height:15px;transition:transform .15s;flex-shrink:0}
+.app-shell.sidebar-collapsed .collapse-btn svg{transform:rotate(180deg)}
+
+.sidebar-fab{position:fixed;bottom:20px;left:16px;z-index:260;width:46px;height:46px;border-radius:50%;background:var(--navy2);border:1px solid rgba(255,255,255,.15);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:var(--shadow-md);transition:background .12s,transform .12s}
+.sidebar-fab:hover{background:var(--navy3);transform:scale(1.06)}
+.sidebar-fab svg{width:20px;height:20px;transition:transform .2s;flex-shrink:0}
+.app-shell.sidebar-collapsed .sidebar-fab svg{transform:rotate(180deg)}
+
+.content{flex:1;min-width:0;padding:1.75rem 2rem;overflow-y:auto}
+
+.btn{display:inline-block;padding:8px 15px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg2);color:var(--text);font-size:12.5px;cursor:pointer;font-weight:500;transition:border-color .12s,color .12s}
+.btn:hover{border-color:var(--blue);color:var(--blue)}
+.btn-primary{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}
+.btn-primary:hover{background:var(--blue-hover);border-color:var(--blue-hover);color:#fff}
+.btn-primary:disabled{opacity:.5;cursor:default}
+
+.msg-box{margin:0 0 1rem;padding:10px 14px;border-radius:var(--radius-sm);font-size:13px;display:none}
+.msg-box.show{display:block}
+.msg-box.err{background:var(--red-dim);color:var(--red)}
+.msg-box.ok{background:var(--green-dim);color:var(--green)}
+
+.nav-bar{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--text2);margin-bottom:16px}
+.nav-crumb{cursor:pointer;padding:3px 8px;border-radius:6px}
+.nav-crumb:hover{background:var(--bg3);color:var(--text)}
+.nav-crumb.active{color:var(--blue);font-weight:600;cursor:default}
+.nav-crumb.active:hover{background:none}
+.nav-sep{color:var(--text3)}
+
+.search-row{display:flex;gap:10px;margin-bottom:1.25rem;flex-wrap:wrap;align-items:center}
+.search-row input, .search-row select{padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg2);color:var(--text);font-size:13px}
+.search-row input:focus, .search-row select:focus{outline:none;border-color:var(--blue)}
+.search-row input.main{flex:1;min-width:220px}
+.empty{text-align:center;padding:3rem 2rem;color:var(--text2);font-size:13px}
+
+.tbl-wrap{overflow-x:auto;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-sm)}
+.dtbl{width:100%;border-collapse:collapse;font-size:12px}
+.dtbl thead th{text-align:left;padding:8px 10px;color:var(--text2);border-bottom:1px solid var(--border);font-weight:500;white-space:nowrap;background:var(--bg3);position:sticky;top:0}
+.dtbl tbody tr{border-bottom:1px solid var(--border);cursor:pointer}
+.dtbl tbody tr:hover td{background:var(--bg3)}
+.dtbl tbody td{padding:8px 10px;vertical-align:middle;white-space:nowrap}
+.dtbl td.r{text-align:right;font-variant-numeric:tabular-nums}
+.status-badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:10px;font-weight:600;white-space:nowrap}
+.sb-aberto{background:var(--amber-dim);color:var(--amber)}
+.sb-encerrado{background:var(--green-dim);color:var(--green)}
+
+.section{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem 1.4rem;margin-bottom:1.1rem;box-shadow:var(--shadow-sm)}
+.section-title{font-size:11.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--blue);margin-bottom:1rem;padding-bottom:.6rem;border-bottom:1px solid var(--border)}
+.form-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px}
+.field{display:flex;flex-direction:column;gap:5px}
+.field.wide{grid-column:1/-1}
+.field label{font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.02em}
+.field input, .field select, .field textarea{padding:9px 11px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg2);color:var(--text);font-size:13px;font-family:inherit}
+.field input:focus, .field select:focus, .field textarea:focus{outline:none;border-color:var(--blue)}
+.field textarea{resize:vertical;min-height:64px}
+.radio-group{display:flex;gap:14px;flex-wrap:wrap;padding-top:4px}
+.radio-opt{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--text);cursor:pointer}
+.radio-opt input{width:15px;height:15px;cursor:pointer}
+.form-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:.5rem}
+
+.rnc-num{font-weight:700;color:var(--blue)}
+.pill-count{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600;background:var(--blue-dim);color:var(--blue)}
+
+.kpi-block{margin-bottom:1.5rem}
+.kpi-title{font-size:13px;font-weight:700;color:var(--text);margin-bottom:2px}
+.kpi-obj{font-size:11.5px;color:var(--text2);margin-bottom:.7rem}
+.kpi-tbl{width:100%;border-collapse:collapse;font-size:11.5px}
+.kpi-tbl th,.kpi-tbl td{padding:6px 8px;text-align:center;border:1px solid var(--border);white-space:nowrap}
+.kpi-tbl th{background:var(--bg3);color:var(--text2);font-weight:600}
+.kpi-tbl td:first-child,.kpi-tbl th:first-child{text-align:left;font-weight:600}
+.kpi-tbl td.tot{font-weight:700;color:var(--blue);background:var(--blue-dim)}
+.kpi-warn td.tot{color:var(--red);background:var(--red-dim)}
+</style>
+</head>
+<body>
+
+<div class="app-shell" id="appShell">
+  <header class="app-header">
+    <div class="app-header-brand">
+      <img class="logo-full" src="assets/logo.png" alt="Flow Suite">
+    </div>
+    <div class="app-header-right">
+      <span class="header-user">Logado como<strong id="userNome">...</strong></span>
+      <div id="sininhoWrap"></div>
+      <div id="cartinhaWrap"></div>
+      <button class="icon-btn" title="Início" onclick="window.location.href='index.html'">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 9.5 10 3l7 6.5M5 8v8h10V8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <button class="icon-btn" title="Sair" onclick="logout()">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 3H4v14h4M13 6l4 4-4 4M6.5 10H17" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="avatar" id="userAvatar">··</div>
+    </div>
+  </header>
+  <div class="app-body">
+    <aside class="sidebar">
+      <nav class="sidebar-nav">
+        <a class="nav-item" href="index.html">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 9.5 10 3l7 6.5M5 8v8h10V8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="nav-label">Início</span>
+        </a>
+        <a class="nav-item" href="contratos.html">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 2.5h6l3 3v12h-9z" stroke-linejoin="round"/><path d="M12 2.5V6h3M8 10h4M8 13h4M8 7h1.5" stroke-linecap="round"/></svg>
+          <span class="nav-label">Contratos</span>
+        </a>
+        <a class="nav-item" href="engenharia.html">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m3 17 8-8m0 0 4-4 2 2-4 4m-4-4 4 4M6 14l-1 3 3-1" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="nav-label">Engenharia</span>
+        </a>
+        <a class="nav-item" href="cadastro.html">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M7 3h6a1 1 0 0 1 1 1v1H6V4a1 1 0 0 1 1-1Z" stroke-linejoin="round"/><path d="M6 4H5a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1h-1M7 10h6M7 13h4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="nav-label">PCP</span>
+        </a>
+        <a class="nav-item" href="apontamento.html">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 17V9l4-3 4 3v8M11 17V6l3-2 3 2v11" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="nav-label">Produção</span>
+        </a>
+        <a class="nav-item" href="ponto.html">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10.5" r="7"/><path d="M10 6.5v4l3 2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="nav-label">Apontamento de Horas</span>
+        </a>
+        <a class="nav-item" href="expedicao.html">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 6h9v8H2zM11 9h4l3 3v2h-7z" stroke-linejoin="round"/><circle cx="6" cy="15.5" r="1.4"/><circle cx="14" cy="15.5" r="1.4"/></svg>
+          <span class="nav-label">Expedição</span>
+        </a>
+        <a class="nav-item" href="industrializacao.html">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m10 2 7 3.5v9L10 18l-7-3.5v-9L10 2Z" stroke-linejoin="round"/><path d="M10 2v16M3 5.5 10 9l7-3.5M10 9v9" stroke-linejoin="round"/></svg>
+          <span class="nav-label">Industrialização</span>
+        </a>
+        <a class="nav-item" href="almoxarifado.html">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 4h14M3 4v12M17 4v12M3 8h14M3 12h14M3 16h14" stroke-linecap="round"/></svg>
+          <span class="nav-label">Almoxarifado</span>
+        </a>
+        <a class="nav-item active" href="qualidade.html">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 2.5 16 5v5c0 4-2.5 6.5-6 7.5C6.5 16.5 4 14 4 10V5l6-2.5Z" stroke-linejoin="round"/><path d="m7.2 10 2 2 3.6-4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="nav-label">Qualidade</span>
+        </a>
+        <a class="nav-item" href="dashboard.html">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 15V9M10 15V4M16 15v-6" stroke-linecap="round"/></svg>
+          <span class="nav-label">Dashboard</span>
+        </a>
+      </nav>
+      <button class="collapse-btn" onclick="alternarSidebar(true)">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12.5 4 7 10l5.5 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span class="collapse-label">Recolher menu</span>
+      </button>
+    </aside>
+    <button class="sidebar-fab" id="sidebarFab" onclick="alternarSidebar(true)" title="Mostrar/ocultar menu">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12.5 4 7 10l5.5 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <main class="content">
+      <div class="nav-bar" id="navBar"></div>
+      <div id="msgBox" class="msg-box"></div>
+      <div id="content"><div class="empty">Carregando...</div></div>
+    </main>
+  </div>
+</div>
+
+<script src="js/supabase-client.js?v=3"></script>
+<script>
+let AUTH = null;
+let PEDIDOS = [];        // [{id, numero_pedido, cliente}]
+let RNCS = [];           // lista carregada, com pedidos embutido
+let VISAO = 'lista';     // 'lista' | 'form' | 'indicadores'
+let RNC_EDITANDO = null; // registro sendo editado, ou null (novo)
+
+let sidebarMexidoManualmente = false;
+function alternarSidebar(manual){
+  document.getElementById('appShell').classList.toggle('sidebar-collapsed');
+  if (manual) sidebarMexidoManualmente = true;
+}
+setTimeout(() => {
+  if (sidebarMexidoManualmente) return;
+  document.getElementById('appShell').classList.add('sidebar-collapsed');
+}, 5000);
+
+function showMsg(text, ok){
+  const box = document.getElementById('msgBox');
+  box.textContent = text;
+  box.className = 'msg-box show ' + (ok ? 'ok' : 'err');
+}
+function clearMsg(){ document.getElementById('msgBox').classList.remove('show'); }
+
+async function init(){
+  AUTH = await exigirLogin(['qualidade', 'admin']);
+  if (!AUTH) return;
+  document.getElementById('userNome').textContent = AUTH.nome;
+  document.getElementById('userAvatar').textContent = (AUTH.nome || '').trim().split(/\s+/).map(p => p[0]).slice(0, 2).join('').toUpperCase() || '··';
+  iniciarSininho('sininhoWrap');
+  iniciarCartinha('cartinhaWrap');
+
+  const { data: pedidos } = await sb.from('pedidos').select('id, numero_pedido, cliente').order('numero_pedido');
+  PEDIDOS = pedidos || [];
+
+  await carregarRNCs();
+  irLista();
+}
+
+async function carregarRNCs(){
+  const { data, error } = await sb
+    .from('rnc')
+    .select('*, pedidos(numero_pedido, cliente)')
+    .order('ano_rnc', { ascending: false })
+    .order('numero_rnc', { ascending: false });
+  if (error){ showMsg('Erro ao carregar RNCs: ' + error.message, false); return; }
+  RNCS = data || [];
+}
+
+// ── LABELS / FORMATAÇÃO ─────────────────────────────────────────────────────
+function formatarNumeroRNC(r){ return String(r.numero_rnc).padStart(2, '0') + '/' + r.ano_rnc; }
+function fmtData(d){ return d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—'; }
+const LABEL_STATUS = { em_aberto: 'Em Aberto', encerrado: 'Encerrado' };
+const LABEL_ORIGEM = { interno: 'Interno', fornecedor: 'Externo — Fornecedor', cliente: 'Externo — Cliente' };
+const LABEL_DISPOSICAO = { aceitar_como_esta: 'Aceitar como está', retrabalhar: 'Retrabalhar', sucatear: 'Sucatear', devolver_fornecedor: 'Devolver ao Fornecedor' };
+const LABEL_EFICACIA = { aprovado: 'Aprovado', reprovado: 'Reprovado' };
+const EMPRESAS = ['MDE- ENGENHARIA S/A', 'MDE - EQUIPAMENTOS LTDA'];
+
+// sugestões (não travam o campo -- é datalist, o usuário pode digitar outra coisa)
+const SUGESTOES_TIPO_DESVIO = ['ENGENHARIA/DESENHO', 'QUALIDADE', 'FABRICAÇÃO', 'MONTAGEM', 'LOGÍSTICA', 'MATERIAL'];
+const SUGESTOES_RESPONSAVEL_NC = ['ENGENHARIA', 'FORNECEDOR', 'FÁBRICA', 'MONTAGEM', 'QUALIDADE', 'PCP'];
+const SUGESTOES_ESPECIFICACAO = ['DESENHO DETALHE', 'ESPECIFICAÇÃO TÉCNICA', 'NORMA'];
+const SUGESTOES_LOCAL_NC = ['RECEBIMENTO MDE', 'FABRICA MDE', 'MONTAGEM MDE', 'MONTAGEM OBRA', 'ENGENHARIA MDE'];
+
+// ── NAVEGAÇÃO ────────────────────────────────────────────────────────────
+function renderNav(){
+  const nav = document.getElementById('navBar');
+  let h = `<span class="nav-crumb ${VISAO==='lista'?'active':''}" onclick="irLista()">Qualidade — RNCs</span>`;
+  if (VISAO === 'form') h += `<span class="nav-sep">›</span><span class="nav-crumb active">${RNC_EDITANDO ? 'Editar RNC ' + formatarNumeroRNC(RNC_EDITANDO) : 'Novo RNC'}</span>`;
+  if (VISAO === 'indicadores') h += `<span class="nav-sep">›</span><span class="nav-crumb active">Indicador RNCs</span>`;
+  nav.innerHTML = h;
+}
+
+function irLista(){ VISAO = 'lista'; RNC_EDITANDO = null; renderNav(); renderLista(); clearMsg(); }
+function irNovo(){ VISAO = 'form'; RNC_EDITANDO = null; renderNav(); renderForm(null); clearMsg(); }
+function irEditar(id){
+  const r = RNCS.find(x => x.id === id);
+  if (!r) return;
+  VISAO = 'form'; RNC_EDITANDO = r; renderNav(); renderForm(r); clearMsg();
+}
+function irIndicadores(){ VISAO = 'indicadores'; RNC_EDITANDO = null; renderNav(); renderIndicadores(); clearMsg(); }
+
+// ── LISTA ────────────────────────────────────────────────────────────────
+let FILTRO_STATUS = '';
+let FILTRO_TERMO = '';
+
+function filtrarLista(){
+  const termo = FILTRO_TERMO.toLowerCase();
+  return RNCS.filter(r => {
+    if (FILTRO_STATUS && r.status_nc !== FILTRO_STATUS) return false;
+    if (!termo) return true;
+    const chave = `${formatarNumeroRNC(r)} ${r.pedidos?.numero_pedido||''} ${r.fornecedor||''} ${r.tipo_desvio||''} ${r.desenho||''} ${r.emitido_por||''}`.toLowerCase();
+    return chave.includes(termo);
+  });
+}
+
+function renderLista(){
+  const itens = filtrarLista();
+  let h = `<div class="search-row">
+    <input class="main" placeholder="🔍 Buscar por número, pedido, fornecedor, tipo de desvio, desenho..." value="${esc(FILTRO_TERMO)}" oninput="FILTRO_TERMO=this.value;renderLista()">
+    <select onchange="FILTRO_STATUS=this.value;renderLista()">
+      <option value="">Todos os status</option>
+      <option value="em_aberto" ${FILTRO_STATUS==='em_aberto'?'selected':''}>Em Aberto</option>
+      <option value="encerrado" ${FILTRO_STATUS==='encerrado'?'selected':''}>Encerrado</option>
+    </select>
+    <button class="btn" onclick="irIndicadores()">📊 Indicador RNCs</button>
+    <button class="btn btn-primary" onclick="irNovo()">+ Novo RNC</button>
+  </div>`;
+
+  if (!itens.length){
+    h += `<div class="empty">Nenhum RNC encontrado.</div>`;
+  } else {
+    h += `<div class="tbl-wrap"><table class="dtbl">
+      <thead><tr>
+        <th>Nº RNC</th><th>Status</th><th>Empresa</th><th>Pedido</th><th>Fornecedor</th>
+        <th>Tipo de Desvio</th><th>Desenho</th><th>Data Abertura</th><th>Emitido por</th><th>Documento</th>
+      </tr></thead>
+      <tbody>${itens.map(r => `
+        <tr onclick="irEditar(${r.id})">
+          <td class="rnc-num">${formatarNumeroRNC(r)}</td>
+          <td><span class="status-badge ${r.status_nc==='encerrado'?'sb-encerrado':'sb-aberto'}">${LABEL_STATUS[r.status_nc]||r.status_nc}</span></td>
+          <td>${esc(r.empresa)}</td>
+          <td>${r.pedidos?.numero_pedido ? esc(r.pedidos.numero_pedido) : '—'}</td>
+          <td>${esc(r.fornecedor || '—')}</td>
+          <td>${esc(r.tipo_desvio || '—')}</td>
+          <td>${esc(r.desenho || '—')}</td>
+          <td>${fmtData(r.data_abertura)}</td>
+          <td>${esc(r.emitido_por || '—')}</td>
+          <td><span class="btn" onclick="event.stopPropagation();gerarDocumentoRNC(${r.id})">📄 Gerar</span></td>
+        </tr>`).join('')}
+      </tbody>
+    </table></div>`;
+  }
+  document.getElementById('content').innerHTML = h;
+}
+
+// ── FORMULÁRIO ───────────────────────────────────────────────────────────
+function campoTexto(id, label, valor, opts){
+  opts = opts || {};
+  const list = opts.sugestoes ? `list="dl_${id}"` : '';
+  const datalist = opts.sugestoes ? `<datalist id="dl_${id}">${opts.sugestoes.map(s => `<option value="${esc(s)}">`).join('')}</datalist>` : '';
+  return `<div class="field${opts.wide?' wide':''}">
+    <label for="f_${id}">${label}</label>
+    <input id="f_${id}" type="${opts.type||'text'}" value="${esc(valor ?? '')}" ${list} ${opts.step?`step="${opts.step}"`:''}>
+    ${datalist}
+  </div>`;
+}
+function campoArea(id, label, valor, wide){
+  return `<div class="field${wide?' wide':''}">
+    <label for="f_${id}">${label}</label>
+    <textarea id="f_${id}">${esc(valor ?? '')}</textarea>
+  </div>`;
+}
+function campoSelect(id, label, valor, opcoes){
+  return `<div class="field">
+    <label for="f_${id}">${label}</label>
+    <select id="f_${id}">
+      <option value="">—</option>
+      ${opcoes.map(([v,l]) => `<option value="${esc(v)}" ${valor===v?'selected':''}>${esc(l)}</option>`).join('')}
+    </select>
+  </div>`;
+}
+
+function renderForm(r){
+  const pedidoOpts = PEDIDOS.map(p => `<option value="${p.id}" ${r&&r.pedido_id===p.id?'selected':''}>${esc(p.numero_pedido)}${p.cliente?' · '+esc(p.cliente):''}</option>`).join('');
+
+  let h = `<div class="section">
+    <div class="section-title">Identificação</div>
+    <div class="form-grid">
+      ${r ? `<div class="field"><label>Número do RNC</label><input value="${formatarNumeroRNC(r)}" disabled></div>` : `<div class="field"><label>Número do RNC</label><input value="gerado automaticamente" disabled></div>`}
+      ${campoSelect('status_nc', 'Status do RNC', r?.status_nc || 'em_aberto', [['em_aberto','Em Aberto'],['encerrado','Encerrado']])}
+      ${campoSelect('empresa', 'Empresa', r?.empresa, EMPRESAS.map(e => [e,e]))}
+      <div class="field"><label for="f_pedido_id">Pedido</label><select id="f_pedido_id"><option value="">— sem pedido —</option>${pedidoOpts}</select></div>
+      ${campoTexto('fornecedor', 'Fornecedor', r?.fornecedor)}
+      ${campoTexto('tipo_desvio', 'Tipo de Desvio', r?.tipo_desvio, {sugestoes: SUGESTOES_TIPO_DESVIO})}
+      ${campoTexto('responsavel_nc', 'Responsável pela Não Conformidade', r?.responsavel_nc, {sugestoes: SUGESTOES_RESPONSAVEL_NC})}
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Ordem de Compra / Desenho / Item</div>
+    <div class="form-grid">
+      ${campoTexto('ordem_compra', 'Ordem de Compra', r?.ordem_compra)}
+      ${campoTexto('item_oc', 'Item da OC', r?.item_oc)}
+      ${campoTexto('nota_fiscal', 'Nota Fiscal', r?.nota_fiscal)}
+      ${campoTexto('desenho', 'Desenho', r?.desenho)}
+      ${campoTexto('revisao', 'Revisão', r?.revisao)}
+      ${campoTexto('posicao', 'Posição / Marca', r?.posicao)}
+      ${campoTexto('especificacao_tecnica', 'Especificação Técnica', r?.especificacao_tecnica, {sugestoes: SUGESTOES_ESPECIFICACAO})}
+      ${campoTexto('item', 'Item', r?.item)}
+      ${campoTexto('quantidade_inspecionada', 'Quant. Inspecionada', r?.quantidade_inspecionada, {type:'number', step:'0.001'})}
+      ${campoTexto('quantidade_segregada', 'Quant. Segregada', r?.quantidade_segregada, {type:'number', step:'0.001'})}
+      ${campoTexto('unidade_medida', 'Unid. de Medida', r?.unidade_medida)}
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Descrição da Não Conformidade</div>
+    <div class="form-grid">
+      ${campoArea('especificado', 'Especificado', r?.especificado, true)}
+      ${campoArea('encontrado', 'Encontrado', r?.encontrado, true)}
+      ${campoArea('observacoes', 'Observações / Comentários', r?.observacoes, true)}
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Emissão</div>
+    <div class="form-grid">
+      ${campoTexto('local_nc', 'Local da Não Conformidade', r?.local_nc, {sugestoes: SUGESTOES_LOCAL_NC})}
+      ${campoTexto('emitido_por', 'Emitido por', r?.emitido_por ?? AUTH.nome)}
+      ${campoTexto('data_abertura', 'Data de Abertura', r?.data_abertura || new Date().toISOString().slice(0,10), {type:'date'})}
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Causa e Origem</div>
+    <div class="form-grid">
+      ${campoArea('causa', 'Causa', r?.causa, true)}
+      ${campoSelect('origem_rnc', 'Origem do RNC', r?.origem_rnc, [['interno','Interno'],['fornecedor','Externo — Fornecedor'],['cliente','Externo — Cliente']])}
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Disposição</div>
+    <div class="form-grid">
+      ${campoTexto('responsavel_disposicao', 'Responsável pela Disposição', r?.responsavel_disposicao)}
+      <div class="field wide">
+        <label>Disposição</label>
+        <div class="radio-group" id="f_disposicao">
+          ${Object.entries(LABEL_DISPOSICAO).map(([v,l]) => `<label class="radio-opt"><input type="radio" name="disposicao" value="${v}" ${r?.disposicao===v?'checked':''}> ${l}</label>`).join('')}
+        </div>
+      </div>
+      ${campoArea('descricao_disposicao', 'Descrição da Disposição', r?.descricao_disposicao, true)}
+      ${campoTexto('prazo_execucao', 'Prazo para Execução', r?.prazo_execucao, {type:'date'})}
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Verificação de Eficácia</div>
+    <div class="form-grid">
+      <div class="field">
+        <label>Verificação de Eficácia</label>
+        <div class="radio-group" id="f_verificacao_eficacia">
+          ${Object.entries(LABEL_EFICACIA).map(([v,l]) => `<label class="radio-opt"><input type="radio" name="verificacao_eficacia" value="${v}" ${r?.verificacao_eficacia===v?'checked':''}> ${l}</label>`).join('')}
+        </div>
+      </div>
+      ${campoTexto('data_verificacao', 'Data da Verificação', r?.data_verificacao, {type:'date'})}
+      ${campoTexto('custo', 'Custo (R$)', r?.custo, {type:'number', step:'0.01'})}
+    </div>
+  </div>
+
+  <div class="form-actions">
+    <button class="btn" onclick="irLista()">Cancelar</button>
+    ${r ? `<button class="btn" onclick="gerarDocumentoRNC(${r.id})">📄 Gerar Documento</button>` : ''}
+    <button class="btn btn-primary" id="btnSalvarRNC" onclick="salvarRNC()">${r ? 'Salvar alterações' : 'Criar RNC'}</button>
+  </div>`;
+
+  document.getElementById('content').innerHTML = h;
+}
+
+function coletarDadosForm(){
+  const v = id => document.getElementById('f_' + id)?.value ?? '';
+  const radio = name => document.querySelector(`input[name="${name}"]:checked`)?.value || null;
+  return {
+    status_nc: v('status_nc') || 'em_aberto',
+    empresa: v('empresa'),
+    pedido_id: v('pedido_id') ? Number(v('pedido_id')) : null,
+    fornecedor: v('fornecedor') || null,
+    tipo_desvio: v('tipo_desvio') || null,
+    responsavel_nc: v('responsavel_nc') || null,
+    ordem_compra: v('ordem_compra') || null,
+    item_oc: v('item_oc') || null,
+    nota_fiscal: v('nota_fiscal') || null,
+    desenho: v('desenho') || null,
+    revisao: v('revisao') || null,
+    posicao: v('posicao') || null,
+    especificacao_tecnica: v('especificacao_tecnica') || null,
+    item: v('item') || null,
+    quantidade_inspecionada: v('quantidade_inspecionada') ? Number(v('quantidade_inspecionada')) : null,
+    quantidade_segregada: v('quantidade_segregada') ? Number(v('quantidade_segregada')) : null,
+    unidade_medida: v('unidade_medida') || null,
+    especificado: v('especificado') || null,
+    encontrado: v('encontrado') || null,
+    observacoes: v('observacoes') || null,
+    local_nc: v('local_nc') || null,
+    emitido_por: v('emitido_por') || null,
+    data_abertura: v('data_abertura') || null,
+    causa: v('causa') || null,
+    origem_rnc: v('origem_rnc') || null,
+    responsavel_disposicao: v('responsavel_disposicao') || null,
+    disposicao: radio('disposicao'),
+    descricao_disposicao: v('descricao_disposicao') || null,
+    prazo_execucao: v('prazo_execucao') || null,
+    verificacao_eficacia: radio('verificacao_eficacia'),
+    data_verificacao: v('data_verificacao') || null,
+    custo: v('custo') ? Number(v('custo')) : null,
+  };
+}
+
+async function salvarRNC(){
+  const dados = coletarDadosForm();
+  if (!dados.empresa){ showMsg('Selecione a Empresa.', false); return; }
+
+  const btn = document.getElementById('btnSalvarRNC');
+  btn.disabled = true; const txtOriginal = btn.textContent; btn.textContent = 'Salvando...';
+
+  try {
+    if (RNC_EDITANDO){
+      const { error } = await sb.from('rnc').update(dados).eq('id', RNC_EDITANDO.id);
+      if (error) throw error;
+      showMsg('RNC ' + formatarNumeroRNC(RNC_EDITANDO) + ' atualizado.', true);
+    } else {
+      const { error } = await sb.from('rnc').insert(dados);
+      if (error) throw error;
+      showMsg('RNC criado com sucesso.', true);
+    }
+    await carregarRNCs();
+    irLista();
+  } catch (e){
+    showMsg('Erro ao salvar: ' + e.message, false);
+  } finally {
+    btn.disabled = false; btn.textContent = txtOriginal;
+  }
+}
+
+// ── INDICADOR RNCs (painel de KPI mensal) ───────────────────────────────
+const MESES = ['JAN','FEV','MAR','ABR','MAI','JUN','JUL','AGO','SET','OUT','NOV','DEZ'];
+let ANO_INDICADOR = new Date().getFullYear();
+
+function tabelaIndicador(titulo, origemFiltro, objetivo){
+  const linhas = EMPRESAS.map(emp => {
+    const contagens = MESES.map((_, mIdx) => RNCS.filter(r =>
+      r.empresa === emp && r.origem_rnc === origemFiltro && r.data_abertura &&
+      new Date(r.data_abertura + 'T00:00:00').getFullYear() === ANO_INDICADOR &&
+      new Date(r.data_abertura + 'T00:00:00').getMonth() === mIdx
+    ).length);
+    const total = contagens.reduce((a,b) => a+b, 0);
+    return { emp, contagens, total };
+  });
+  return `<div class="kpi-block">
+    <div class="kpi-title">${titulo} — ${ANO_INDICADOR}</div>
+    <div class="kpi-obj">Objetivo: máximo de ${objetivo} não conformidades por mês</div>
+    <div class="tbl-wrap"><table class="kpi-tbl">
+      <thead><tr><th>Empresa</th>${MESES.map(m => `<th>${m}/${String(ANO_INDICADOR).slice(2)}</th>`).join('')}<th>Total</th></tr></thead>
+      <tbody>${linhas.map(l => {
+        const acimaObjetivo = l.contagens.some(c => c > objetivo);
+        return `<tr class="${acimaObjetivo?'kpi-warn':''}"><td>${esc(l.emp)}</td>${l.contagens.map(c => `<td>${c}</td>`).join('')}<td class="tot">${l.total}</td></tr>`;
+      }).join('')}</tbody>
+    </table></div>
+  </div>`;
+}
+
+function renderIndicadores(){
+  const anos = Array.from(new Set(RNCS.map(r => r.data_abertura ? new Date(r.data_abertura+'T00:00:00').getFullYear() : null).filter(Boolean)));
+  if (!anos.includes(ANO_INDICADOR)) anos.push(ANO_INDICADOR);
+  anos.sort((a,b) => b-a);
+
+  let h = `<div class="search-row">
+    <select onchange="ANO_INDICADOR=Number(this.value);renderIndicadores()">
+      ${anos.map(a => `<option value="${a}" ${a===ANO_INDICADOR?'selected':''}>${a}</option>`).join('')}
+    </select>
+    <button class="btn" onclick="irLista()">← Voltar para lista de RNCs</button>
+  </div>`;
+  h += tabelaIndicador('Reclamação de Cliente — Controle Externo de RNC', 'cliente', 5);
+  h += tabelaIndicador('Controle Interno de RNC', 'interno', 5);
+  h += tabelaIndicador('Controle de RNC Fornecedores', 'fornecedor', 5);
+
+  document.getElementById('content').innerHTML = h;
+}
+
+// ── DOCUMENTO RNC (PDF) ──────────────────────────────────────────────────
+let logoDataUrlMDE = null;
+function carregarLogoMDEParaPdf(){
+  return new Promise((resolve) => {
+    if (logoDataUrlMDE){ resolve(logoDataUrlMDE); return; }
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+      canvas.getContext('2d').drawImage(img, 0, 0);
+      try { logoDataUrlMDE = canvas.toDataURL('image/png'); } catch { logoDataUrlMDE = null; }
+      resolve(logoDataUrlMDE);
+    };
+    img.onerror = () => resolve(null);
+    img.src = 'assets/logo-mde.png';
+  });
+}
+
+async function gerarDocumentoRNC(id){
+  const r = RNCS.find(x => x.id === id);
+  if (!r){ showMsg('RNC não encontrado.', false); return; }
+
+  const logo = await carregarLogoMDEParaPdf();
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const M = 14, CW = 182;
+  const COR = { ink:[23,33,43], inkSoft:[91,107,120], line:[219,225,230], navy:[16,42,68], blue:[29,78,216], green:[16,150,90], amber:[181,105,10], red:[190,40,40] };
+
+  function rodape(pagina){
+    doc.setFont(undefined,'normal'); doc.setFontSize(8); doc.setTextColor(...COR.inkSoft);
+    doc.text(`MDE Equipamentos Industriais · MG-008 · Gerado em ${new Date().toLocaleString('pt-BR')}`, M, 291);
+    doc.text(`Pág. ${pagina}`, M+CW, 291, { align: 'right' });
+  }
+  function tituloSecao(y, texto){
+    doc.setFont(undefined,'bold'); doc.setFontSize(10); doc.setTextColor(...COR.blue);
+    doc.text(texto.toUpperCase(), M, y);
+    doc.setDrawColor(...COR.line); doc.setLineWidth(0.35);
+    doc.line(M, y+1.8, M+CW, y+1.8);
+    return y + 7;
+  }
+  function checarQuebra(y, alturaNecessaria){
+    if (y + alturaNecessaria > 275){
+      rodape(doc.internal.getNumberOfPages());
+      doc.addPage();
+      return 20;
+    }
+    return y;
+  }
+  // campo rotulado simples numa linha; retorna y avançado
+  function linhaCampos(y, campos){
+    const w = CW / campos.length;
+    campos.forEach(([label, valor], i) => {
+      const x = M + i*w;
+      doc.setFont(undefined,'normal'); doc.setFontSize(7); doc.setTextColor(...COR.inkSoft);
+      doc.text(label.toUpperCase(), x, y);
+      doc.setFont(undefined,'bold'); doc.setFontSize(9.5); doc.setTextColor(...COR.ink);
+      doc.text(String(valor ?? '—') || '—', x, y+5, { maxWidth: w-4 });
+    });
+    return y + 11;
+  }
+  function blocoTexto(y, label, texto){
+    doc.setFont(undefined,'normal'); doc.setFontSize(7); doc.setTextColor(...COR.inkSoft);
+    doc.text(label.toUpperCase(), M, y);
+    y += 4.5;
+    doc.setFont(undefined,'normal'); doc.setFontSize(9); doc.setTextColor(...COR.ink);
+    const linhas = doc.splitTextToSize(texto && texto.trim() ? texto : '—', CW);
+    y = checarQuebra(y, linhas.length * 4.3 + 4);
+    doc.text(linhas, M, y);
+    return y + linhas.length * 4.3 + 5;
+  }
+  function checkbox(x, y, marcado){
+    doc.setDrawColor(...COR.ink); doc.setLineWidth(0.35);
+    doc.rect(x, y-3, 3.2, 3.2);
+    if (marcado){
+      doc.setFont(undefined,'bold'); doc.setFontSize(8);
+      doc.text('X', x+0.5, y-0.4);
+    }
+  }
+  function grupoOpcoes(y, label, opcoesMap, valorAtual){
+    doc.setFont(undefined,'normal'); doc.setFontSize(7); doc.setTextColor(...COR.inkSoft);
+    doc.text(label.toUpperCase(), M, y);
+    y += 5;
+    let x = M;
+    doc.setFont(undefined,'normal'); doc.setFontSize(8.5); doc.setTextColor(...COR.ink);
+    Object.entries(opcoesMap).forEach(([v,l]) => {
+      checkbox(x, y, valorAtual === v);
+      doc.text(l, x+5, y);
+      x += doc.getTextWidth(l) + 16;
+    });
+    return y + 8;
+  }
+
+  // ── cabeçalho ──
+  doc.setFillColor(...COR.navy);
+  doc.rect(0, 0, 210, 26, 'F');
+  if (logo){ try { doc.addImage(logo, 'PNG', M, 4, 26, 26*(98/219)); } catch {} }
+  doc.setFont(undefined,'bold'); doc.setFontSize(14); doc.setTextColor(255,255,255);
+  doc.text('RELATÓRIO DE NÃO CONFORMIDADE', M+CW, 11, { align: 'right' });
+  doc.setFont(undefined,'normal'); doc.setFontSize(9);
+  doc.text(`RNC Nº ${formatarNumeroRNC(r)}  ·  MG-008`, M+CW, 18, { align: 'right' });
+
+  let y = 35;
+
+  // status + empresa
+  const corStatus = r.status_nc === 'encerrado' ? COR.green : COR.amber;
+  doc.setFillColor(...corStatus); doc.roundedRect(M, y-4.5, 34, 7, 1.5, 1.5, 'F');
+  doc.setFont(undefined,'bold'); doc.setFontSize(8.5); doc.setTextColor(255,255,255);
+  doc.text((LABEL_STATUS[r.status_nc]||r.status_nc).toUpperCase(), M+17, y, { align:'center' });
+  doc.setFont(undefined,'normal'); doc.setFontSize(9); doc.setTextColor(...COR.ink);
+  doc.text(esc_pdf(r.empresa), M+CW, y, { align:'right' });
+  y += 10;
+
+  y = tituloSecao(y, 'Identificação');
+  y = linhaCampos(y, [
+    ['Pedido', r.pedidos?.numero_pedido || 'NA'],
+    ['Fornecedor', r.fornecedor || 'NA'],
+    ['Tipo de Desvio', r.tipo_desvio || 'NA'],
+    ['Responsável pela NC', r.responsavel_nc || 'NA'],
+  ]);
+  y = linhaCampos(y, [
+    ['Ordem de Compra', r.ordem_compra || 'NA'],
+    ['Item da OC', r.item_oc || 'NA'],
+    ['Nota Fiscal', r.nota_fiscal || 'NA'],
+  ]);
+  y += 2;
+
+  y = tituloSecao(y, 'Desenho / Item');
+  y = linhaCampos(y, [
+    ['Desenho', r.desenho || 'NA'],
+    ['Revisão', r.revisao || 'NA'],
+    ['Posição / Marca', r.posicao || 'NA'],
+    ['Especificação Técnica', r.especificacao_tecnica || 'NA'],
+  ]);
+  y = linhaCampos(y, [
+    ['Item', r.item || 'NA'],
+    ['Quant. Inspecionada', r.quantidade_inspecionada ?? 'NA'],
+    ['Quant. Segregada', r.quantidade_segregada ?? 'NA'],
+    ['Unid. de Medida', r.unidade_medida || 'NA'],
+  ]);
+  y += 2;
+
+  y = checarQuebra(y, 30);
+  y = tituloSecao(y, 'Descrição da Não Conformidade');
+  y = blocoTexto(y, 'Especificado', r.especificado);
+  y = blocoTexto(y, 'Encontrado', r.encontrado);
+  y = blocoTexto(y, 'Observações / Comentários', r.observacoes);
+
+  y = checarQuebra(y, 20);
+  y = tituloSecao(y, 'Emissão');
+  y = linhaCampos(y, [
+    ['Local da Não Conformidade', r.local_nc || 'NA'],
+    ['Emitido por', r.emitido_por || 'NA'],
+    ['Data de Abertura', fmtData(r.data_abertura)],
+  ]);
+  y += 2;
+
+  y = checarQuebra(y, 25);
+  y = tituloSecao(y, 'Causa e Origem');
+  y = blocoTexto(y, 'Causa', r.causa);
+  y = linhaCampos(y, [['Origem do RNC', LABEL_ORIGEM[r.origem_rnc] || 'NA']]);
+  y += 2;
+
+  y = checarQuebra(y, 45);
+  y = tituloSecao(y, 'Disposição');
+  y = linhaCampos(y, [['Responsável pela Disposição', r.responsavel_disposicao || 'NA']]);
+  y = grupoOpcoes(y, 'Disposição', LABEL_DISPOSICAO, r.disposicao);
+  y = blocoTexto(y, 'Descrição da Disposição', r.descricao_disposicao);
+  y = linhaCampos(y, [['Prazo para Execução', fmtData(r.prazo_execucao)]]);
+  y += 2;
+
+  y = checarQuebra(y, 25);
+  y = tituloSecao(y, 'Verificação de Eficácia');
+  y = grupoOpcoes(y, 'Verificação de Eficácia', LABEL_EFICACIA, r.verificacao_eficacia);
+  y = linhaCampos(y, [
+    ['Data da Verificação', fmtData(r.data_verificacao)],
+    ['Custo do Retrabalho', r.custo != null ? 'R$ ' + Number(r.custo).toLocaleString('pt-BR',{minimumFractionDigits:2}) : 'NA'],
+  ]);
+
+  rodape(doc.internal.getNumberOfPages());
+  doc.save(`RNC_${formatarNumeroRNC(r).replace('/','-')}.pdf`);
+}
+function esc_pdf(s){ return s == null ? '' : String(s); }
+
+init();
+</script>
+</body>
+</html>
