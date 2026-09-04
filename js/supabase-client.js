@@ -29,6 +29,19 @@ const ETAPAS = [
   { key: 'finalizado',      label: 'Finalizado' },
 ];
 
+// peso de cada etapa no cálculo de Avanço (dashboard) -- só as 5 etapas de
+// produção de verdade entram, somando 100%. relatorio/pronto_acabado/
+// expedicao/finalizado continuam existindo como marcadores/checkpoints, só
+// não têm peso próprio no avanço. Regra definida pela empresa, mesma lógica
+// que já existia no dashboard antigo (FactoryView/calcAvanco).
+const PESO_AVANCO_ETAPA = {
+  materia_prima: 25,
+  preparacao: 25,
+  caldeiraria: 22.5,
+  solda: 22.5,
+  acabamento: 5,
+};
+
 /* Garante que existe uma sessão ativa e um perfil válido/ativo.
    Se não houver, redireciona para o login. Retorna {user, perfil}. */
 async function exigirLogin(perfisPermitidos) {

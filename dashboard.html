@@ -382,7 +382,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
   </div>
 </div>
 
-<script src="js/supabase-client.js?v=2"></script>
+<script src="js/supabase-client.js?v=3"></script>
 <script>
 // ── MENU LATERAL: fecha sozinho e tem botão flutuante sempre alcançável ────
 let sidebarMexidoManualmente = false;
@@ -515,9 +515,14 @@ async function carregarDados(){
     const tag = it.tag || 'SEM TAG';
     const produto = it.produto;
 
-    let somaEtapas = 0;
-    ETAPAS.forEach(e => { somaEtapas += maxPorItemEtapa[it.id + '|' + e.key] || 0; });
-    const avancoPct = somaEtapas / (ETAPAS.length * 100) * 100; // 0-100
+    // avanço ponderado -- só as 5 etapas de PESO_AVANCO_ETAPA entram na
+    // conta, cada uma com o peso definido pela empresa (soma 100%).
+    // relatorio/pronto_acabado/expedicao/finalizado ficam de fora.
+    let avancoPct = 0;
+    Object.entries(PESO_AVANCO_ETAPA).forEach(([etapaKey, peso]) => {
+      const pct = maxPorItemEtapa[it.id + '|' + etapaKey] || 0;
+      avancoPct += pct * peso / 100;
+    });
     const pesoTotal = Number(it.peso_total);
     const fabricado = pesoTotal * (avancoPct / 100);
 
