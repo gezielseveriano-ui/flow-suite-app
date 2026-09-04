@@ -1338,8 +1338,8 @@ async function gerarPdfPedido(){
       const peso = itens.reduce((a,it)=>a+it.pesoTotal,0);
       const fab = itens.reduce((a,it)=>a+it.fabricado,0);
       const exp = itens.reduce((a,it)=>a+it.expedido,0);
-      const pF = peso>0 ? fab/peso*100 : 0;
-      const pE = peso>0 ? exp/peso*100 : 0;
+      const pF = peso>0 ? Math.min(100, fab/peso*100) : 0;
+      const pE = peso>0 ? Math.min(100, exp/peso*100) : 0;
       const col = i % 2, row = Math.floor(i/2);
       const x0 = M + col*(miniColW+6);
       const yRow = y + row*miniRowH;
