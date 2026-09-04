@@ -238,6 +238,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
   .pc-equip { color:#1a4fa0 !important; }
   .pc-peso { color:#1a4fa0 !important; }
   .pc-prog-bar { background:#e0e0e0 !important; }
+  .pc-archive-icon { display:none !important; }
   #printHeader { display:block !important; }
   #printFooter { display:block !important; }
 }
@@ -1081,7 +1082,7 @@ function filtrarGeral(q){
     const temPendencia = s.pendExp > 0;
     const late = c && isLate(c.data_reprogramada || c.data_prevista) && temPendencia;
     return `<div class="pedido-card" style="${late?'border-color:var(--red)':''}" onclick="abrirPedido('${esc(p)}')">
-      <div class="pc-top"><span class="pc-num">${esc(p)}${c&&c.cliente?' · '+esc(c.cliente):''}</span><span style="display:flex;align-items:center;gap:5px"><span class="pc-tags-count">${s.nTags} TAG${s.nTags!==1?'s':''}</span><span class="pc-tags-count" style="cursor:pointer" title="Arquivar pedido" onclick="event.stopPropagation();arquivarPedido('${esc(p)}',true)"><i class="ti ti-archive"></i></span></span></div>
+      <div class="pc-top"><span class="pc-num">${esc(p)}${c&&c.cliente?' · '+esc(c.cliente):''}</span><span style="display:flex;align-items:center;gap:5px"><span class="pc-tags-count">${s.nTags} TAG${s.nTags!==1?'s':''}</span><span class="pc-tags-count pc-archive-icon" style="cursor:pointer" title="Arquivar pedido" onclick="event.stopPropagation();arquivarPedido('${esc(p)}',true)"><i class="ti ti-archive"></i></span></span></div>
       <div class="pc-equip ${c&&c.equipamento?'':'no-info'}">${c&&c.equipamento?esc(c.equipamento):'Sem equipamento cadastrado'}</div>
       ${c ? (() => {
         let d = '<div class="pc-dates">';
