@@ -98,6 +98,9 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 .empty{text-align:center;padding:3rem 2rem;color:var(--text2);font-size:13px}
 
 .tbl-wrap{overflow-x:auto;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-sm)}
+.float-hscroll{position:fixed;bottom:0;height:14px;overflow-x:auto;overflow-y:hidden;z-index:250;background:var(--bg3);border-top:1px solid var(--border-strong);box-shadow:0 -2px 6px rgba(16,24,40,.06);display:none}
+.float-hscroll.show{display:block}
+.float-hscroll-inner{height:1px}
 .dtbl{width:100%;border-collapse:collapse;font-size:12px}
 .dtbl thead th{text-align:left;padding:8px 10px;color:var(--text2);border-bottom:1px solid var(--border);font-weight:500;white-space:nowrap;background:var(--bg3);position:sticky;top:0}
 .dtbl tbody tr{border-bottom:1px solid var(--border)}
@@ -278,6 +281,72 @@ setTimeout(() => {
   document.getElementById('appShell').classList.add('sidebar-collapsed');
 }, 5000);
 
+// ── BARRA DE ROLAGEM HORIZONTAL FLUTUANTE ───────────────────────────────────
+// A tabela de itens tem muitas colunas; a barra nativa do #tblWrap só aparece
+// no fim dele, exigindo rolar a página inteira pra achar. Essa barra fica
+// fixa embaixo da tela, alinhada com a largura visível da tabela, e
+// sincroniza o scroll nos dois sentidos. Mesmo mecanismo usado em Produção.
+let floatScrollEl = null, floatScrollInner = null, floatScrollSyncing = false;
+
+function garantirBarraFlutuante(){
+  if (floatScrollEl) return;
+  floatScrollEl = document.createElement('div');
+  floatScrollEl.className = 'float-hscroll';
+  floatScrollInner = document.createElement('div');
+  floatScrollInner.className = 'float-hscroll-inner';
+  floatScrollEl.appendChild(floatScrollInner);
+  document.body.appendChild(floatScrollEl);
+
+  floatScrollEl.addEventListener('scroll', () => {
+    if (floatScrollSyncing) return;
+    const wrap = document.getElementById('tblWrap');
+    if (!wrap) return;
+    floatScrollSyncing = true;
+    wrap.scrollLeft = floatScrollEl.scrollLeft;
+    floatScrollSyncing = false;
+  });
+
+  window.addEventListener('resize', posicionarBarraFlutuante);
+  window.addEventListener('scroll', posicionarBarraFlutuante, { passive: true });
+}
+
+function posicionarBarraFlutuante(){
+  if (!floatScrollEl) return;
+  const wrap = document.getElementById('tblWrap');
+  if (!wrap){ floatScrollEl.classList.remove('show'); return; }
+
+  const precisaRolagem = wrap.scrollWidth > wrap.clientWidth + 2;
+  const rect = wrap.getBoundingClientRect();
+  const visivel = rect.top < window.innerHeight && rect.bottom > 0;
+
+  if (!precisaRolagem || !visivel){
+    floatScrollEl.classList.remove('show');
+    return;
+  }
+  floatScrollEl.style.left = `${rect.left}px`;
+  floatScrollEl.style.width = `${rect.width}px`;
+  floatScrollInner.style.width = `${wrap.scrollWidth}px`;
+  if (!floatScrollSyncing){
+    floatScrollSyncing = true;
+    floatScrollEl.scrollLeft = wrap.scrollLeft;
+    floatScrollSyncing = false;
+  }
+  floatScrollEl.classList.add('show');
+}
+
+function conectarBarraFlutuanteNaTabela(){
+  const wrap = document.getElementById('tblWrap');
+  if (!wrap) return;
+  garantirBarraFlutuante();
+  wrap.addEventListener('scroll', () => {
+    if (floatScrollSyncing || !floatScrollEl) return;
+    floatScrollSyncing = true;
+    floatScrollEl.scrollLeft = wrap.scrollLeft;
+    floatScrollSyncing = false;
+  });
+  posicionarBarraFlutuante();
+}
+
 function showMsg(text, ok){
   const box = document.getElementById('msgBox');
   box.textContent = text;
@@ -327,6 +396,7 @@ async function buscarContagemPorPedido(){
 
 async function renderHome(){
   VISAO = 'home'; PEDIDO_ATUAL = null;
+  if (floatScrollEl) floatScrollEl.classList.remove('show');
   renderNav();
   const content = document.getElementById('content');
   content.innerHTML = `
@@ -533,6 +603,7 @@ function renderTabela(itens){
       </tbody>
     </table>`;
   atualizarBotaoExportarItens();
+  conectarBarraFlutuanteNaTabela();
 }
 
 // ── SELECIONAR ITENS E EXPORTAR EM EXCEL ────────────────────────────────────
