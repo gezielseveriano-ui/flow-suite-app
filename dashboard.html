@@ -169,10 +169,18 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 
 .prog-wrap{padding:0 1.5rem .75rem}
 .prog-row{display:flex;align-items:center;gap:10px;margin-bottom:8px}
-.prog-label{font-size:11px;color:var(--text2);width:100px;flex-shrink:0}
+.prog-label{font-size:11px;color:var(--text2);width:170px;flex-shrink:0}
 .prog-bar{flex:1;height:8px;background:var(--bg4);border-radius:4px;overflow:hidden}
 .prog-fill{height:100%;border-radius:4px}
 .prog-pct{font-size:12px;font-weight:700;width:38px;text-align:right;flex-shrink:0}
+.mini-cards-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px}
+.mini-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:.85rem 1rem}
+.mini-card-name{font-size:12.5px;font-weight:600;color:var(--text);margin-bottom:8px}
+.mini-prog-row{display:flex;align-items:center;gap:7px;margin-top:5px}
+.mini-prog-label{font-size:9.5px;color:var(--text3);width:78px;flex-shrink:0}
+.mini-prog-bar{flex:1;height:5px;background:var(--bg4);border-radius:3px;overflow:hidden}
+.mini-prog-fill{height:100%;border-radius:3px}
+.mini-prog-pct{font-size:10.5px;font-weight:700;width:34px;text-align:right;flex-shrink:0}
 
 .section{padding:0 1.5rem 1.25rem}
 .section-title{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text2);margin-bottom:12px}
@@ -599,9 +607,13 @@ function mHTML(items){
 }
 function prHTML(pF, pE){
   return `<div class="prog-wrap">
-    <div class="prog-row"><span class="prog-label"><i class="ti ti-tools"></i> Fabricação</span><div class="prog-bar"><div class="prog-fill" style="width:${pF.toFixed(1)}%;background:linear-gradient(90deg,var(--blue),var(--purple))"></div></div><span class="prog-pct" style="color:var(--blue)">${pF.toFixed(0)}%</span></div>
+    <div class="prog-row"><span class="prog-label"><i class="ti ti-tools"></i> Em processo de fabricação</span><div class="prog-bar"><div class="prog-fill" style="width:${pF.toFixed(1)}%;background:linear-gradient(90deg,var(--blue),var(--purple))"></div></div><span class="prog-pct" style="color:var(--blue)">${pF.toFixed(0)}%</span></div>
     <div class="prog-row"><span class="prog-label"><i class="ti ti-truck"></i> Expedição</span><div class="prog-bar"><div class="prog-fill" style="width:${pE.toFixed(1)}%;background:linear-gradient(90deg,var(--green),var(--teal))"></div></div><span class="prog-pct" style="color:var(--green)">${pE.toFixed(0)}%</span></div>
   </div>`;
+}
+function miniProgHTML(pF, pE){
+  return `<div class="mini-prog-row"><span class="mini-prog-label">Em fabricação</span><div class="mini-prog-bar"><div class="mini-prog-fill" style="width:${pF.toFixed(1)}%;background:linear-gradient(90deg,var(--blue),var(--purple))"></div></div><span class="mini-prog-pct" style="color:var(--blue)">${pF.toFixed(0)}%</span></div>
+  <div class="mini-prog-row"><span class="mini-prog-label">Expedido</span><div class="mini-prog-bar"><div class="mini-prog-fill" style="width:${pE.toFixed(1)}%;background:linear-gradient(90deg,var(--green),var(--teal))"></div></div><span class="mini-prog-pct" style="color:var(--green)">${pE.toFixed(0)}%</span></div>`;
 }
 function resP(p){
   const tags = DB[p]; let peso=0, fab=0, exp=0, pE=0, nTags=Object.keys(tags).length;
@@ -619,6 +631,20 @@ function setorAgg(items){
   let cargaProg=0, expedido=0, pendExp=0, somaAvanco=0;
   items.forEach(it => { cargaProg+=it.pesoTotal; expedido+=it.expedido; pendExp+=it.pendExp; somaAvanco+=it.avancoPct; });
   return { cargaProg, expedido, pendExp, avanco: items.length ? somaAvanco/items.length : null, n: items.length };
+}
+// mini-cards de "em processo de fabricação" x "expedido" por setor -- pF/pE
+// ponderados pelo peso dos itens (mesma conta do resumo do pedido em resP),
+// não a média simples usada na coluna Avanço da tabela de setores.
+function setorMiniCardsHTML(map){
+  return `<div class="mini-cards-grid">${Object.keys(map).sort().map(setor => {
+    const itens = map[setor];
+    const peso = itens.reduce((a,i)=>a+i.pesoTotal,0);
+    const fab = itens.reduce((a,i)=>a+i.fabricado,0);
+    const exp = itens.reduce((a,i)=>a+i.expedido,0);
+    const pF = peso>0 ? Math.min(100,fab/peso*100) : 0;
+    const pE = peso>0 ? Math.min(100,exp/peso*100) : 0;
+    return `<div class="mini-card"><div class="mini-card-name">${esc(setor)}</div>${miniProgHTML(pF, pE)}</div>`;
+  }).join('')}</div>`;
 }
 // chave de agrupamento de um item: nome do fornecedor terceirizado se tiver
 // um atribuído (qualquer fornecedor, não só um), senão o setor original --
@@ -1086,7 +1112,7 @@ function filtrarGeral(q){
       ${c && c.observacao ? `<div class="pc-obs">${esc(c.observacao)}</div>` : ''}
       <div class="pc-peso">${fmt_t(s.peso)}</div>
       <div class="pc-peso-sub">${fmt_kg(s.peso)} kg total</div>
-      <div class="pc-prog-row"><div class="pc-prog-label"><span>Fabricação</span><span style="font-weight:700;color:var(--blue)">${s.pctFab.toFixed(1)}%</span></div><div class="pc-prog-bar"><div class="pc-prog-fill" style="width:${s.pctFab.toFixed(1)}%;background:linear-gradient(90deg,var(--blue),var(--purple))"></div></div></div>
+      <div class="pc-prog-row"><div class="pc-prog-label"><span>Em processo de fabricação</span><span style="font-weight:700;color:var(--blue)">${s.pctFab.toFixed(1)}%</span></div><div class="pc-prog-bar"><div class="pc-prog-fill" style="width:${s.pctFab.toFixed(1)}%;background:linear-gradient(90deg,var(--blue),var(--purple))"></div></div></div>
       <div class="pc-prog-row"><div class="pc-prog-label"><span>Expedição</span><span style="font-weight:700;color:var(--green)">${s.pctExp.toFixed(1)}%</span></div><div class="pc-prog-bar"><div class="pc-prog-fill" style="width:${s.pctExp.toFixed(1)}%;background:linear-gradient(90deg,var(--green),var(--teal))"></div></div></div>
       <div class="pc-pills">
         ${late?`<span class="pill pill-red">Atrasada</span>`:''}
@@ -1177,12 +1203,17 @@ function renderPedido(){
 
   const mapaSetores = setoresDoPedido(state.pedido, true);
   h += `<div class="section" style="padding-top:1.25rem"><div class="section-title">Setores do pedido — carga programada, expedido, pendente e avanço</div>${setorTableHTML(mapaSetores, null)}</div>`;
+  h += `<div class="section"><div class="section-title">Setores do pedido — em processo de fabricação × expedido</div>${setorMiniCardsHTML(mapaSetores)}</div>`;
   h += `<div class="section"><div class="section-title">Controle de quantidade — peças (un.)</div>${setorTableQtdHTML(mapaSetores)}</div>`;
   h += `<div class="section"><div class="section-title">TAGs do pedido — clique para ver os setores</div><div class="cards-grid">`;
   tk.sort().forEach(tag => {
     const itensTag = itensFlat(tags[tag]);
     const tPeso = itensTag.reduce((a,i)=>a+i.pesoTotal,0);
+    const tFab = itensTag.reduce((a,i)=>a+i.fabricado,0);
+    const tExp = itensTag.reduce((a,i)=>a+i.expedido,0);
     const tPE = itensTag.reduce((a,i)=>a+i.pendExp,0);
+    const tPF = tPeso>0 ? Math.min(100,tFab/tPeso*100) : 0;
+    const tPE_pct = tPeso>0 ? Math.min(100,tExp/tPeso*100) : 0;
     const barW = tPeso>0 ? (tPeso/maxTP*100).toFixed(1) : 0;
     h += `<div class="card" onclick="abrirTag('${esc(tag)}')">
       <div class="card-name">${esc(tag)}</div>
@@ -1190,7 +1221,8 @@ function renderPedido(){
       <div class="card-ton">${fmt_t(tPeso)}</div>
       <div class="card-kg">${fmt_kg(tPeso)} kg</div>
       <div style="height:3px;background:var(--bg4);border-radius:2px;margin:9px 0"><div style="height:100%;width:${barW}%;background:var(--blue);border-radius:2px"></div></div>
-      ${tPE>0?`<span class="pill pill-red">${fmt_t(tPE)} pend.</span>`:`<span class="pill pill-green">ok</span>`}
+      ${miniProgHTML(tPF, tPE_pct)}
+      ${tPE>0?`<span class="pill pill-red" style="margin-top:8px">${fmt_t(tPE)} pend.</span>`:`<span class="pill pill-green" style="margin-top:8px">ok</span>`}
     </div>`;
   });
   h += `</div></div>`;
@@ -1300,14 +1332,14 @@ async function gerarPdfPedido(){
     function barraProgresso(label, pct, cor){
       doc.setFont(undefined,'bold'); doc.setFontSize(9); doc.setTextColor(...COR.ink);
       doc.text(label, M, y+3.7);
-      const trackX = M+42, trackW = CW-42-14;
+      const trackX = M+62, trackW = CW-62-14;
       doc.setFillColor(...COR.line); doc.roundedRect(trackX, y, trackW, 5, 2, 2, 'F');
       doc.setFillColor(...cor); doc.roundedRect(trackX, y, Math.max(2,trackW*pct/100), 5, 2, 2, 'F');
       doc.setFont(undefined,'bold'); doc.setFontSize(9); doc.setTextColor(...cor);
       doc.text(pct.toFixed(1).replace('.', ',')+'%', M+CW, y+3.7, { align:'right' });
       y += 10;
     }
-    barraProgresso('Fabricação', s.pctFab, COR.green);
+    barraProgresso('Em processo de fabricação', s.pctFab, COR.green);
     barraProgresso('Expedição', s.pctExp, COR.amber);
     y += 6;
 
@@ -1558,7 +1590,7 @@ function prepararImpressao(){
   document.getElementById('printMetrics').innerHTML = [
     { label:'Total de Pedidos', val:allPedidos.length, sub:'em carteira', color:'#1a4fa0' },
     { label:'Peso Total', val:fmt_t(gP), sub:fmt_kg(gP)+' kg', color:'#1a1a2e' },
-    { label:'Fabricação', val:pF.toFixed(1)+'%', sub:fmt_t(gF)+' fabricado', color:'#166534' },
+    { label:'Em processo de fabricação', val:pF.toFixed(1)+'%', sub:fmt_t(gF)+' fabricado', color:'#166534' },
     { label:'Expedição', val:pE.toFixed(1)+'%', sub:fmt_t(gE)+' expedido', color:'#92400e' },
   ].map(m => `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;border-top:3px solid ${m.color}">
     <div style="font-size:10px;color:#666;margin-bottom:4px">${m.label}</div>
