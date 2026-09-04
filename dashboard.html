@@ -151,6 +151,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 .pill{font-size:10px;padding:3px 9px;border-radius:20px;font-weight:600;display:inline-flex;align-items:center;gap:4px}
 .pill-red{background:var(--red-dim);color:var(--red)}
 .pill-green{background:var(--green-dim);color:var(--green)}
+.pill-blue{background:var(--blue-dim);color:var(--blue)}
 
 .cliente-banner{margin:1.25rem 1.5rem 0;background:linear-gradient(135deg,var(--bg3),var(--bg2));border:1px solid var(--border);border-radius:var(--radius);padding:1.1rem 1.25rem;display:grid;grid-template-columns:1fr auto;gap:16px;align-items:start}
 .cb-equip{font-size:19px;font-weight:700;color:var(--text);margin-bottom:8px}
@@ -399,6 +400,7 @@ setTimeout(() => {
 let AUTH = null;
 let DB = {};              // DB[pedido][tag][produto] = [itens...]
 let PEDIDOS_INFO = {};    // numero_pedido -> row from pedidos
+let PEDIDOS_POR_ID = {};  // pedidos.id -> row from pedidos (pra achar arquivado a partir de itens, que só têm pedido_id)
 let CAPACIDADE = {};      // setor -> capacidade_mensal_ton (kg)
 let FORNECEDORES_PRODUCAO = {}; // id -> {nome, cap (kg), ativo}
 let ITENS_TERCEIRIZADOS = [];   // itens enriquecidos (mesmo formato dos itens de DB) com fornecedor_producao_id setado
@@ -455,7 +457,8 @@ async function carregarDados(){
   }
 
   PEDIDOS_INFO = {};
-  pedidosRes.data.forEach(p => PEDIDOS_INFO[p.numero_pedido] = p);
+  PEDIDOS_POR_ID = {};
+  pedidosRes.data.forEach(p => { PEDIDOS_INFO[p.numero_pedido] = p; PEDIDOS_POR_ID[p.id] = p; });
 
   CAPACIDADE = {};
   capRes.data.forEach(c => CAPACIDADE[c.setor] = Number(c.capacidade_mensal_ton) * 1000);
@@ -707,10 +710,29 @@ function setorTableQtdHTML(map){
    carga das duas origens (produto='RMF' antigo + fornecedor_producao_id
    novo) -- sem isso o RMF apareceria duplicado no gráfico. Um fornecedor
    com nome novo (AXION) simplesmente vira uma barra a mais, do lado. */
+/* ── PEDIDOS ARQUIVADOS ──
+   Ao contrário do dashboard antigo (planilha, sem backend -- guardava isso
+   no localStorage do navegador), aqui é uma coluna de verdade em
+   public.pedidos: arquivar num PC aparece arquivado pra qualquer um que
+   abrir o Dashboard, não só na máquina de quem clicou. */
+function pedidosAtivos(){ return allPedidos.filter(p => !PEDIDOS_INFO[p]?.arquivado); }
+function pedidosArquivadosLista(){ return allPedidos.filter(p => PEDIDOS_INFO[p]?.arquivado); }
+
+async function arquivarPedido(p, arquivado){
+  if (arquivado && !confirm(`Arquivar o pedido ${p}?\n\nEle sai da lista "Todos os pedidos" e da Capacidade de Produção, mas continua disponível em "Pedidos arquivados".`)) return;
+  const row = PEDIDOS_INFO[p];
+  if (!row) return;
+  const { error } = await sb.rpc('arquivar_pedido', { p_pedido_id: row.id, p_arquivado: arquivado });
+  if (error){ alert('Erro ao ' + (arquivado?'arquivar':'desarquivar') + ' pedido: ' + error.message); return; }
+  row.arquivado = arquivado; // atualiza local -- não precisa recarregar tudo do banco
+  if (state.tela === 'pedido' && state.pedido === p && !arquivado) state = { tela:'geral', pedido:null, tag:null, produto:null };
+  renderTela();
+}
+
 function calcSetores(){
   const s={};
   SETORES.forEach(k => s[k]={cargaProg:0,expedido:0,pesoPendExp:0,cap:CAPACIDADE[k]||0});
-  allPedidos.forEach(p => Object.values(DB[p]).forEach(tags => Object.entries(tags).forEach(([prod,itens]) => {
+  pedidosAtivos().forEach(p => Object.values(DB[p]).forEach(tags => Object.entries(tags).forEach(([prod,itens]) => {
     const setor = prod.trim().toUpperCase();
     if(!s[setor]) return;
     itens.forEach(it => {
@@ -730,7 +752,9 @@ function calcSetores(){
     if (!s[nome]) s[nome] = { cargaProg: 0, expedido: 0, pesoPendExp: 0, cap: 0 };
     s[nome].cap = f.cap; // capacidade do cadastro de fornecedor manda, quando existe
   });
-  ITENS_TERCEIRIZADOS.forEach(it => {
+  // item terceirizado de pedido arquivado também sai da conta do fornecedor --
+  // mesma lógica de "abater" acima, só que pro lado dos fornecedores externos.
+  ITENS_TERCEIRIZADOS.filter(it => !PEDIDOS_POR_ID[it.pedido_id]?.arquivado).forEach(it => {
     const f = FORNECEDORES_PRODUCAO[it.fornecedor_producao_id];
     if (!f || !f.ativo) return;
     const nome = f.nome.trim().toUpperCase();
@@ -972,7 +996,7 @@ function renderCRPorMes(){
 
 /* ── ROTEADOR ── */
 function renderTela(){
-  const map = { geral: renderGeral, pedido: renderPedido, tag: renderTag, produto: renderProduto, relatorioGeral: renderRelatorioGeral, itensExpedidos: renderItensExpedidos };
+  const map = { geral: renderGeral, pedido: renderPedido, tag: renderTag, produto: renderProduto, relatorioGeral: renderRelatorioGeral, itensExpedidos: renderItensExpedidos, arquivados: renderArquivados };
   renderCapacidade();
   (map[state.tela] || renderGeral)();
   renderNav();
@@ -984,6 +1008,7 @@ function renderNav(){
   const cli = getCli(state.pedido);
   const label = cli && cli.equipamento ? `${state.pedido} — ${cli.equipamento}` : state.pedido;
   let h = `<span class="nav-crumb" onclick="irGeral()"><i class="ti ti-layout-dashboard"></i> Todos os pedidos</span>`;
+  if (state.tela === 'arquivados') h += `<span class="nav-sep">›</span><span class="nav-crumb active">Pedidos arquivados</span>`;
   if (state.pedido) h += `<span class="nav-sep">›</span><span class="nav-crumb ${state.tela==='pedido'?'active':''}" onclick="irPedido()">${esc(label)}</span>`;
   if (state.tela === 'relatorioGeral') h += `<span class="nav-sep">›</span><span class="nav-crumb active">Relatório Geral</span>`;
   if (state.tela === 'itensExpedidos') h += `<span class="nav-sep">›</span><span class="nav-crumb active">Itens Expedidos</span>`;
@@ -992,6 +1017,7 @@ function renderNav(){
   nb.innerHTML = h;
 }
 function irGeral(){ state={tela:'geral',pedido:null,tag:null,produto:null}; renderTela(); }
+function irArquivados(){ state={tela:'arquivados',pedido:null,tag:null,produto:null}; renderTela(); }
 function irPedido(){ state.tela='pedido'; state.tag=null; state.produto=null; renderTela(); }
 function irTag(){ state.tela='tag'; state.produto=null; renderTela(); }
 function abrirPedido(p){ state={tela:'pedido',pedido:p,tag:null,produto:null}; renderTela(); }
@@ -1013,6 +1039,7 @@ function renderGeral(){
       <option value="pend">Maior pendência</option>
     </select>
     <span class="total-badge" id="totalBadge"></span>
+    <button class="btn-print btn-print-imp" onclick="irArquivados()"><i class="ti ti-archive"></i> Pedidos arquivados${pedidosArquivadosLista().length ? ` (${pedidosArquivadosLista().length})` : ''}</button>
     <button class="btn-print btn-print-pdf" onclick="gerarPDF()"><i class="ti ti-file-type-pdf"></i> Gerar PDF</button>
     <button class="btn-print btn-print-imp" onclick="imprimirRelatorio()"><i class="ti ti-printer"></i> Imprimir</button>
   </div>`;
@@ -1022,7 +1049,7 @@ function renderGeral(){
 
 function filtrarGeral(q){
   const sort = document.getElementById('sortSel')?.value || 'num';
-  let lista = allPedidos.filter(p => {
+  let lista = pedidosAtivos().filter(p => {
     if (!q) return true;
     const ql = q.toLowerCase();
     const c = getCli(p);
@@ -1043,7 +1070,7 @@ function filtrarGeral(q){
     const temPendencia = s.pendExp > 0;
     const late = c && isLate(c.data_reprogramada || c.data_prevista) && temPendencia;
     return `<div class="pedido-card" style="${late?'border-color:var(--red)':''}" onclick="abrirPedido('${esc(p)}')">
-      <div class="pc-top"><span class="pc-num">${esc(p)}${c&&c.cliente?' · '+esc(c.cliente):''}</span><span class="pc-tags-count">${s.nTags} TAG${s.nTags!==1?'s':''}</span></div>
+      <div class="pc-top"><span class="pc-num">${esc(p)}${c&&c.cliente?' · '+esc(c.cliente):''}</span><span style="display:flex;align-items:center;gap:5px"><span class="pc-tags-count">${s.nTags} TAG${s.nTags!==1?'s':''}</span><span class="pc-tags-count" style="cursor:pointer" title="Arquivar pedido" onclick="event.stopPropagation();arquivarPedido('${esc(p)}',true)"><i class="ti ti-archive"></i></span></span></div>
       <div class="pc-equip ${c&&c.equipamento?'':'no-info'}">${c&&c.equipamento?esc(c.equipamento):'Sem equipamento cadastrado'}</div>
       ${c ? (() => {
         let d = '<div class="pc-dates">';
@@ -1065,9 +1092,49 @@ function filtrarGeral(q){
   }).join('');
 }
 
+/* ── PEDIDOS ARQUIVADOS ── */
+function renderArquivados(){
+  document.getElementById('headerArea').innerHTML = `<div class="toolbar">
+    <button class="btn" onclick="irGeral()">← Todos os pedidos</button>
+    <span class="total-badge" id="totalBadge"></span>
+  </div>`;
+
+  const lista = pedidosArquivadosLista().map(p => ({ p, s: resP(p), c: getCli(p) })).sort((a,b) => a.p.localeCompare(b.p));
+  document.getElementById('totalBadge').textContent = `${lista.length} pedido${lista.length!==1?'s':''} arquivado${lista.length!==1?'s':''}`;
+
+  if (!lista.length){
+    document.getElementById('mainContent').innerHTML = `<div class="empty"><i class="ti ti-archive empty-icon"></i>Nenhum pedido arquivado ainda.<br>
+      <span style="font-size:12px;color:var(--text3);margin-top:8px;display:block">Use o ícone <i class="ti ti-archive"></i> no card de um pedido, em "Todos os pedidos", pra arquivar.</span></div>`;
+    setStatus('0 pedidos arquivados');
+    return;
+  }
+
+  document.getElementById('mainContent').innerHTML = `<div class="pedidos-grid">${lista.map(({p,s,c}) => `
+    <div class="pedido-card" style="opacity:.8" onclick="abrirPedido('${esc(p)}')">
+      <div class="pc-top"><span class="pc-num">${esc(p)}${c&&c.cliente?' · '+esc(c.cliente):''}</span><span class="pc-tags-count">${s.nTags} TAG${s.nTags!==1?'s':''}</span></div>
+      <div class="pc-equip ${c&&c.equipamento?'':'no-info'}">${c&&c.equipamento?esc(c.equipamento):'Sem equipamento cadastrado'}</div>
+      <div class="pc-peso">${fmt_t(s.peso)}</div>
+      <div class="pc-peso-sub">${fmt_kg(s.peso)} kg total</div>
+      <div class="pc-pills">
+        <span class="pill pill-blue"><i class="ti ti-archive"></i> Arquivado</span>
+        ${s.pendExp>0?`<span class="pill pill-red">${fmt_t(s.pendExp)} pend.exp</span>`:''}
+      </div>
+      <button class="btn-print btn-print-imp" style="width:100%;margin-top:10px;justify-content:center" onclick="event.stopPropagation();arquivarPedido('${esc(p)}',false)">
+        <i class="ti ti-archive-off"></i> Desarquivar
+      </button>
+    </div>`).join('')}</div>`;
+  setStatus(`${lista.length} pedidos arquivados · ${fmt_t(lista.reduce((t,{s})=>t+s.peso,0))} total`);
+}
+
 /* ── PEDIDO ── */
 function renderPedido(){
-  document.getElementById('headerArea').innerHTML = `<div class="toolbar"><button class="btn" onclick="irGeral()">← Todos os pedidos</button></div>`;
+  const arquivado = !!PEDIDOS_INFO[state.pedido]?.arquivado;
+  document.getElementById('headerArea').innerHTML = `<div class="toolbar">
+    <button class="btn" onclick="irGeral()">← Todos os pedidos</button>
+    ${arquivado
+      ? `<span class="pill pill-blue"><i class="ti ti-archive"></i> Arquivado</span><button class="btn" onclick="arquivarPedido('${esc(state.pedido)}',false)"><i class="ti ti-archive-off"></i> Desarquivar</button>`
+      : `<button class="btn" onclick="arquivarPedido('${esc(state.pedido)}',true)"><i class="ti ti-archive"></i> Arquivar pedido</button>`}
+  </div>`;
   const cli = getCli(state.pedido); const tags = DB[state.pedido]; const tk = Object.keys(tags);
   const s = resP(state.pedido);
   const maxTP = Math.max(...tk.map(t => itensFlat(tags[t]).reduce((a,i)=>a+i.pesoTotal,0)), 1);
