@@ -1386,6 +1386,58 @@ async function gerarPdfPedido(){
     });
     y += 10;
 
+    // ── detalhamento de ESTRUTURA por "nome do equipamento" ──
+    // Estrutura é um setor muito genérico (junta proteção, roldana, rodeiro
+    // livre, raspador, etc. num só número) -- "nome do equipamento" é o
+    // campo que a Engenharia já escolhe ao cadastrar o desenho, então dá pra
+    // quebrar o avanço por ele sem precisar de nenhum cadastro novo. Só
+    // Estrutura recebe esse detalhamento -- os outros setores já são
+    // homogêneos o bastante pro número agregado bastar.
+    const itensEstrutura = mapaSetores['ESTRUTURA'] || [];
+    if (itensEstrutura.length){
+      const idsDesenho = [...new Set(itensEstrutura.map(it => it.desenho_engenharia_id).filter(Boolean))];
+      const nomePorDesenhoId = {};
+      if (idsDesenho.length){
+        const { data: desenhosEq } = await sb.from('desenhos_engenharia').select('id, nome_equipamento').in('id', idsDesenho);
+        (desenhosEq || []).forEach(d => { nomePorDesenhoId[d.id] = d.nome_equipamento || '— sem equipamento —'; });
+      }
+      const porEquipamento = {};
+      itensEstrutura.forEach(it => {
+        const nome = nomePorDesenhoId[it.desenho_engenharia_id] || '— sem equipamento —';
+        if (!porEquipamento[nome]) porEquipamento[nome] = [];
+        porEquipamento[nome].push(it);
+      });
+
+      if (y > 250){ rodape(1); doc.addPage(); y = 20; }
+      y = tituloSecao(y, 'Estrutura — detalhamento por equipamento');
+      const colsEquip = [
+        { label:'Equipamento', w:64, align:'left' },
+        { label:'Carga (t)', w:28, align:'right' },
+        { label:'Expedido (t)', w:30, align:'right' },
+        { label:'Pendente (t)', w:30, align:'right' },
+        { label:'Avanço', w:30, align:'right' },
+      ];
+      x = M;
+      doc.setFillColor(...COR.line); doc.rect(M, y, CW, 7, 'F');
+      doc.setFont(undefined,'bold'); doc.setFontSize(7.5); doc.setTextColor(...COR.inkSoft);
+      colsEquip.forEach(c => { doc.text(c.label.toUpperCase(), x+(c.align==='right'?c.w-2:2), y+4.8, { align:c.align }); x += c.w; });
+      y += 7;
+
+      Object.keys(porEquipamento).sort().forEach((nome, i) => {
+        if (y > 275){ rodape(doc.internal.getNumberOfPages()); doc.addPage(); y = 20; }
+        const a = setorAgg(porEquipamento[nome]);
+        if (i % 2 === 1){ doc.setFillColor(248,249,250); doc.rect(M, y, CW, 7, 'F'); }
+        x = M;
+        doc.setFont(undefined,'normal'); doc.setFontSize(8.5); doc.setTextColor(...COR.ink);
+        const vals = [nome, numT(a.cargaProg), numT(a.expedido), numT(a.pendExp), a.avanco != null ? a.avanco.toFixed(0)+'%' : '—'];
+        vals.forEach((v, ci) => { const c = colsEquip[ci]; doc.text(String(v), x+(c.align==='right'?c.w-2:2), y+4.8, { align:c.align, maxWidth: c.w-4 }); x += c.w; });
+        doc.setDrawColor(...COR.line); doc.setLineWidth(0.15);
+        doc.line(M, y+7, M+CW, y+7);
+        y += 7;
+      });
+      y += 10;
+    }
+
     // ── tabela de TAGs ──
     if (y > 250){ rodape(1); doc.addPage(); y = 20; }
     y = tituloSecao(y, 'TAGs do pedido');
