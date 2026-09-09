@@ -92,6 +92,12 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 .pc-equip{font-size:12px;color:var(--text2);margin-bottom:8px}
 .pc-dates{font-size:11px;color:var(--text3)}
 
+.busca-desenho-row{display:flex;align-items:center;gap:10px;padding:0 1.5rem .75rem}
+.busca-desenho-row input{flex:1;max-width:420px;padding:10px 13px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg2);color:var(--text);font-size:13px}
+.busca-desenho-row input:focus{outline:none;border-color:var(--blue)}
+.busca-desenho-row .contagem{font-size:12px;color:var(--text2)}
+.pc-match{margin-top:8px;padding:5px 8px;background:var(--blue-dim);color:var(--blue-hover);border-radius:8px;font-size:11px;font-weight:600}
+
 .empty{text-align:center;padding:3rem 2rem;color:var(--text2);font-size:13px}
 
 .tbl-wrap{padding:0 1.5rem 1.5rem}
@@ -530,6 +536,9 @@ async function carregarFornecedoresProducao(){
   return FORNECEDORES_PRODUCAO_CACHE;
 }
 
+let REMESSAS_PCP_CACHE = [];
+let TERMO_BUSCA_DESENHO_PCP = '';
+
 async function renderRemessasPCP(){
   renderNav();
   const content = document.getElementById('content');
@@ -539,26 +548,63 @@ async function renderRemessasPCP(){
       ${pedidoAtual.cliente ? `<div style="font-size:12px;color:var(--blue);font-weight:600">${esc(pedidoAtual.cliente)}</div>` : ''}
     </div>
     <div class="toolbar"><h2>Remessas</h2></div>
+    <div class="busca-desenho-row">
+      <input id="buscaDesenhoInput" placeholder="🔍 Buscar desenho (MDE ou cliente) pra achar em qual remessa está..." value="${esc(TERMO_BUSCA_DESENHO_PCP)}" oninput="TERMO_BUSCA_DESENHO_PCP=this.value;renderGridRemessasPCP()">
+      <span class="contagem" id="buscaDesenhoContagem"></span>
+    </div>
     <div class="grid" id="remessasGrid"><div class="empty">Carregando...</div></div>`;
 
   const { data, error } = await sb
     .from('remessas')
-    .select('*, desenhos_engenharia(id)')
+    .select('*, desenhos_engenharia(id, desenho_mde, desenho_cliente)')
     .eq('pedido_id', pedidoAtual.id)
     .not('enviada_email_em', 'is', null)
     .order('numero', { ascending: false });
 
-  const grid = document.getElementById('remessasGrid');
-  if (error){ grid.innerHTML = `<div class="empty">Erro ao carregar remessas: ${esc(error.message)}</div>`; return; }
-  if (!data.length){ grid.innerHTML = `<div class="empty">Nenhuma remessa disponível ainda — a Engenharia precisa disparar a remessa por email antes dela aparecer aqui pro PCP.</div>`; return; }
+  if (error){ document.getElementById('remessasGrid').innerHTML = `<div class="empty">Erro ao carregar remessas: ${esc(error.message)}</div>`; return; }
+  REMESSAS_PCP_CACHE = data || [];
+  TERMO_BUSCA_DESENHO_PCP = '';
+  renderGridRemessasPCP();
+}
 
-  grid.innerHTML = data.map(r => `
+function renderGridRemessasPCP(){
+  const grid = document.getElementById('remessasGrid');
+  const contagemEl = document.getElementById('buscaDesenhoContagem');
+  if (!REMESSAS_PCP_CACHE.length){ grid.innerHTML = `<div class="empty">Nenhuma remessa disponível ainda — a Engenharia precisa disparar a remessa por email antes dela aparecer aqui pro PCP.</div>`; return; }
+
+  const termo = TERMO_BUSCA_DESENHO_PCP.trim().toLowerCase();
+
+  // pra cada remessa, acha o(s) desenho(s) cujo MDE ou cliente batem com o
+  // termo buscado -- é isso que diz "está nessa remessa" pro usuário.
+  const comMatch = REMESSAS_PCP_CACHE.map(r => {
+    const desenhos = r.desenhos_engenharia || [];
+    const encontrados = termo
+      ? desenhos.filter(d => (d.desenho_mde || '').toLowerCase().includes(termo) || (d.desenho_cliente || '').toLowerCase().includes(termo))
+      : [];
+    return { r, desenhos, encontrados };
+  });
+
+  const listaFiltrada = termo ? comMatch.filter(x => x.encontrados.length > 0) : comMatch;
+
+  if (contagemEl){
+    contagemEl.textContent = termo
+      ? `${listaFiltrada.length} remessa${listaFiltrada.length !== 1 ? 's' : ''} encontrada${listaFiltrada.length !== 1 ? 's' : ''}`
+      : '';
+  }
+
+  if (!listaFiltrada.length){
+    grid.innerHTML = `<div class="empty">Nenhuma remessa tem um desenho batendo com "${esc(TERMO_BUSCA_DESENHO_PCP)}".</div>`;
+    return;
+  }
+
+  grid.innerHTML = listaFiltrada.map(({ r, desenhos, encontrados }) => `
     <div class="pedido-card" onclick='abrirRemessaPCP(${JSON.stringify({ id: r.id, numero: r.numero, nome: r.nome, pedido_id: r.pedido_id, enviada_email_em: r.enviada_email_em, recebida_pcp_em: r.recebida_pcp_em, recebida_producao_em: r.recebida_producao_em }).replace(/'/g, "&#39;")})'>
       <div class="pc-num">Remessa ${r.numero}${r.nome ? ' — ' + esc(r.nome) : ''}</div>
-      <div class="pc-equip">${(r.desenhos_engenharia || []).length} desenho(s)</div>
+      <div class="pc-equip">${desenhos.length} desenho(s)</div>
       <div style="font-size:11px;color:var(--green);font-weight:600;margin-top:4px">✓ Enviada por email</div>
       ${r.recebida_pcp_em ? `<div style="font-size:11px;color:var(--blue);font-weight:600;margin-top:2px">✓ Recebida pelo PCP</div>` : `<div style="font-size:11px;color:var(--amber);font-weight:600;margin-top:2px">Aguardando confirmação do PCP</div>`}
       ${r.recebida_producao_em ? `<div style="font-size:11px;color:var(--green);font-weight:600;margin-top:2px">✓ Recebida pela produção</div>` : `<div style="font-size:11px;color:var(--text2);margin-top:2px">Produção ainda não confirmou</div>`}
+      ${encontrados.length ? `<div class="pc-match">🔍 ${encontrados.map(d => esc(d.desenho_mde || d.desenho_cliente)).join(', ')}</div>` : ''}
     </div>`).join('');
 }
 
