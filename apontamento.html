@@ -270,7 +270,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
   </div>
 </div>
 
-<script src="js/supabase-client.js?v=3"></script>
+<script src="js/supabase-client.js?v=4"></script>
 <script>
 let AUTH = null;
 let SOMENTE_LEITURA = false;
@@ -910,7 +910,7 @@ async function baixarDesenho(desenhoEngenhariaId, btnEl){
     // exibir o arquivo direto na aba, em vez de baixar. O seletor "Abrir
     // com..." (AutoCAD etc.) aparece depois, ao tocar no arquivo baixado --
     // isso funciona igual no Android e no iOS, é o navegador que decide.
-    const { data: signed, error: errSign } = await sb.storage.from('desenhos').createSignedUrl(d.arquivo_path, 3600, { download: d.arquivo_nome || true });
+    const { data: signed, error: errSign } = await sb.storage.from('desenhos').createSignedUrl(d.arquivo_path, 3600, { download: nomeArquivoSeguro(d.arquivo_nome) || true });
     if (errSign) throw errSign;
     window.open(signed.signedUrl, '_blank');
   } catch (err) {

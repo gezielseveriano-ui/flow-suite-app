@@ -385,7 +385,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
   </div>
 </div>
 
-<script src="js/supabase-client.js?v=3"></script>
+<script src="js/supabase-client.js?v=4"></script>
 <script>
 // ── MENU LATERAL: fecha sozinho e tem botão flutuante sempre alcançável ────
 let sidebarMexidoManualmente = false;
@@ -576,7 +576,7 @@ async function baixarDesenho(desenhoEngenhariaId, btnEl){
     const { data: d, error } = await sb.from('desenhos_engenharia').select('arquivo_path, arquivo_nome').eq('id', desenhoEngenhariaId).single();
     if (error) throw error;
     if (!d.arquivo_path){ alert('Esse desenho ainda não tem arquivo enviado.'); return; }
-    const { data: signed, error: errSign } = await sb.storage.from('desenhos').createSignedUrl(d.arquivo_path, 3600, { download: d.arquivo_nome || true });
+    const { data: signed, error: errSign } = await sb.storage.from('desenhos').createSignedUrl(d.arquivo_path, 3600, { download: nomeArquivoSeguro(d.arquivo_nome) || true });
     if (errSign) throw errSign;
     window.open(signed.signedUrl, '_blank');
   } catch (err) {

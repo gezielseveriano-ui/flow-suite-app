@@ -81,6 +81,17 @@ function esc(s) {
   }[c]));
 }
 
+// nome de arquivo pro Content-Disposition do Storage (opção `download` de
+// createSignedUrl) -- parênteses e outros símbolos de pontuação viram
+// %28/%29 etc ao codificar o header e alguns navegadores salvam esse
+// percent-encoding literalmente no nome do arquivo em vez de decodificar.
+// Tira só a pontuação arriscada, mantém letras (com acento), números,
+// espaço, ponto, hífen e underscore -- não precisa mexer no arquivo_path
+// (chave de storage), só no nome que aparece ao baixar.
+function nomeArquivoSeguro(nome) {
+  return String(nome || '').replace(/[()[\]{}#%&+;,]/g, '').replace(/\s+/g, ' ').trim();
+}
+
 // ── SININHO DE AVISOS (desenhos paralisados pela Engenharia) ───────────────
 // Compartilhado por todas as páginas: chama iniciarSininho('idDoContainer')
 // no init() de cada módulo, com um <div id="..."></div> vazio no top-bar.

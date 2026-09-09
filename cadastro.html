@@ -269,7 +269,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
   </div>
 </div>
 
-<script src="js/supabase-client.js?v=3"></script>
+<script src="js/supabase-client.js?v=4"></script>
 <script>
 let AUTH = null;
 let pedidoAtual = null; // {id, numero_pedido, ...}
@@ -752,7 +752,7 @@ async function renderDesenhosEngenharia(){
   for (const d of liberados){
     let arquivoUrl = null;
     if (d.arquivo_path){
-      const { data: signed } = await sb.storage.from('desenhos').createSignedUrl(d.arquivo_path, 3600, { download: d.arquivo_nome || true });
+      const { data: signed } = await sb.storage.from('desenhos').createSignedUrl(d.arquivo_path, 3600, { download: nomeArquivoSeguro(d.arquivo_nome) || true });
       arquivoUrl = signed?.signedUrl || null;
     }
     const badges = [
