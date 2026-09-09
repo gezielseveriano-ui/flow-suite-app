@@ -1444,7 +1444,7 @@ async function gerarPdfPedido(){
     const colsTag = [
       { label:'TAG', w:70, align:'left' },
       { label:'Peso (t)', w:37, align:'right' },
-      { label:'Pendente (t)', w:37, align:'right' },
+      { label:'Pendente (%)', w:37, align:'right' },
       { label:'Status', w:38, align:'right' },
     ];
     function cabecalhoTag(){
@@ -1469,8 +1469,9 @@ async function gerarPdfPedido(){
       x = M;
       doc.setFont(undefined,'normal'); doc.setFontSize(8.5); doc.setTextColor(...COR.ink);
       doc.text(tag, x+2, y+4.8); x += colsTag[0].w;
+      const tPctPend = tPeso > 0 ? Math.min(100, tPE/tPeso*100) : 0;
       doc.text(numT(tPeso), x+colsTag[1].w-2, y+4.8, { align:'right' }); x += colsTag[1].w;
-      doc.text(numT(tPE), x+colsTag[2].w-2, y+4.8, { align:'right' }); x += colsTag[2].w;
+      doc.text(tPctPend.toFixed(0)+'%', x+colsTag[2].w-2, y+4.8, { align:'right' }); x += colsTag[2].w;
       doc.setFont(undefined,'bold'); doc.setTextColor(...(tPE > 0 ? COR.red : COR.green));
       doc.text(tPE > 0 ? 'Pendente' : 'OK', x+colsTag[3].w-2, y+4.8, { align:'right' });
       doc.setDrawColor(...COR.line); doc.setLineWidth(0.15);
