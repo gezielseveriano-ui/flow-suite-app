@@ -1497,7 +1497,7 @@ function renderItensExpedidos(){
   document.getElementById('headerArea').innerHTML = `
   <div class="toolbar">
     <button class="btn" onclick="irPedido()">← ${esc(state.pedido)}</button>
-    <input class="filter-input" style="flex:1;min-width:260px" id="filtroItensExp" placeholder="🔍 Filtrar por romaneio/LE, nota fiscal, desenho, desenho cliente, tag, remessa ou produto..." oninput="aplicarFiltroDash('filtroItensExp','itensExpWrap')">
+    <input class="filter-input" style="flex:1;min-width:260px" id="filtroItensExp" placeholder="🔍 Filtrar por romaneio/LE, nota fiscal, desenho, desenho cliente, descrição, tag, remessa ou produto..." oninput="aplicarFiltroDash('filtroItensExp','itensExpWrap')">
   </div>`;
 
   const itens = todosItensDoPedido(state.pedido);
@@ -1506,7 +1506,7 @@ function renderItensExpedidos(){
   linhas.sort((a, b) => new Date(a.exp.data || 0) - new Date(b.exp.data || 0));
 
   const rowsHtml = linhas.map(({ it, exp }) => {
-    const chave = `${state.pedido} ${cli?.cliente||''} ${exp.numero||''} ${exp.notaFiscal||''} ${it.produto||''} ${it.desenho||''} ${it.desenho_cliente||''} ${it.tag||''} ${it.remessa||''}`.toLowerCase();
+    const chave = `${state.pedido} ${cli?.cliente||''} ${exp.numero||''} ${exp.notaFiscal||''} ${it.produto||''} ${it.descricao||''} ${it.desenho||''} ${it.desenho_cliente||''} ${it.tag||''} ${it.remessa||''}`.toLowerCase();
     return `<tr data-search="${esc(chave)}">
       <td>${esc(state.pedido)}</td>
       <td>${esc(cli?.cliente || '')}</td>
@@ -1516,6 +1516,7 @@ function renderItensExpedidos(){
       <td>${esc(it.desenho || '')}</td>
       <td>${esc(it.desenho_cliente || '—')}</td>
       <td>${esc(it.produto || '')}</td>
+      <td class="desc-cell">${esc(it.descricao || '—')}</td>
       <td>${esc(it.tag || '')}</td>
       <td>${esc(it.remessa || '—')}</td>
       <td class="r">${exp.qtd.toLocaleString('pt-BR')}</td>
@@ -1527,9 +1528,9 @@ function renderItensExpedidos(){
     <div class="section-title">Itens Expedidos — ${esc(state.pedido)}${cli?.cliente ? ' · ' + esc(cli.cliente) : ''}</div>
     <div id="itensExpWrap" class="tbl-wrap"><table class="dtbl">
       <thead><tr>
-        <th>Pedido</th><th>Cliente</th><th>Romaneio/LE</th><th>Nota Fiscal</th><th>Data expedição</th><th>Desenho MDE</th><th>Desenho Cliente</th><th>Produto</th><th>TAG</th><th>Remessa</th><th class="r">Qtd. expedida</th>
+        <th>Pedido</th><th>Cliente</th><th>Romaneio/LE</th><th>Nota Fiscal</th><th>Data expedição</th><th>Desenho MDE</th><th>Desenho Cliente</th><th>Produto</th><th>Descrição</th><th>TAG</th><th>Remessa</th><th class="r">Qtd. expedida</th>
       </tr></thead>
-      <tbody>${rowsHtml || `<tr><td colspan="11" class="empty">Nenhum item expedido ainda para este pedido.</td></tr>`}</tbody>
+      <tbody>${rowsHtml || `<tr><td colspan="12" class="empty">Nenhum item expedido ainda para este pedido.</td></tr>`}</tbody>
     </table></div>
     </div>`;
   setStatus(`Itens Expedidos · ${state.pedido} · ${linhas.length} lançamentos de expedição`);
