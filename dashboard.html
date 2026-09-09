@@ -193,6 +193,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 .dtbl tbody td{padding:8px 12px;color:var(--text);vertical-align:middle}
 .dtbl tbody td.r{text-align:right;font-variant-numeric:tabular-nums}
 .dtbl tbody td.muted{color:var(--text2)}
+.dtbl tbody td.desc-cell{max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pend-badge{display:inline-block;background:var(--red-dim);color:var(--red);font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px}
 
 .empty{text-align:center;padding:4rem 2rem;color:var(--text2);font-size:14px}
@@ -1438,7 +1439,7 @@ function renderRelatorioGeral(){
   document.getElementById('headerArea').innerHTML = `
   <div class="toolbar">
     <button class="btn" onclick="irPedido()">← ${esc(state.pedido)}</button>
-    <input class="filter-input" style="flex:1;min-width:260px" id="filtroRelGeral" placeholder="🔍 Filtrar por produto, desenho, desenho cliente, tag, remessa, status, LE ou nota fiscal..." oninput="aplicarFiltroDash('filtroRelGeral','relGeralWrap')">
+    <input class="filter-input" style="flex:1;min-width:260px" id="filtroRelGeral" placeholder="🔍 Filtrar por produto, descrição, desenho, desenho cliente, tag, remessa, status, LE ou nota fiscal..." oninput="aplicarFiltroDash('filtroRelGeral','relGeralWrap')">
   </div>`;
 
   const itens = todosItensDoPedido(state.pedido);
@@ -1448,7 +1449,7 @@ function renderRelatorioGeral(){
   const linha = it => {
     const les = (it.expedicoes || []).map(e => e.numero ? `${e.numero}${e.notaFiscal ? ' (NF ' + e.notaFiscal + ')' : ''}` : null).filter(Boolean).join(', ') || '—';
     const notasFiscais = (it.expedicoes || []).map(e => e.notaFiscal).filter(Boolean).join(' ');
-    const chave = `${state.pedido} ${cli?.cliente||''} ${it.produto||''} ${it.desenho||''} ${it.desenho_cliente||''} ${it.tag||''} ${it.remessa||''} ${it.status_expedicao||''} ${les} ${notasFiscais}`.toLowerCase();
+    const chave = `${state.pedido} ${cli?.cliente||''} ${it.produto||''} ${it.descricao||''} ${it.desenho||''} ${it.desenho_cliente||''} ${it.tag||''} ${it.remessa||''} ${it.status_expedicao||''} ${les} ${notasFiscais}`.toLowerCase();
     const statusHtml = it.status_expedicao === 'expedido' ? '<span class="status-badge sb-ok">Expedido</span>'
       : it.status_expedicao === 'parcial' ? '<span class="status-badge sb-info">Em Aberto (parcial)</span>'
       : '<span class="status-badge sb-info">Em Aberto</span>';
@@ -1456,6 +1457,7 @@ function renderRelatorioGeral(){
       <td>${esc(state.pedido)}</td>
       <td>${esc(cli?.cliente || '')}</td>
       <td>${esc(it.produto || '')}</td>
+      <td class="desc-cell">${esc(it.descricao || '—')}</td>
       <td>${esc(it.desenho || '')}</td>
       <td>${esc(it.desenho_cliente || '—')}</td>
       <td>${esc(it.tag || '')}</td>
@@ -1475,14 +1477,14 @@ function renderRelatorioGeral(){
     <div class="section-title">Relatório Geral — ${esc(state.pedido)}${cli?.cliente ? ' · ' + esc(cli.cliente) : ''}</div>
     <div id="relGeralWrap" class="tbl-wrap"><table class="dtbl">
       <thead><tr>
-        <th>Pedido</th><th>Cliente</th><th>Produto</th><th>Desenho MDE</th><th>Desenho Cliente</th><th>TAG</th><th>Remessa</th>
+        <th>Pedido</th><th>Cliente</th><th>Produto</th><th>Descrição</th><th>Desenho MDE</th><th>Desenho Cliente</th><th>TAG</th><th>Remessa</th>
         <th class="r">Quantidade</th><th class="r">% Fabricado</th><th class="r">Qtd. expedida</th><th class="r">Saldo</th><th>Status</th><th>Romaneio/LE</th><th>Arquivo</th>
       </tr></thead>
       <tbody>
-        <tr class="group-row"><td colspan="14">Itens em Aberto (${abertos.length})</td></tr>
-        ${abertos.length ? abertos.map(linha).join('') : `<tr><td colspan="14" class="empty">Nenhum item em aberto.</td></tr>`}
-        <tr class="group-row"><td colspan="14">Itens Expedidos (${expedidos.length})</td></tr>
-        ${expedidos.length ? expedidos.map(linha).join('') : `<tr><td colspan="14" class="empty">Nenhum item expedido ainda.</td></tr>`}
+        <tr class="group-row"><td colspan="15">Itens em Aberto (${abertos.length})</td></tr>
+        ${abertos.length ? abertos.map(linha).join('') : `<tr><td colspan="15" class="empty">Nenhum item em aberto.</td></tr>`}
+        <tr class="group-row"><td colspan="15">Itens Expedidos (${expedidos.length})</td></tr>
+        ${expedidos.length ? expedidos.map(linha).join('') : `<tr><td colspan="15" class="empty">Nenhum item expedido ainda.</td></tr>`}
       </tbody>
     </table></div>
     </div>`;
