@@ -612,8 +612,8 @@ async function init(){
     } else {
       limparCamposAutoLidos();
       const status = document.getElementById('fdLeituraStatus');
-      status.style.color = 'var(--text2)';
-      status.textContent = 'Esse tipo de arquivo não é lido automaticamente — preencha os campos manualmente.';
+      status.style.color = 'var(--green)';
+      status.textContent = `✓ Arquivo anexado: ${file.name} — esse tipo não é lido automaticamente, preencha os campos manualmente.`;
     }
   });
 }
