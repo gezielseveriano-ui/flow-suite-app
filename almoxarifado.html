@@ -359,7 +359,7 @@ function showMsg(text, ok){
 function clearMsg(){ document.getElementById('msgBox').classList.remove('show'); }
 
 async function init(){
-  AUTH = await exigirLogin(['almoxarifado', 'admin']);
+  AUTH = await exigirLogin(['almoxarifado', 'logistica', 'admin']);
   if (!AUTH) return;
   document.getElementById('userNome').textContent = AUTH.nome;
   document.getElementById('userAvatar').textContent = (AUTH.nome || '').trim().split(/\s+/).map(p => p[0]).slice(0, 2).join('').toUpperCase() || '··';

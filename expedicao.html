@@ -255,7 +255,7 @@ function clearMsg(){
 }
 
 async function init(){
-  AUTH = await exigirLogin(['expedicao', 'pcp', 'admin']);
+  AUTH = await exigirLogin(['expedicao', 'logistica', 'pcp', 'admin']);
   if (!AUTH) return;
   SOMENTE_LEITURA = AUTH.perfil === 'pcp';
   document.getElementById('userNome').textContent = AUTH.nome;
