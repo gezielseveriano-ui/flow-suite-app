@@ -362,6 +362,10 @@ function voltarRemessas(){
   renderRemessasPCP();
 }
 
+let PEDIDOS_CADASTRADOS_CACHE = [];
+let TERMO_BUSCA_DESENHO_PEDIDOS = '';
+let debounceBuscaDesenhoPedido = null;
+
 async function renderListaPedidos(){
   mostrandoFornecedores = false;
   renderNav();
@@ -373,6 +377,10 @@ async function renderListaPedidos(){
         <span style="font-size:12.5px;color:var(--text3)">Pedidos novos nascem no módulo Contratos</span>
         <button class="btn" onclick="abrirFornecedoresCapacidade()">⚙️ Fornecedores e Capacidade</button>
       </div>
+    </div>
+    <div class="busca-desenho-row">
+      <input id="buscaDesenhoPedidoInput" placeholder="🔍 Buscar desenho (MDE ou cliente) pra achar em qual pedido está..." value="${esc(TERMO_BUSCA_DESENHO_PEDIDOS)}" oninput="buscarDesenhoEmPedidos(this.value)">
+      <span class="contagem" id="buscaDesenhoPedidoContagem"></span>
     </div>
     <div class="grid" id="pedidosGrid"><div class="empty">Carregando...</div></div>`;
 
@@ -386,11 +394,13 @@ async function renderListaPedidos(){
     grid.innerHTML = `<div class="empty">Erro ao carregar pedidos: ${esc(error.message)}</div>`;
     return;
   }
-  if (!data.length){
-    grid.innerHTML = `<div class="empty">Nenhum pedido cadastrado ainda. Clique em "+ Novo Pedido" para começar.</div>`;
-    return;
-  }
-  grid.innerHTML = data.map(p => `
+  PEDIDOS_CADASTRADOS_CACHE = data || [];
+  TERMO_BUSCA_DESENHO_PEDIDOS = '';
+  renderGridPedidos([]);
+}
+
+function cardPedidoHTML(p, encontrados){
+  return `
     <div class="pedido-card" onclick='abrirPedido(${JSON.stringify(p).replace(/'/g, "&#39;")})'>
       <div class="pc-num">${esc(p.numero_pedido)}</div>
       ${p.cliente ? `<div class="pc-cliente">${esc(p.cliente)}</div>` : ''}
@@ -399,7 +409,73 @@ async function renderListaPedidos(){
         ${p.data_prevista ? `Previsto: ${new Date(p.data_prevista).toLocaleDateString('pt-BR')}` : ''}
         ${p.data_reprogramada ? ` · Reprog.: ${new Date(p.data_reprogramada).toLocaleDateString('pt-BR')}` : ''}
       </div>
-    </div>`).join('');
+      ${encontrados && encontrados.length ? `<div class="pc-match">🔍 ${encontrados.map(d => esc(d.desenho_mde || d.desenho_cliente)).join(', ')}</div>` : ''}
+    </div>`;
+}
+
+function renderGridPedidos(desenhosEncontrados){
+  const grid = document.getElementById('pedidosGrid');
+  const contagemEl = document.getElementById('buscaDesenhoPedidoContagem');
+  if (!PEDIDOS_CADASTRADOS_CACHE.length){
+    grid.innerHTML = `<div class="empty">Nenhum pedido cadastrado ainda. Clique em "+ Novo Pedido" para começar.</div>`;
+    return;
+  }
+
+  const termo = TERMO_BUSCA_DESENHO_PEDIDOS.trim();
+  if (!termo){
+    if (contagemEl) contagemEl.textContent = '';
+    grid.innerHTML = PEDIDOS_CADASTRADOS_CACHE.map(p => cardPedidoHTML(p, [])).join('');
+    return;
+  }
+
+  const porPedido = {};
+  (desenhosEncontrados || []).forEach(d => {
+    if (!porPedido[d.pedido_id]) porPedido[d.pedido_id] = [];
+    porPedido[d.pedido_id].push(d);
+  });
+
+  const pedidosComMatch = PEDIDOS_CADASTRADOS_CACHE.filter(p => porPedido[p.id]);
+
+  if (contagemEl){
+    contagemEl.textContent = `${pedidosComMatch.length} pedido${pedidosComMatch.length !== 1 ? 's' : ''} encontrado${pedidosComMatch.length !== 1 ? 's' : ''}`;
+  }
+
+  if (!pedidosComMatch.length){
+    grid.innerHTML = `<div class="empty">Nenhum pedido tem um desenho batendo com "${esc(termo)}".</div>`;
+    return;
+  }
+
+  grid.innerHTML = pedidosComMatch.map(p => cardPedidoHTML(p, porPedido[p.id])).join('');
+}
+
+// busca com debounce -- cada tecla dispara uma query no banco (não dá pra
+// pré-carregar todos os desenhos de todos os pedidos de uma vez, são muitos),
+// então espera 300ms sem digitar antes de consultar.
+function buscarDesenhoEmPedidos(valor){
+  TERMO_BUSCA_DESENHO_PEDIDOS = valor;
+  clearTimeout(debounceBuscaDesenhoPedido);
+  debounceBuscaDesenhoPedido = setTimeout(executarBuscaDesenhoPedidos, 300);
+}
+
+async function executarBuscaDesenhoPedidos(){
+  const termo = TERMO_BUSCA_DESENHO_PEDIDOS.trim();
+  const contagemEl = document.getElementById('buscaDesenhoPedidoContagem');
+  if (!termo){ renderGridPedidos([]); return; }
+
+  const termoSanitizado = termo.replace(/[^a-zA-Z0-9.\-]/g, '');
+  if (!termoSanitizado){ renderGridPedidos([]); return; }
+
+  if (contagemEl) contagemEl.textContent = 'Buscando...';
+  const { data, error } = await sb
+    .from('desenhos_engenharia')
+    .select('desenho_mde, desenho_cliente, pedido_id')
+    .or(`desenho_mde.ilike.%${termoSanitizado}%,desenho_cliente.ilike.%${termoSanitizado}%`)
+    .not('pedido_id', 'is', null)
+    .limit(500);
+
+  if (error){ if (contagemEl) contagemEl.textContent = 'Erro na busca: ' + error.message; return; }
+  if (termo !== TERMO_BUSCA_DESENHO_PEDIDOS.trim()) return; // usuário já digitou outra coisa
+  renderGridPedidos(data || []);
 }
 
 function abrirPedido(p){
