@@ -1364,7 +1364,7 @@ async function gerarPdfPedido(){
       { label:'Setor', w:48, align:'left' },
       { label:'Carga (t)', w:32, align:'right' },
       { label:'Expedido (t)', w:34, align:'right' },
-      { label:'Pendente (t)', w:34, align:'right' },
+      { label:'Pendente (%)', w:34, align:'right' },
       { label:'Avanço', w:34, align:'right' },
     ];
     let x = M;
@@ -1375,10 +1375,11 @@ async function gerarPdfPedido(){
 
     setores.forEach((setor, i) => {
       const a = setorAgg(mapaSetores[setor]);
+      const pctPend = a.cargaProg > 0 ? Math.min(100, a.pendExp/a.cargaProg*100) : 0;
       if (i % 2 === 1){ doc.setFillColor(248,249,250); doc.rect(M, y, CW, 7, 'F'); }
       x = M;
       doc.setFont(undefined,'normal'); doc.setFontSize(8.5); doc.setTextColor(...COR.ink);
-      const vals = [setor, numT(a.cargaProg), numT(a.expedido), numT(a.pendExp), a.avanco != null ? a.avanco.toFixed(0)+'%' : '—'];
+      const vals = [setor, numT(a.cargaProg), numT(a.expedido), pctPend.toFixed(0)+'%', a.avanco != null ? a.avanco.toFixed(0)+'%' : '—'];
       vals.forEach((v, ci) => { const c = colsSetor[ci]; doc.text(String(v), x+(c.align==='right'?c.w-2:2), y+4.8, { align:c.align }); x += c.w; });
       doc.setDrawColor(...COR.line); doc.setLineWidth(0.15);
       doc.line(M, y+7, M+CW, y+7);
@@ -1414,7 +1415,7 @@ async function gerarPdfPedido(){
         { label:'Equipamento', w:64, align:'left' },
         { label:'Carga (t)', w:28, align:'right' },
         { label:'Expedido (t)', w:30, align:'right' },
-        { label:'Pendente (t)', w:30, align:'right' },
+        { label:'Pendente (%)', w:30, align:'right' },
         { label:'Avanço', w:30, align:'right' },
       ];
       x = M;
@@ -1426,10 +1427,11 @@ async function gerarPdfPedido(){
       Object.keys(porEquipamento).sort().forEach((nome, i) => {
         if (y > 275){ rodape(doc.internal.getNumberOfPages()); doc.addPage(); y = 20; }
         const a = setorAgg(porEquipamento[nome]);
+        const pctPendEquip = a.cargaProg > 0 ? Math.min(100, a.pendExp/a.cargaProg*100) : 0;
         if (i % 2 === 1){ doc.setFillColor(248,249,250); doc.rect(M, y, CW, 7, 'F'); }
         x = M;
         doc.setFont(undefined,'normal'); doc.setFontSize(8.5); doc.setTextColor(...COR.ink);
-        const vals = [nome, numT(a.cargaProg), numT(a.expedido), numT(a.pendExp), a.avanco != null ? a.avanco.toFixed(0)+'%' : '—'];
+        const vals = [nome, numT(a.cargaProg), numT(a.expedido), pctPendEquip.toFixed(0)+'%', a.avanco != null ? a.avanco.toFixed(0)+'%' : '—'];
         vals.forEach((v, ci) => { const c = colsEquip[ci]; doc.text(String(v), x+(c.align==='right'?c.w-2:2), y+4.8, { align:c.align, maxWidth: c.w-4 }); x += c.w; });
         doc.setDrawColor(...COR.line); doc.setLineWidth(0.15);
         doc.line(M, y+7, M+CW, y+7);
