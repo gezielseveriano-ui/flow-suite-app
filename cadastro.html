@@ -996,29 +996,49 @@ async function lerDesenho(desenhoId){
   try {
     const { data: d, error: errD } = await sb.from('desenhos_engenharia').select('*').eq('id', desenhoId).single();
     if (errD) throw errD;
-    if (!d.arquivo_path) throw new Error('Esse desenho ainda não tem arquivo enviado.');
 
-    const { data: blob, error: dlErr } = await sb.storage.from('desenhos').download(d.arquivo_path);
-    if (dlErr) throw new Error(dlErr.message);
+    let posicoes;
+    if (d.is_compra){
+      // documento de compra (proposta/ET em PDF, não é desenho técnico) não
+      // tem nada pra extrair automaticamente -- em vez de mandar pro serviço
+      // de leitura de DWG (que só entende desenho de verdade), gera direto
+      // uma única posição usando o que a Engenharia já cadastrou, só pra
+      // virar item rastreável no PCP/Produção/Dashboard, do mesmo jeito que
+      // um item fabricado vira.
+      posicoes = [{
+        posicao: 'A',
+        descricao: d.nome_equipamento || d.desenho_mde,
+        quantidade: d.quantidade_fabricar || 1,
+        peso_unitario: d.peso_unitario_desenho || 0,
+        peso_total: (d.quantidade_fabricar || 1) * (d.peso_unitario_desenho || 0),
+      }];
+    } else {
+      if (!d.arquivo_path) throw new Error('Esse desenho ainda não tem arquivo enviado.');
 
-    const fd = new FormData();
-    fd.append('file', blob, d.arquivo_nome || 'desenho.dwg');
-    const res = await fetch(`${DWG_SERVICE_URL}/extract`, { method: 'POST', body: fd });
-    if (!res.ok){
-      const t = await res.text().catch(() => '');
-      throw new Error(`serviço respondeu ${res.status}${t ? ': ' + t.slice(0, 200) : ''} — confirme que o serviço local está rodando nesta máquina (uvicorn main:app --port 8000).`);
-    }
-    const data = await res.json();
-    const { posicoes, campos } = montarPosicoesDaLeitura(data);
+      const { data: blob, error: dlErr } = await sb.storage.from('desenhos').download(d.arquivo_path);
+      if (dlErr) throw new Error(dlErr.message);
 
-    const chaveRevisao = Object.keys(campos).find(k => /REVIS/i.test(k));
-    const chaveCliente = Object.keys(campos).find(k => /N[ºo°]/i.test(k) && !/MDE/i.test(k));
-    const updatePayload = {};
-    if (chaveRevisao && !d.revisao) updatePayload.revisao = campos[chaveRevisao];
-    if (chaveCliente && !d.desenho_cliente) updatePayload.desenho_cliente = campos[chaveCliente];
-    if (Object.keys(updatePayload).length){
-      await sb.from('desenhos_engenharia').update(updatePayload).eq('id', desenhoId);
-      Object.assign(d, updatePayload);
+      const fd = new FormData();
+      fd.append('file', blob, d.arquivo_nome || 'desenho.dwg');
+      const res = await fetch(`${DWG_SERVICE_URL}/extract`, { method: 'POST', body: fd });
+      if (!res.ok){
+        const t = await res.text().catch(() => '');
+        throw new Error(`serviço respondeu ${res.status}${t ? ': ' + t.slice(0, 200) : ''} — confirme que o serviço local está rodando nesta máquina (uvicorn main:app --port 8000).`);
+      }
+      const data = await res.json();
+      const montado = montarPosicoesDaLeitura(data);
+      posicoes = montado.posicoes;
+      const campos = montado.campos;
+
+      const chaveRevisao = Object.keys(campos).find(k => /REVIS/i.test(k));
+      const chaveCliente = Object.keys(campos).find(k => /N[ºo°]/i.test(k) && !/MDE/i.test(k));
+      const updatePayload = {};
+      if (chaveRevisao && !d.revisao) updatePayload.revisao = campos[chaveRevisao];
+      if (chaveCliente && !d.desenho_cliente) updatePayload.desenho_cliente = campos[chaveCliente];
+      if (Object.keys(updatePayload).length){
+        await sb.from('desenhos_engenharia').update(updatePayload).eq('id', desenhoId);
+        Object.assign(d, updatePayload);
+      }
     }
 
     // antes de apagar, guarda quais subprodutos o PCP tinha "subido" (marcado
@@ -1092,7 +1112,10 @@ async function lerDesenho(desenhoId){
       }
     }
 
-    showMsg(`Leitura aplicada — ${posicoes.length} posição(ões) transcrita(s).${avisoPcp}${avisoPeso}`, !avisoPeso.includes('⚠'));
+    const msgLeitura = d.is_compra
+      ? `Item de compra registrado a partir do cadastro da Engenharia (${d.nome_equipamento || d.desenho_mde}).`
+      : `Leitura aplicada — ${posicoes.length} posição(ões) transcrita(s).`;
+    showMsg(`${msgLeitura}${avisoPcp}${avisoPeso}`, !avisoPeso.includes('⚠'));
     await renderDesenhosEngenharia();
     await renderItensGerados();
   } catch (err) {
@@ -1433,8 +1456,12 @@ async function sincronizarItensPCP(desenho, posicoesAtuais){
   // mesma letra se repete (ver `chaveOcorrencia` abaixo).
   posicoesAtuais = posicoesAtuais.filter(p => !p.descida).sort((a, b) => a.id - b.id);
 
-  if (!desenho.is_fabricacao){
-    return posicoesAtuais.length ? ' — desenho não marcado como Fabricação, não gerei itens pro PCP.' : '';
+  // Compra entra pelo mesmo caminho que Fabricação -- é a exceção
+  // intencional: um documento de compra também precisa virar item
+  // rastreável (aparecer em Produção/Dashboard, poder ser baixado), mesmo
+  // sem desenho técnico nenhum por trás.
+  if (!desenho.is_fabricacao && !desenho.is_compra){
+    return posicoesAtuais.length ? ' — desenho não marcado como Fabricação nem Compra, não gerei itens pro PCP.' : '';
   }
   if (!desenho.pedido_id){
     return posicoesAtuais.length ? ' — sem pedido vinculado, não gerei itens pro PCP ainda.' : '';

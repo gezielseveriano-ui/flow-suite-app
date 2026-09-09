@@ -329,7 +329,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
         </div>
       </div>
       <div class="field-row">
-        <div class="field" style="grid-column:1/-1">
+        <div class="field" id="fieldArquivo" style="grid-column:1/-1">
           <label>Arquivo do desenho ou documento (DWG/DXF/PDF/Word/Excel)</label>
           <input id="fdArquivo" type="file" accept=".dwg,.dxf,.pdf,.doc,.docx,.xls,.xlsx,.xlsm">
           <div id="fdArquivoAtual" style="font-size:11px;color:var(--text2);margin-top:5px"></div>
@@ -1316,6 +1316,18 @@ document.getElementById('formDesenho').addEventListener('submit', async (e) => {
     || document.getElementById('fdConhecimento').checked
     || document.getElementById('fdCompra').checked;
   if (!temClassificacao){ showMsg('Marque ao menos uma Classificação do desenho (Fabricação, Conhecimento ou Compra).', false); marcarErro('fieldClassificacao'); return; }
+
+  // Compra é justamente o documento anexado (proposta/ET) -- sem ele o
+  // PCP não tem o que baixar nem o que ler. Bloqueia aqui pra não repetir o
+  // caso de salvar um item de Compra sem arquivo nenhum.
+  if (document.getElementById('fdCompra').checked){
+    const jaTemArquivo = desenhoEditandoId && (window.__desenhosLista || []).find(x => x.id === desenhoEditandoId)?.arquivo_path;
+    if (!document.getElementById('fdArquivo').files.length && !jaTemArquivo){
+      showMsg('Anexe o arquivo (PDF/Word/Excel etc.) antes de salvar um item marcado como Compra.', false);
+      marcarErro('fieldArquivo');
+      return;
+    }
+  }
 
   const qtdFabricar = parseNum(document.getElementById('fdQtdFabricar').value) ?? 0;
   if (fabricacao && qtdFabricar < 1){ showMsg('Informe a Quantidade a fabricar (mínimo 1) — o desenho está marcado como Fabricação.', false); marcarErro('fieldQtdFabricar'); return; }
