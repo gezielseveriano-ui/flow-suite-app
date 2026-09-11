@@ -290,7 +290,10 @@ async function init(){
 
 function mudarAba(nome){
   aba = nome;
-  pedidoAtual = null;
+  // não zera pedidoAtual aqui: se o usuário estava dentro de um pedido em
+  // "Gerar Romaneio" e clicou em "Histórico", a Lista de Embarque deve abrir
+  // já filtrada nesse mesmo pedido (renderListaPedidos, chamada abaixo pra
+  // aba 'gerar', zera pedidoAtual sozinha ao listar os pedidos de novo).
   itensSelecionados = new Set();
   clearMsg();
   document.getElementById('tabGerar').classList.toggle('active', nome === 'gerar');
@@ -628,7 +631,9 @@ async function gerarRomaneio(){
 
 // ── HISTÓRICO / LISTA DE EMBARQUE ───────────────────────────────────────
 async function renderHistorico(){
-  document.getElementById('navBar').innerHTML = `<span class="nav-crumb active">Lista de Embarque — Romaneios gerados</span>`;
+  document.getElementById('navBar').innerHTML = pedidoAtual
+    ? `<span class="nav-crumb" onclick="pedidoAtual=null;renderHistorico()">Lista de Embarque</span><span class="nav-sep">/</span><span class="nav-crumb active">${esc(pedidoAtual.numero_pedido)}${pedidoAtual.cliente ? ' · ' + esc(pedidoAtual.cliente) : ''}</span>`
+    : `<span class="nav-crumb active">Lista de Embarque — Romaneios gerados</span>`;
   const content = document.getElementById('content');
   content.innerHTML = `
     <div class="search-row">
@@ -636,14 +641,18 @@ async function renderHistorico(){
     </div>
     <div class="tbl-wrap" id="histWrap"><div class="empty">Carregando...</div></div>`;
 
-  const { data, error } = await sb
-    .from('romaneios')
-    .select('*, pedidos(numero_pedido, cliente)')
-    .order('data_criacao', { ascending: false });
+  let query = sb.from('romaneios').select('*, pedidos(numero_pedido, cliente)').order('data_criacao', { ascending: false });
+  if (pedidoAtual) query = query.eq('pedido_id', pedidoAtual.id);
+  const { data, error } = await query;
 
   const wrap = document.getElementById('histWrap');
   if (error){ wrap.innerHTML = `<div class="empty">Erro: ${esc(error.message)}</div>`; return; }
-  if (!data.length){ wrap.innerHTML = `<div class="empty">Nenhum romaneio gerado ainda.</div>`; return; }
+  if (!data.length){
+    wrap.innerHTML = pedidoAtual
+      ? `<div class="empty">Nenhum romaneio gerado ainda pro pedido ${esc(pedidoAtual.numero_pedido)}.</div>`
+      : `<div class="empty">Nenhum romaneio gerado ainda.</div>`;
+    return;
+  }
 
   wrap.innerHTML = `
     <table class="dtbl">
