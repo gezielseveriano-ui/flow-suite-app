@@ -964,8 +964,13 @@ function extrairDescricao(linha, sugestao){
 function montarPosicoesDaLeitura(data){
   const campos = data.campos || {};
   const lista = data.lista_material || [];
-  const temPosicao = lista.some(row => row.provavel_posicao);
-  if (!temPosicao) return { posicoes: [], campos };
+  if (!lista.length) return { posicoes: [], campos };
+  // se a leitura não marcou NENHUMA linha como posição, a tabela inteira era
+  // descartada mesmo com o resto lido certo -- um erro de classificação em
+  // só uma linha derrubava a leitura toda. No padrão MDE a primeira linha da
+  // tabela é sempre o conjunto/produto (a posição), então cai pra ela como
+  // salvaguarda em vez de jogar tudo fora.
+  if (!lista.some(row => row.provavel_posicao)) lista[0].provavel_posicao = true;
 
   const posicoes = [];
   let posAtual = null;
