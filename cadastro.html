@@ -112,6 +112,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 .cliente-banner{margin:1.25rem 1.5rem 0;background:linear-gradient(135deg,var(--bg3),var(--bg2));border:1px solid var(--border);border-radius:var(--radius);padding:1.1rem 1.25rem}
 .cb-equip{font-size:17px;font-weight:700;margin-bottom:6px}
 .cb-obs{font-size:12px;color:var(--text2);margin-top:8px;padding:7px 12px;background:var(--bg);border-radius:var(--radius-sm);border-left:3px solid var(--blue);font-style:italic}
+.cb-obs-input{width:100%;font-size:12px;color:var(--text2);margin-top:8px;padding:7px 12px;background:var(--bg);border-radius:var(--radius-sm);border-left:3px solid var(--blue);border-top:1px solid var(--border);border-right:1px solid var(--border);border-bottom:1px solid var(--border);font-style:italic;font-family:inherit;resize:vertical;min-height:36px}
 
 /* modal */
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:200;padding:20px}
@@ -615,6 +616,15 @@ async function carregarFornecedoresProducao(){
 let REMESSAS_PCP_CACHE = [];
 let TERMO_BUSCA_DESENHO_PCP = '';
 
+async function salvarObservacaoPedidoPCP(){
+  const input = document.getElementById('pcpObservacaoInput');
+  const valor = input.value.trim() || null;
+  if (valor === (pedidoAtual.observacao || null)) return;
+  const { error } = await sb.from('pedidos').update({ observacao: valor }).eq('id', pedidoAtual.id);
+  if (error){ alert('Erro ao salvar observação: ' + error.message); return; }
+  pedidoAtual.observacao = valor;
+}
+
 async function renderRemessasPCP(){
   renderNav();
   const content = document.getElementById('content');
@@ -622,6 +632,7 @@ async function renderRemessasPCP(){
     <div class="cliente-banner">
       <div class="cb-equip">${esc(pedidoAtual.equipamento || pedidoAtual.numero_pedido)}</div>
       ${pedidoAtual.cliente ? `<div style="font-size:12px;color:var(--blue);font-weight:600">${esc(pedidoAtual.cliente)}</div>` : ''}
+      <textarea class="cb-obs-input" id="pcpObservacaoInput" placeholder="Observação (aparece no Dashboard)..." onblur="salvarObservacaoPedidoPCP()">${esc(pedidoAtual.observacao || '')}</textarea>
     </div>
     <div class="toolbar"><h2>Remessas</h2></div>
     <div class="busca-desenho-row">
