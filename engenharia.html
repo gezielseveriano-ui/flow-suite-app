@@ -542,7 +542,11 @@ async function lerMetadadosDoArquivo(file){
 
     let peso = chavePeso ? parseNum(campos[chavePeso]) : null;
     if (peso == null){
-      const primeiraPosicao = lista.find(row => row.provavel_posicao);
+      // se nenhuma linha veio marcada como posição (ex: coluna MATERIAL/DESENHO
+      // preenchida com o código do próprio desenho na linha da posição, em vez
+      // de vazia, engana a classificação), cai pra primeira linha da tabela --
+      // no padrão MDE é sempre o conjunto/produto.
+      const primeiraPosicao = lista.find(row => row.provavel_posicao) || lista[0];
       if (primeiraPosicao) peso = parseNum(primeiraPosicao.sugestao?.peso_total ?? primeiraPosicao.sugestao?.peso_unitario);
     }
     if (peso != null){
