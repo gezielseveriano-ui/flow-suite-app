@@ -643,13 +643,34 @@ async function renderRemessasPCP(){
 
   const { data, error } = await sb
     .from('remessas')
-    .select('*, desenhos_engenharia(id, desenho_mde, desenho_cliente)')
+    .select('*, desenhos_engenharia(id, desenho_mde, desenho_cliente, updated_at, is_fabricacao, is_conhecimento, is_compra, desenhos_engenharia_posicoes(id))')
     .eq('pedido_id', pedidoAtual.id)
     .not('enviada_email_em', 'is', null)
     .order('numero', { ascending: false });
 
   if (error){ document.getElementById('remessasGrid').innerHTML = `<div class="empty">Erro ao carregar remessas: ${esc(error.message)}</div>`; return; }
-  REMESSAS_PCP_CACHE = data || [];
+
+  // peso de cada remessa = soma dos itens gerados a partir dos desenhos dela
+  // (mesma ligação usada na tela de detalhe da remessa)
+  const { data: itensPeso } = await sb
+    .from('itens')
+    .select('desenho_engenharia_id, peso_total')
+    .eq('pedido_id', pedidoAtual.id)
+    .not('desenho_engenharia_id', 'is', null);
+  const pesoPorDesenho = {};
+  (itensPeso || []).forEach(it => { pesoPorDesenho[it.desenho_engenharia_id] = (pesoPorDesenho[it.desenho_engenharia_id] || 0) + Number(it.peso_total || 0); });
+
+  REMESSAS_PCP_CACHE = (data || []).map(r => {
+    const envio = new Date(r.enviada_email_em);
+    const desenhos = r.desenhos_engenharia || [];
+    // revisado/adicionado depois do email: fica oculto do PCP até a Engenharia reenviar
+    const semEmail = desenhos.filter(d => d.updated_at && new Date(d.updated_at) > envio);
+    const liberados = desenhos.filter(d => !semEmail.includes(d));
+    // desenho de fabricação (ou ainda sem classificação) que o PCP não leu
+    const naoLidos = liberados.filter(d => (d.is_fabricacao || !(d.is_conhecimento || d.is_compra)) && !(d.desenhos_engenharia_posicoes || []).length);
+    const peso = liberados.reduce((s, d) => s + (pesoPorDesenho[d.id] || 0), 0);
+    return { ...r, _peso: peso, _semEmail: semEmail.length, _naoLidos: naoLidos.length };
+  });
   TERMO_BUSCA_DESENHO_PCP = '';
   renderGridRemessasPCP();
 }
@@ -687,7 +708,9 @@ function renderGridRemessasPCP(){
   grid.innerHTML = listaFiltrada.map(({ r, desenhos, encontrados }) => `
     <div class="pedido-card" onclick='abrirRemessaPCP(${JSON.stringify({ id: r.id, numero: r.numero, nome: r.nome, pedido_id: r.pedido_id, enviada_email_em: r.enviada_email_em, recebida_pcp_em: r.recebida_pcp_em, recebida_producao_em: r.recebida_producao_em }).replace(/'/g, "&#39;")})'>
       <div class="pc-num">Remessa ${r.numero}${r.nome ? ' — ' + esc(r.nome) : ''}</div>
-      <div class="pc-equip">${desenhos.length} desenho(s)</div>
+      <div class="pc-equip">${desenhos.length} desenho(s)${r._peso ? ` · <span style="color:var(--text2)">${r._peso.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} kg</span>` : ''}</div>
+      ${r._semEmail ? `<div style="font-size:11px;color:var(--red);font-weight:600;margin-top:4px" title="Desenho revisado ou adicionado pela Engenharia depois do email — não aparece pro PCP até ser reenviado. Cobrar o envio da Engenharia.">❓ ${r._semEmail} desenho(s) sem envio por email — cobrar Engenharia</div>` : ''}
+      ${r._naoLidos ? `<div style="font-size:11px;color:var(--amber);font-weight:600;margin-top:4px" title="Desenho de fabricação ainda sem posições lidas — abrir a remessa e ler.">❓ ${r._naoLidos} desenho(s) ainda não lido(s) pelo PCP</div>` : ''}
       <div style="font-size:11px;color:var(--green);font-weight:600;margin-top:4px">✓ Enviada por email</div>
       ${r.recebida_pcp_em ? `<div style="font-size:11px;color:var(--blue);font-weight:600;margin-top:2px">✓ Recebida pelo PCP</div>` : `<div style="font-size:11px;color:var(--amber);font-weight:600;margin-top:2px">Aguardando confirmação do PCP</div>`}
       ${r.recebida_producao_em ? `<div style="font-size:11px;color:var(--green);font-weight:600;margin-top:2px">✓ Recebida pela produção</div>` : `<div style="font-size:11px;color:var(--text2);margin-top:2px">Produção ainda não confirmou</div>`}
