@@ -660,9 +660,14 @@ async function renderRemessas(){
 
   const { data, error } = await sb
     .from('remessas')
-    .select('*, desenhos_engenharia(id)')
+    .select('*, desenhos_engenharia(id, updated_at)')
     .eq('pedido_id', pedidoAtual.id)
     .order('numero', { ascending: false });
+
+  // desenhos alterados/adicionados depois do último envio -- ocultos pro PCP
+  const pendentesEmail = r => r.enviada_email_em
+    ? (r.desenhos_engenharia || []).filter(d => d.updated_at && new Date(d.updated_at) > new Date(r.enviada_email_em)).length
+    : 0;
 
   if (error){ wrap.innerHTML = `<div class="empty">Erro: ${esc(error.message)}</div>`; return; }
   if (!data.length){ wrap.innerHTML = `<div class="empty">Nenhuma remessa criada ainda pra esse pedido — clique em "Gerar nova remessa".</div>`; return; }
@@ -672,6 +677,7 @@ async function renderRemessas(){
       <h4>Remessa ${r.numero}${r.nome ? ' — ' + esc(r.nome) : ''}</h4>
       <div class="sub">${(r.desenhos_engenharia || []).length} desenho(s) · criada em ${new Date(r.created_at).toLocaleDateString('pt-BR')}</div>
       ${r.enviada_email_em ? `<div class="badge-ok">✓ Enviada por email em ${new Date(r.enviada_email_em).toLocaleDateString('pt-BR')}</div>` : ''}
+      ${pendentesEmail(r) ? `<div style="font-size:11px;color:var(--red);font-weight:600;margin-top:4px" title="Desenho alterado ou adicionado depois do último email — o PCP não vê até a remessa ser disparada de novo.">⚠ ${pendentesEmail(r)} desenho(s) alterado(s) depois do envio — reenviar email</div>` : ''}
       ${r.recebida_pcp_em ? `<div class="badge-ok">✓ Recebida pelo PCP em ${new Date(r.recebida_pcp_em).toLocaleDateString('pt-BR')}</div>` : (r.enviada_email_em ? `<div style="font-size:11px;color:var(--amber);font-weight:600;margin-top:4px">Aguardando confirmação do PCP</div>` : '')}
       ${r.recebida_producao_em ? `<div class="badge-ok">✓ Recebida pela produção em ${new Date(r.recebida_producao_em).toLocaleDateString('pt-BR')}</div>` : ''}
     </div>`).join('');
@@ -892,7 +898,18 @@ function atualizarAvisoEmail(){
   const banner = document.getElementById('avisoEmailBanner');
   const texto = document.getElementById('avisoEmailTexto');
   const btn = document.getElementById('btnEnviarEmail');
-  if (remessaAtual.enviada_email_em){
+  // mesma regra do PCP: desenho alterado/adicionado depois do último envio
+  // fica oculto pro PCP até a Engenharia disparar o email de novo
+  const envio = remessaAtual.enviada_email_em ? new Date(remessaAtual.enviada_email_em) : null;
+  const pendentes = envio
+    ? (window.__desenhosLista || []).filter(d => d.remessa_id === remessaAtual.id && d.updated_at && new Date(d.updated_at) > envio)
+    : [];
+  if (pendentes.length){
+    banner.style.background = 'var(--red-dim)';
+    banner.style.borderColor = 'var(--red)';
+    texto.style.color = 'var(--red)';
+    texto.textContent = `⚠ Remessa enviada em ${envio.toLocaleString('pt-BR')}, mas ${pendentes.length} desenho(s) foram alterados/adicionados depois disso (${pendentes.map(d => d.desenho_mde).join(', ')}). O PCP NÃO vê esse(s) desenho(s) até você disparar o email de novo.`;
+  } else if (remessaAtual.enviada_email_em){
     banner.style.background = 'var(--green-dim)';
     banner.style.borderColor = 'var(--green)';
     texto.style.color = 'var(--green)';
@@ -1456,6 +1473,7 @@ async function carregarLista(){
 
   if (error){ wrap.innerHTML = `<div class="empty">Erro: ${esc(error.message)}</div>`; return; }
   window.__desenhosLista = data;
+  atualizarAvisoEmail();
   if (!data.length){ wrap.innerHTML = `<div class="empty">Nenhum desenho cadastrado nesta remessa ainda.</div>`; return; }
 
   const linhas = [];
