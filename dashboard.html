@@ -243,9 +243,12 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
   .pc-archive-icon { display:none !important; }
   #printHeader { display:block !important; }
   #printFooter { display:block !important; }
+  body.imprimindo-pedido #mainContent { display:none !important; }
+  body.imprimindo-pedido #printPedidoReport { display:block !important; }
 }
 #printHeader { display:none; }
 #printFooter { display:none; }
+#printPedidoReport { display:none; }
 </style>
 </head>
 <body>
@@ -257,7 +260,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
         <img src="assets/logo-mde.png" alt="MDE Equipamentos Industriais" style="height:34px;width:auto">
         <div style="font-size:11px;color:#666">Dashboard Industrial · Planejamento e Expedição</div>
       </div>
-      <div style="font-size:20px;font-weight:600;color:#1a4fa0;margin-top:10px">Relatório Geral de Pedidos</div>
+      <div id="printTitulo" style="font-size:20px;font-weight:600;color:#1a4fa0;margin-top:10px">Relatório Geral de Pedidos</div>
     </div>
     <div style="text-align:right">
       <div style="font-size:11px;color:#666">Gerado em</div>
@@ -267,9 +270,11 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
   <div id="printMetrics" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:14px"></div>
 </div>
 <div id="printFooter" style="display:none;position:fixed;bottom:0;left:0;right:0;padding:8px 24px;border-top:1px solid #ccc;justify-content:space-between;align-items:center;background:#fff;font-size:10px;color:#666">
-  <span>Flow Suite · Relatório Geral de Pedidos</span>
+  <span id="printTituloFooter">Flow Suite · Relatório Geral de Pedidos</span>
   <span id="printDateFooter"></span>
 </div>
+<!-- corpo do relatório interno de um pedido (tema claro) — preenchido por gerarRelatorioPedidoInterno() -->
+<div id="printPedidoReport" style="padding:0 24px"></div>
 
 <div class="app-shell" id="appShell">
   <header class="app-header">
@@ -1183,6 +1188,7 @@ function renderPedido(){
     <button class="btn-report" onclick="abrirRelatorioGeral()"><i class="ti ti-report"></i> Relatório Geral</button>
     <button class="btn-report primary" onclick="abrirItensExpedidos()"><i class="ti ti-truck-delivery"></i> Itens Expedidos</button>
     <button class="btn-report" id="btnPdfPedido" onclick="gerarPdfPedido()"><i class="ti ti-file-type-pdf"></i> Relatório do Pedido (PDF p/ cliente)</button>
+    <button class="btn-report" onclick="gerarRelatorioPedidoInterno()"><i class="ti ti-printer"></i> Relatório do Pedido (interno)</button>
   </div>`;
 
   const mapaSetores = setoresDoPedido(state.pedido, true);
@@ -1677,6 +1683,209 @@ function restaurarTela(){
   document.getElementById('printFooter').style.display='none';
 }
 function gerarPDF(){ prepararImpressao(); setTimeout(()=>{ window.print(); setTimeout(restaurarTela,1000); },300); }
+
+/* ── RELATÓRIO INTERNO DO PEDIDO (impressão, tema claro) ──
+   Espelha o relatório do FactoryView: bloco do pedido + um bloco por TAG,
+   cada um com a tabela de setores AGRUPADA POR FORNECEDOR (fornecedor
+   externo em destaque com os setores dele indentados embaixo, MDE sempre
+   por último, total geral no rodapé) e o controle de quantidade (peças).
+   Cada item conta uma vez só, no grupo do fornecedor que está fabricando.
+   Interno: mostra pra quem terceirizamos -- o PDF p/ cliente continua
+   escondendo isso. COMERCIAL fica fora das tabelas por setor (mesma regra
+   de agruparItens). */
+const SETORES_QTD_RELATORIO = ['ROLOS', 'BASES ROLETES', 'TAMBOR'];
+function grupoFornecedorDoItem(it){
+  const f = it.fornecedor_producao_id ? FORNECEDORES_PRODUCAO[it.fornecedor_producao_id] : null;
+  const nome = f ? String(f.nome || '').trim().toUpperCase() : '';
+  return (!nome || nome === 'MDE') ? 'MDE' : nome;
+}
+// {grupo: {setor: [itens]}}
+function agruparPorFornecedorEProduto(itensLista){
+  const out = {};
+  itensLista.forEach(it => {
+    if (it.produto === 'COMERCIAL') return;
+    const g = grupoFornecedorDoItem(it);
+    if (!out[g]) out[g] = {};
+    if (!out[g][it.produto]) out[g][it.produto] = [];
+    out[g][it.produto].push(it);
+  });
+  return out;
+}
+function ordemGruposFornecedor(mapaAgrupado){
+  const externos = Object.keys(mapaAgrupado).filter(g => g !== 'MDE').sort();
+  return mapaAgrupado['MDE'] ? externos.concat(['MDE']) : externos;
+}
+function tabelaSetorAgrupadaClaraHTML(mapaAgrupado){
+  const ft = kg => (kg/1000).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const td = 'padding:6px 10px;border-bottom:1px solid #e5e7eb';
+  const barra = (av, alt) => {
+    const pct = av !== null ? Math.min(100, Math.max(0, av)) : 0;
+    const cor = pct >= 100 ? '#166534' : (pct >= 50 ? '#92400e' : '#991b1b');
+    return `<div style="display:flex;align-items:center;gap:6px">
+      <div style="flex:1;height:${alt}px;background:#e5e7eb;border-radius:3px;overflow:hidden;min-width:50px"><div style="height:100%;width:${pct.toFixed(1)}%;background:${cor}"></div></div>
+      <span style="font-size:10px;width:32px;text-align:right;color:#666">${av !== null ? av.toFixed(0) + '%' : '—'}</span>
+    </div>`;
+  };
+  let totCarga = 0, totExp = 0, totPend = 0;
+  const linhas = ordemGruposFornecedor(mapaAgrupado).map(grupo => {
+    const setores = Object.keys(mapaAgrupado[grupo]).sort();
+    const g = setorAgg(setores.reduce((a, s) => a.concat(mapaAgrupado[grupo][s]), []));
+    totCarga += g.cargaProg; totExp += g.expedido; totPend += g.pendExp;
+    const linhaGrupo = `<tr style="background:#eef2ff">
+      <td style="${td}"><strong style="color:#1a1a2e">${esc(grupo)}</strong></td>
+      <td style="${td};text-align:right;font-weight:700;color:#92400e">${ft(g.cargaProg)}</td>
+      <td style="${td};text-align:right;font-weight:700;color:#0e7490">${ft(g.expedido)}</td>
+      <td style="${td};text-align:right;font-weight:700;color:#991b1b">${ft(g.pendExp)}</td>
+      <td style="${td}">${barra(g.avanco, 6)}</td>
+    </tr>`;
+    const linhasSetor = setores.map(setor => {
+      const a = setorAgg(mapaAgrupado[grupo][setor]);
+      return `<tr>
+        <td style="${td};padding-left:26px;color:#666">${esc(setor)}</td>
+        <td style="${td};text-align:right;color:#92400e">${ft(a.cargaProg)}</td>
+        <td style="${td};text-align:right;color:#0e7490">${ft(a.expedido)}</td>
+        <td style="${td};text-align:right;color:#991b1b">${ft(a.pendExp)}</td>
+        <td style="${td}">${barra(a.avanco, 5)}</td>
+      </tr>`;
+    }).join('');
+    return linhaGrupo + linhasSetor;
+  }).join('');
+  return `<table style="width:100%;border-collapse:collapse;font-size:11px">
+    <thead><tr style="background:#f1f5f9">
+      <th style="padding:6px 10px;text-align:left;color:#666">Fornecedor / Setor</th>
+      <th style="padding:6px 10px;text-align:right;color:#666">Carga programada (t)</th>
+      <th style="padding:6px 10px;text-align:right;color:#666">Expedido (t)</th>
+      <th style="padding:6px 10px;text-align:right;color:#666">Pend. exp. (t)</th>
+      <th style="padding:6px 10px;text-align:left;color:#666;width:140px">Avanço</th>
+    </tr></thead>
+    <tbody>${linhas}</tbody>
+    <tfoot><tr style="font-weight:700;background:#f8fafc">
+      <td style="padding:6px 10px">TOTAL GERAL</td>
+      <td style="padding:6px 10px;text-align:right;color:#92400e">${ft(totCarga)}</td>
+      <td style="padding:6px 10px;text-align:right;color:#0e7490">${ft(totExp)}</td>
+      <td style="padding:6px 10px;text-align:right;color:#991b1b">${ft(totPend)}</td>
+      <td></td>
+    </tr></tfoot>
+  </table>`;
+}
+function tabelaQtdClaraHTML(itensLista){
+  const porSetor = {};
+  itensLista.forEach(it => {
+    const setor = String(it.produto || '').trim().toUpperCase();
+    if (!SETORES_QTD_RELATORIO.includes(setor)) return;
+    if (!porSetor[setor]) porSetor[setor] = [];
+    porSetor[setor].push(it);
+  });
+  const setores = SETORES_QTD_RELATORIO.filter(s => porSetor[s]);
+  if (!setores.length) return '';
+  const td = 'padding:6px 10px;border-bottom:1px solid #e5e7eb';
+  let tP = 0, tE = 0, tN = 0;
+  const linhas = setores.map(setor => {
+    const q = setorAggQtd(porSetor[setor]);
+    tP += q.qtdProd; tE += q.qtdExp; tN += q.qtdPend;
+    return `<tr>
+      <td style="${td}"><strong style="color:#1a1a2e">${esc(setor)}</strong></td>
+      <td style="${td};text-align:right;color:#1a4fa0">${q.qtdProd.toLocaleString('pt-BR')}</td>
+      <td style="${td};text-align:right;color:#0e7490">${q.qtdExp.toLocaleString('pt-BR')}</td>
+      <td style="${td};text-align:right;font-weight:700;color:${q.qtdPend > 0 ? '#92400e' : '#888'}">${q.qtdPend.toLocaleString('pt-BR')}</td>
+    </tr>`;
+  }).join('');
+  return `<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:#666;margin:14px 0 6px">Controle de quantidade — peças (un.)</div>
+    <table style="width:100%;border-collapse:collapse;font-size:11px">
+      <thead><tr style="background:#f1f5f9">
+        <th style="padding:6px 10px;text-align:left;color:#666">Setor</th>
+        <th style="padding:6px 10px;text-align:right;color:#666">Qtde produção</th>
+        <th style="padding:6px 10px;text-align:right;color:#666">Qtde expedida</th>
+        <th style="padding:6px 10px;text-align:right;color:#666">Qtde na empresa</th>
+      </tr></thead>
+      <tbody>${linhas}</tbody>
+      <tfoot><tr style="font-weight:700;background:#f8fafc">
+        <td style="padding:6px 10px">TOTAL</td>
+        <td style="padding:6px 10px;text-align:right;color:#1a4fa0">${tP.toLocaleString('pt-BR')}</td>
+        <td style="padding:6px 10px;text-align:right;color:#0e7490">${tE.toLocaleString('pt-BR')}</td>
+        <td style="padding:6px 10px;text-align:right;color:#92400e">${tN.toLocaleString('pt-BR')}</td>
+      </tr></tfoot>
+    </table>`;
+}
+// bloco (pedido inteiro ou uma TAG): cards, barras de avanço/expedição e as duas tabelas
+function blocoRelatorioClaroHTML(o){
+  const itens = o.itens;
+  const mapa = agruparPorFornecedorEProduto(itens);
+  const tP = itens.reduce((a,i)=>a+i.pesoTotal,0), tF = itens.reduce((a,i)=>a+i.fabricado,0);
+  const tE = itens.reduce((a,i)=>a+i.expedido,0), tPE = itens.reduce((a,i)=>a+i.pendExp,0);
+  const pE = tP > 0 ? Math.min(100, tE/tP*100) : 0;
+  // avanço = média do avanço ponderado por etapa de cada item (mesma conta das linhas da tabela)
+  const avanco = setorAgg(itens.filter(it => it.produto !== 'COMERCIAL')).avanco || 0;
+  const nSetores = new Set(itens.filter(it => it.produto !== 'COMERCIAL').map(it => it.produto)).size;
+  const metrics = [
+    { label: o.labelPeso, val: fmt_t(tP), sub: fmt_kg(tP) + ' kg' },
+    { label: 'Fabricado', val: fmt_t(tF), sub: (tP > 0 ? (tF/tP*100).toFixed(1) : '0.0') + '%', color: '#166534' },
+    { label: 'Expedido', val: fmt_t(tE), sub: pE.toFixed(1) + '%', color: '#92400e' },
+    { label: 'Pend. expedição', val: fmt_t(tPE), color: '#991b1b' },
+    o.ultimoCard || { label: 'Setores', val: nSetores, sub: 'na TAG' },
+  ];
+  const barraResumo = (label, pct, cor) => `<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+      <span style="font-size:10px;color:#666;width:120px;flex-shrink:0">${label}</span>
+      <div style="flex:1;height:7px;background:#e5e7eb;border-radius:4px;overflow:hidden"><div style="height:100%;width:${Math.min(100,pct).toFixed(1)}%;background:${cor}"></div></div>
+      <span style="font-size:11px;font-weight:700;color:${cor};width:34px;text-align:right">${pct.toFixed(0)}%</span>
+    </div>`;
+  return `<div style="${o.quebraPagina ? 'page-break-before:always;' : ''}page-break-inside:avoid;margin-bottom:22px;padding-bottom:18px;border-bottom:2px solid #e5e7eb">
+    <div style="font-size:16px;font-weight:700;color:#1a4fa0;margin-bottom:2px">${esc(o.titulo)}</div>
+    ${o.subtitulo ? `<div style="font-size:12px;color:#666;margin-bottom:10px">${esc(o.subtitulo)}</div>` : '<div style="margin-bottom:10px"></div>'}
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:14px">
+      ${metrics.map(m => `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px">
+        <div style="font-size:9px;color:#666;margin-bottom:3px">${m.label}</div>
+        <div style="font-size:15px;font-weight:700;color:${m.color || '#1a1a2e'}">${m.val}</div>
+        ${m.sub ? `<div style="font-size:9px;color:#888;margin-top:1px">${m.sub}</div>` : ''}
+      </div>`).join('')}
+    </div>
+    <div style="margin-bottom:12px">
+      ${barraResumo('Avanço de fabricação', avanco, '#1a4fa0')}
+      ${barraResumo('Expedição', pE, '#166534')}
+    </div>
+    ${tabelaSetorAgrupadaClaraHTML(mapa)}
+    ${tabelaQtdClaraHTML(itens)}
+  </div>`;
+}
+function construirRelatorioPedidoClaro(pedido){
+  const cli = getCli(pedido);
+  const tags = DB[pedido] || {};
+  const tk = Object.keys(tags).sort();
+  let html = blocoRelatorioClaroHTML({
+    titulo: `Pedido ${pedido}${cli?.cliente ? ' · ' + cli.cliente : ''}`,
+    subtitulo: cli?.equipamento || '',
+    labelPeso: 'Peso total',
+    itens: todosItensDoPedido(pedido),
+    ultimoCard: { label: 'TAGs', val: tk.length, sub: 'no pedido' },
+  });
+  tk.forEach(tag => {
+    html += blocoRelatorioClaroHTML({ titulo: `TAG ${tag}`, labelPeso: 'Peso total TAG', itens: itensFlat(tags[tag]), quebraPagina: true });
+  });
+  return html;
+}
+function gerarRelatorioPedidoInterno(){
+  const agora = new Date();
+  const dtStr = agora.toLocaleDateString('pt-BR') + ' às ' + agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  document.getElementById('printDate').textContent = dtStr;
+  document.getElementById('printDateFooter').textContent = dtStr;
+  document.getElementById('printTitulo').textContent = `Relatório do Pedido ${state.pedido}`;
+  document.getElementById('printTituloFooter').textContent = `Flow Suite · Relatório do Pedido ${state.pedido}`;
+  document.getElementById('printMetrics').innerHTML = '';
+  document.getElementById('printPedidoReport').innerHTML = construirRelatorioPedidoClaro(state.pedido);
+  document.getElementById('printHeader').style.display = 'block';
+  document.getElementById('printFooter').style.display = 'flex';
+  document.body.classList.add('imprimindo-pedido');
+  setTimeout(() => {
+    window.print();
+    setTimeout(() => {
+      restaurarTela();
+      document.body.classList.remove('imprimindo-pedido');
+      document.getElementById('printPedidoReport').innerHTML = '';
+      document.getElementById('printTitulo').textContent = 'Relatório Geral de Pedidos';
+      document.getElementById('printTituloFooter').textContent = 'Flow Suite · Relatório Geral de Pedidos';
+    }, 1000);
+  }, 300);
+}
 function imprimirRelatorio(){ prepararImpressao(); setTimeout(()=>{ window.print(); setTimeout(restaurarTela,1000); },300); }
 
 /* ── TELA CHEIA ── */
