@@ -628,62 +628,61 @@ function setorAgg(items){
   items.forEach(it => { cargaProg+=it.pesoTotal; expedido+=it.expedido; pendExp+=it.pendExp; somaAvanco+=it.avancoPct; });
   return { cargaProg, expedido, pendExp, avanco: items.length ? somaAvanco/items.length : null, n: items.length };
 }
-// chave de agrupamento de um item: nome do fornecedor terceirizado se tiver
-// um atribuído (qualquer fornecedor, não só um), senão o setor original --
-// mesma regra pra visão por pedido e por TAG, e também pra resolver de volta
-// os itens ao clicar numa linha (renderProduto), então os dois lados sempre
-// batem, inclusive no caso de um setor antigo e um fornecedor atual terem o
-// mesmo nome (ex: RMF) -- aí os dois se fundem na mesma linha de propósito.
-function chaveSetorOuFornecedor(it){
-  if (it.fornecedor_producao_id){
-    const forn = FORNECEDORES_PRODUCAO[it.fornecedor_producao_id];
-    if (forn) return forn.nome;
-  }
-  return it.produto;
+/* ── SETOR TABLE AGRUPADA POR FORNECEDOR (telas Pedido e TAG) ──
+   Mesmo modelo do Relatório do Pedido: grupo (fornecedor externo ou MDE) em
+   linha de destaque com o total dele, setores daquele grupo indentados
+   embaixo, externos antes da MDE, total geral no rodapé. Cada item conta uma
+   vez só, no grupo de quem está fabricando (ver agruparPorFornecedorEProduto).
+   clicavel=true (tela da TAG): linha de grupo abre todos os itens daquele
+   fornecedor; linha de setor abre só a fatia daquele setor no grupo. */
+function linhasTabelaAgrupada(mapaAgrupado, clicavel, colunas){
+  return ordemGruposFornecedor(mapaAgrupado).map(grupo => {
+    const setores = Object.keys(mapaAgrupado[grupo]).sort();
+    const itensGrupo = setores.reduce((a, s) => a.concat(mapaAgrupado[grupo][s]), []);
+    const clickGrupo = clicavel ? ` style="cursor:pointer;background:var(--bg3)" onclick="abrirProduto('${esc(grupo)}',null)"` : ' style="background:var(--bg3)"';
+    const linhaGrupo = `<tr${clickGrupo}><td><strong style="color:var(--text)">${esc(grupo)}</strong></td>${colunas(itensGrupo, true)}</tr>`;
+    const linhasSetor = setores.map(setor => {
+      const click = clicavel ? ` style="cursor:pointer" onclick="abrirProduto('${esc(grupo)}','${esc(setor)}')"` : '';
+      return `<tr${click}><td style="padding-left:30px;color:var(--text2)">${esc(setor)}</td>${colunas(mapaAgrupado[grupo][setor], false)}</tr>`;
+    }).join('');
+    return linhaGrupo + linhasSetor;
+  }).join('');
 }
-// COMERCIAL fica fora das visões "por setor" (tabelas e gráficos) -- é item
-// comprado/de romaneio, não passa por chão de fábrica (ver sql/036), então
-// não é um setor de produção de verdade. Continua contando nos totais do
-// pedido e na lista de itens/expedição normalmente, só não vira uma linha
-// "setor" no meio de Estrutura/Rolos/etc.
-function agruparItens(itensLista, separarFornecedor){
-  const map = {};
-  itensLista.forEach(it => {
-    if (it.produto === 'COMERCIAL') return;
-    const chave = separarFornecedor ? chaveSetorOuFornecedor(it) : it.produto;
-    if (!map[chave]) map[chave] = [];
-    map[chave].push(it);
-  });
-  return map;
-}
-// separarFornecedor=true tira o item do setor original e conta ele numa
-// linha própria com o nome do fornecedor (ex: 24t mandadas pra AXION saem de
-// ESTRUTURA e viram uma linha "AXION" de 24t). Fica opcional (default false)
-// porque o PDF pro cliente não deve expor pra quem terceirizamos.
-function setoresDoPedido(pedido, separarFornecedor){
-  return agruparItens(todosItensDoPedido(pedido), separarFornecedor);
-}
-function setorTableHTML(map, onClickFn){
-  const setores = Object.keys(map).sort();
+function setorTableAgrupadaHTML(mapaAgrupado, clicavel){
   const ft = kg => (kg/1000).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
-  let totCarga=0, totExp=0, totPend=0;
-  const rows = setores.map(setor => {
-    const a = setorAgg(map[setor]);
-    totCarga+=a.cargaProg; totExp+=a.expedido; totPend+=a.pendExp;
+  const todos = Object.values(mapaAgrupado).reduce((a, g) => a.concat(itensFlat(g)), []);
+  const tot = setorAgg(todos);
+  const rows = linhasTabelaAgrupada(mapaAgrupado, clicavel, (itens, destaque) => {
+    const a = setorAgg(itens);
+    const fw = destaque ? ';font-weight:700' : '';
     const av = a.avanco; const avPct = av!==null ? Math.min(100,Math.max(0,av)) : 0;
     const barCol = avPct>=100?'var(--green)':(avPct>=50?'var(--amber)':'var(--red)');
-    return `<tr${onClickFn?` style="cursor:pointer" onclick="${onClickFn}('${esc(setor)}')"`:''}>
-      <td><strong style="color:var(--text)">${esc(setor)}</strong></td>
-      <td class="r" style="color:var(--amber)">${ft(a.cargaProg)}</td>
-      <td class="r" style="color:var(--teal)">${ft(a.expedido)}</td>
-      <td class="r" style="color:var(--red)">${ft(a.pendExp)}</td>
-      <td><div class="bar-row"><div class="bar-bg"><div class="bar-fg" style="width:${avPct.toFixed(1)}%;background:${barCol}"></div></div><span style="font-size:10px;width:36px;text-align:right;color:var(--text2)">${av!==null?av.toFixed(0)+'%':'—'}</span></div></td>
-    </tr>`;
-  }).join('');
+    return `<td class="r" style="color:var(--amber)${fw}">${ft(a.cargaProg)}</td>
+      <td class="r" style="color:var(--teal)${fw}">${ft(a.expedido)}</td>
+      <td class="r" style="color:var(--red)${fw}">${ft(a.pendExp)}</td>
+      <td><div class="bar-row"><div class="bar-bg"><div class="bar-fg" style="width:${avPct.toFixed(1)}%;background:${barCol}"></div></div><span style="font-size:10px;width:36px;text-align:right;color:var(--text2)">${av!==null?av.toFixed(0)+'%':'—'}</span></div></td>`;
+  });
   return `<div class="cap-table-box"><div style="overflow-x:auto"><table class="ctbl">
-    <thead><tr><th>Setor</th><th class="r">Carga programada (t)</th><th class="r">Expedido (t)</th><th class="r">Pend. exp. (t)</th><th style="width:150px">Avanço</th></tr></thead>
+    <thead><tr><th>Fornecedor / Setor</th><th class="r">Carga programada (t)</th><th class="r">Expedido (t)</th><th class="r">Pend. exp. (t)</th><th style="width:150px">Avanço</th></tr></thead>
     <tbody>${rows}</tbody>
-    <tfoot><tr><td>TOTAL</td><td class="r" style="color:var(--amber)">${ft(totCarga)}</td><td class="r" style="color:var(--teal)">${ft(totExp)}</td><td class="r" style="color:var(--red)">${ft(totPend)}</td><td></td></tr></tfoot>
+    <tfoot><tr><td>TOTAL GERAL</td><td class="r" style="color:var(--amber)">${ft(tot.cargaProg)}</td><td class="r" style="color:var(--teal)">${ft(tot.expedido)}</td><td class="r" style="color:var(--red)">${ft(tot.pendExp)}</td><td></td></tr></tfoot>
+  </table></div></div>`;
+}
+function setorTableQtdAgrupadaHTML(mapaAgrupado){
+  const fn = n => Number(n).toLocaleString('pt-BR');
+  const todos = Object.values(mapaAgrupado).reduce((a, g) => a.concat(itensFlat(g)), []);
+  const tot = setorAggQtd(todos);
+  const rows = linhasTabelaAgrupada(mapaAgrupado, false, (itens, destaque) => {
+    const a = setorAggQtd(itens);
+    const fw = destaque ? ';font-weight:700' : '';
+    return `<td class="r" style="color:var(--amber)${fw}">${fn(a.qtdProd)}</td>
+      <td class="r" style="color:var(--teal)${fw}">${fn(a.qtdExp)}</td>
+      <td class="r" style="color:var(--red)${fw}">${fn(a.qtdPend)}</td>`;
+  });
+  return `<div class="cap-table-box"><div style="overflow-x:auto"><table class="ctbl">
+    <thead><tr><th>Fornecedor / Setor</th><th class="r">Qtde produção (un.)</th><th class="r">Qtde expedida (un.)</th><th class="r">Qtde na empresa (un.)</th></tr></thead>
+    <tbody>${rows}</tbody>
+    <tfoot><tr><td>TOTAL GERAL</td><td class="r" style="color:var(--amber)">${fn(tot.qtdProd)}</td><td class="r" style="color:var(--teal)">${fn(tot.qtdExp)}</td><td class="r" style="color:var(--red)">${fn(tot.qtdPend)}</td></tr></tfoot>
   </table></div></div>`;
 }
 
@@ -697,27 +696,6 @@ function setorAggQtd(items){
   items.forEach(it => { qtdProd+=Number(it.quantidade)||0; qtdExp+=it.qtdExpedida||0; });
   return { qtdProd, qtdExp, qtdPend: Math.max(0, qtdProd-qtdExp) };
 }
-function setorTableQtdHTML(map){
-  const setores = Object.keys(map).sort();
-  const fn = n => Number(n).toLocaleString('pt-BR');
-  let totProd=0, totExp=0, totPend=0;
-  const rows = setores.map(setor => {
-    const a = setorAggQtd(map[setor]);
-    totProd+=a.qtdProd; totExp+=a.qtdExp; totPend+=a.qtdPend;
-    return `<tr>
-      <td><strong style="color:var(--text)">${esc(setor)}</strong></td>
-      <td class="r" style="color:var(--amber)">${fn(a.qtdProd)}</td>
-      <td class="r" style="color:var(--teal)">${fn(a.qtdExp)}</td>
-      <td class="r" style="color:var(--red)">${fn(a.qtdPend)}</td>
-    </tr>`;
-  }).join('');
-  return `<div class="cap-table-box"><div style="overflow-x:auto"><table class="ctbl">
-    <thead><tr><th>Setor</th><th class="r">Qtde produção (un.)</th><th class="r">Qtde expedida (un.)</th><th class="r">Qtde na empresa (un.)</th></tr></thead>
-    <tbody>${rows}</tbody>
-    <tfoot><tr><td>TOTAL</td><td class="r" style="color:var(--amber)">${fn(totProd)}</td><td class="r" style="color:var(--teal)">${fn(totExp)}</td><td class="r" style="color:var(--red)">${fn(totPend)}</td></tr></tfoot>
-  </table></div></div>`;
-}
-
 /* ── CAPACIDADE (geral, todos os pedidos) ──
    Fornecedores terceirizados (fornecedores_producao, ex: RMF/AXION) entram
    NA MESMA lista/gráfico que os setores internos, não num painel à parte --
@@ -1041,7 +1019,7 @@ function irPedido(){ state.tela='pedido'; state.tag=null; state.produto=null; re
 function irTag(){ state.tela='tag'; state.produto=null; renderTela(); }
 function abrirPedido(p){ state={tela:'pedido',pedido:p,tag:null,produto:null}; renderTela(); }
 function abrirTag(tag){ state.tela='tag'; state.tag=tag; state.produto=null; renderTela(); }
-function abrirProduto(p){ state.tela='produto'; state.produto=p; renderTela(); }
+function abrirProduto(grupo, setor){ state.tela='produto'; state.filtroProduto={grupo, setor}; state.produto = setor ? `${grupo} › ${setor}` : grupo; renderTela(); }
 function abrirRelatorioGeral(){ state.tela='relatorioGeral'; renderTela(); }
 function abrirItensExpedidos(){ state.tela='itensExpedidos'; renderTela(); }
 
@@ -1189,9 +1167,9 @@ function renderPedido(){
     <button class="btn-report" onclick="gerarRelatorioPedidoInterno()"><i class="ti ti-file-type-pdf"></i> Relatório do Pedido</button>
   </div>`;
 
-  const mapaSetores = setoresDoPedido(state.pedido, true);
-  h += `<div class="section" style="padding-top:1.25rem"><div class="section-title">Setores do pedido — carga programada, expedido, pendente e avanço</div>${setorTableHTML(mapaSetores, null)}</div>`;
-  h += `<div class="section"><div class="section-title">Controle de quantidade — peças (un.)</div>${setorTableQtdHTML(mapaSetores)}</div>`;
+  const mapaAgrupado = agruparPorFornecedorEProduto(todosItensDoPedido(state.pedido));
+  h += `<div class="section" style="padding-top:1.25rem"><div class="section-title">Setores do pedido — carga programada, expedido, pendente e avanço</div>${setorTableAgrupadaHTML(mapaAgrupado, false)}</div>`;
+  h += `<div class="section"><div class="section-title">Controle de quantidade — peças (un.)</div>${setorTableQtdAgrupadaHTML(mapaAgrupado)}</div>`;
   h += `<div class="section"><div class="section-title">TAGs do pedido — clique para ver os setores</div><div class="cards-grid">`;
   tk.sort().forEach(tag => {
     const itensTag = itensFlat(tags[tag]);
@@ -1330,17 +1308,21 @@ function renderTag(){
     { label:'Setores', val: Object.keys(prods).length, sub:'clique para detalhar' },
   ]);
   h += prHTML(pF, pE);
-  const mapaSetoresTag = agruparItens(itensTag, true);
-  h += `<div class="section"><div class="section-title">Setores da TAG ${esc(state.tag)}</div>${setorTableHTML(mapaSetoresTag, 'abrirProduto')}</div>`;
+  const mapaAgrupadoTag = agruparPorFornecedorEProduto(itensTag);
+  h += `<div class="section"><div class="section-title">Setores da TAG ${esc(state.tag)} — clique numa linha para ver os itens</div>${setorTableAgrupadaHTML(mapaAgrupadoTag, true)}</div>`;
+  h += `<div class="section"><div class="section-title">Controle de quantidade — peças (un.)</div>${setorTableQtdAgrupadaHTML(mapaAgrupadoTag)}</div>`;
   document.getElementById('mainContent').innerHTML = h;
   setStatus(`${state.pedido} › ${state.tag} · ${Object.keys(prods).length} setores`);
 }
 
-/* ── PRODUTO/SETOR (ou fornecedor, quando a chave clicada é um nome de
-   fornecedor em vez de um setor real -- ver chaveSetorOuFornecedor) ── */
+/* ── ITENS DE UM GRUPO (fornecedor) OU DE UM SETOR DENTRO DO GRUPO ──
+   mesma regra de agrupamento da tabela da TAG (agruparPorFornecedorEProduto),
+   então o total aqui sempre bate com a linha clicada. */
 function renderProduto(){
   document.getElementById('headerArea').innerHTML = '';
-  const itens = itensFlat(DB[state.pedido][state.tag]).filter(it => chaveSetorOuFornecedor(it) === state.produto);
+  const { grupo, setor } = state.filtroProduto || {};
+  const itens = itensFlat(DB[state.pedido][state.tag]).filter(it =>
+    it.produto !== 'COMERCIAL' && grupoFornecedorDoItem(it) === grupo && (!setor || it.produto === setor));
   const tP = itens.reduce((a,i)=>a+i.pesoTotal,0), tF = itens.reduce((a,i)=>a+i.fabricado,0), tE = itens.reduce((a,i)=>a+i.expedido,0), tPE = itens.reduce((a,i)=>a+i.pendExp,0);
   const pF = tP>0?Math.min(100,tF/tP*100):0, pE = tP>0?Math.min(100,tE/tP*100):0;
   const ip = itens.filter(it => it.pendExp>0);
@@ -1352,7 +1334,7 @@ function renderProduto(){
     { label:'Itens', val: itens.length, sub:'neste setor' },
   ]);
   h += prHTML(pF, pE);
-  h += `<div class="section"><div class="section-title">Todos os itens — Setor ${esc(state.produto)}</div>
+  h += `<div class="section"><div class="section-title">Todos os itens — ${esc(state.produto)}</div>
   <div class="tbl-wrap"><table class="dtbl">
     <thead><tr><th>Cód. MDE</th><th>Desenho MDE</th><th>Desenho Cliente</th><th>Descrição</th><th class="r">Qtde</th><th class="r">Peso unit.</th><th class="r">Peso total</th><th class="r">Avanço</th><th>Status</th></tr></thead>
     <tbody>${itens.map(it => `<tr>
@@ -1368,7 +1350,7 @@ function renderProduto(){
     </tr>`).join('')}</tbody>
   </table></div></div>`;
   document.getElementById('mainContent').innerHTML = h;
-  setStatus(`${state.pedido} › ${state.tag} › Setor ${state.produto} · ${itens.length} itens`);
+  setStatus(`${state.pedido} › ${state.tag} › ${state.produto} · ${itens.length} itens`);
 }
 
 /* ── PDF / IMPRESSÃO ── */
@@ -1409,12 +1391,21 @@ function gerarPDF(){ prepararImpressao(); setTimeout(()=>{ window.print(); setTi
    por último, total geral no rodapé) e o controle de quantidade (peças).
    Cada item conta uma vez só, no grupo do fornecedor que está fabricando.
    Substituiu o antigo PDF "Situação do Pedido" (jsPDF) -- este mostra pra
-   quem terceirizamos. COMERCIAL fica fora das tabelas por setor (mesma
-   regra de agruparItens). */
+   quem terceirizamos. Também usado nas tabelas das telas Pedido e TAG.
+   COMERCIAL fica fora das tabelas por setor -- é item comprado/de
+   romaneio, não passa por chão de fábrica (ver sql/036); continua contando
+   nos totais do pedido. */
 const SETORES_QTD_RELATORIO = ['ROLOS', 'BASES ROLETES', 'TAMBOR'];
 function grupoFornecedorDoItem(it){
   const f = it.fornecedor_producao_id ? FORNECEDORES_PRODUCAO[it.fornecedor_producao_id] : null;
-  const nome = f ? String(f.nome || '').trim().toUpperCase() : '';
+  let nome = f ? String(f.nome || '').trim().toUpperCase() : '';
+  // item antigo lançado com setor = nome de fornecedor (ex: RMF, valor antigo
+  // do enum setor_producao) sem fornecedor_producao_id: conta no grupo desse
+  // fornecedor, não como um "setor" da MDE
+  if (!nome){
+    const setor = String(it.produto || '').trim().toUpperCase();
+    if (Object.values(FORNECEDORES_PRODUCAO).some(fp => String(fp.nome || '').trim().toUpperCase() === setor)) nome = setor;
+  }
   return (!nome || nome === 'MDE') ? 'MDE' : nome;
 }
 // {grupo: {setor: [itens]}}
