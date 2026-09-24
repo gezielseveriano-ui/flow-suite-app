@@ -633,7 +633,7 @@ function setorAgg(items){
    linha de destaque com o total dele, setores daquele grupo indentados
    embaixo, externos antes da MDE, total geral no rodapé. Cada item conta uma
    vez só, no grupo de quem está fabricando (ver agruparPorFornecedorEProduto).
-   clicavel=true (tela da TAG): linha de grupo abre todos os itens daquele
+   clicavel=true (telas Pedido e TAG): linha de grupo abre todos os itens daquele
    fornecedor; linha de setor abre só a fatia daquele setor no grupo. */
 function linhasTabelaAgrupada(mapaAgrupado, clicavel, colunas){
   return ordemGruposFornecedor(mapaAgrupado).map(grupo => {
@@ -1019,7 +1019,7 @@ function irPedido(){ state.tela='pedido'; state.tag=null; state.produto=null; re
 function irTag(){ state.tela='tag'; state.produto=null; renderTela(); }
 function abrirPedido(p){ state={tela:'pedido',pedido:p,tag:null,produto:null}; renderTela(); }
 function abrirTag(tag){ state.tela='tag'; state.tag=tag; state.produto=null; renderTela(); }
-function abrirProduto(grupo, setor){ state.tela='produto'; state.filtroProduto={grupo, setor}; state.produto = setor ? `${grupo} › ${setor}` : grupo; renderTela(); }
+function abrirProduto(grupo, setor){ if (state.tela === "pedido") state.tag = null; state.tela='produto'; state.filtroProduto={grupo, setor}; state.produto = setor ? `${grupo} › ${setor}` : grupo; renderTela(); }
 function abrirRelatorioGeral(){ state.tela='relatorioGeral'; renderTela(); }
 function abrirItensExpedidos(){ state.tela='itensExpedidos'; renderTela(); }
 
@@ -1168,7 +1168,7 @@ function renderPedido(){
   </div>`;
 
   const mapaAgrupado = agruparPorFornecedorEProduto(todosItensDoPedido(state.pedido));
-  h += `<div class="section" style="padding-top:1.25rem"><div class="section-title">Setores do pedido — carga programada, expedido, pendente e avanço</div>${setorTableAgrupadaHTML(mapaAgrupado, false)}</div>`;
+  h += `<div class="section" style="padding-top:1.25rem"><div class="section-title">Setores do pedido — carga programada, expedido, pendente e avanço · clique numa linha para ver os itens</div>${setorTableAgrupadaHTML(mapaAgrupado, true)}</div>`;
   h += `<div class="section"><div class="section-title">Controle de quantidade — peças (un.)</div>${setorTableQtdAgrupadaHTML(mapaAgrupado)}</div>`;
   h += `<div class="section"><div class="section-title">TAGs do pedido — clique para ver os setores</div><div class="cards-grid">`;
   tk.sort().forEach(tag => {
@@ -1321,7 +1321,9 @@ function renderTag(){
 function renderProduto(){
   document.getElementById('headerArea').innerHTML = '';
   const { grupo, setor } = state.filtroProduto || {};
-  const itens = itensFlat(DB[state.pedido][state.tag]).filter(it =>
+  // sem TAG = clicado na tabela do pedido inteiro
+  const base = state.tag ? itensFlat(DB[state.pedido][state.tag]) : todosItensDoPedido(state.pedido);
+  const itens = base.filter(it =>
     it.produto !== 'COMERCIAL' && grupoFornecedorDoItem(it) === grupo && (!setor || it.produto === setor));
   const tP = itens.reduce((a,i)=>a+i.pesoTotal,0), tF = itens.reduce((a,i)=>a+i.fabricado,0), tE = itens.reduce((a,i)=>a+i.expedido,0), tPE = itens.reduce((a,i)=>a+i.pendExp,0);
   const pF = tP>0?Math.min(100,tF/tP*100):0, pE = tP>0?Math.min(100,tE/tP*100):0;
@@ -1336,12 +1338,13 @@ function renderProduto(){
   h += prHTML(pF, pE);
   h += `<div class="section"><div class="section-title">Todos os itens — ${esc(state.produto)}</div>
   <div class="tbl-wrap"><table class="dtbl">
-    <thead><tr><th>Cód. MDE</th><th>Desenho MDE</th><th>Desenho Cliente</th><th>Descrição</th><th class="r">Qtde</th><th class="r">Peso unit.</th><th class="r">Peso total</th><th class="r">Avanço</th><th>Status</th></tr></thead>
+    <thead><tr><th>Cód. MDE</th><th>Desenho MDE</th><th>Desenho Cliente</th><th>Descrição</th>${state.tag ? "" : "<th>TAG</th>"}<th class="r">Qtde</th><th class="r">Peso unit.</th><th class="r">Peso total</th><th class="r">Avanço</th><th>Status</th></tr></thead>
     <tbody>${itens.map(it => `<tr>
       <td class="muted">${it.codigo_mde}</td>
       <td style="font-weight:${it.pendExp>0?'700':'400'}">${esc(it.desenho)}</td>
       <td class="muted">${esc(it.desenho_cliente || '—')}</td>
       <td class="muted">${esc(it.descricao)}</td>
+      ${state.tag ? "" : `<td class="muted">${esc(it.tag || "SEM TAG")}</td>`}
       <td class="r">${Number(it.quantidade).toLocaleString('pt-BR')}</td>
       <td class="r">${Number(it.peso_unitario).toLocaleString('pt-BR',{maximumFractionDigits:2})}</td>
       <td class="r">${it.pesoTotal.toLocaleString('pt-BR',{maximumFractionDigits:1})}</td>
@@ -1350,7 +1353,7 @@ function renderProduto(){
     </tr>`).join('')}</tbody>
   </table></div></div>`;
   document.getElementById('mainContent').innerHTML = h;
-  setStatus(`${state.pedido} › ${state.tag} › ${state.produto} · ${itens.length} itens`);
+  setStatus(`${state.pedido}${state.tag ? " › " + state.tag : ""} › ${state.produto} · ${itens.length} itens`);
 }
 
 /* ── PDF / IMPRESSÃO ── */
