@@ -15,6 +15,8 @@
      (planilha malformada, comum em relatório de sistema legado exportado
      pra Excel) -- SheetJS lê sem problema. -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <style>
 :root{
   --navy:#0b1e33; --navy2:#102A43; --navy3:#173a5e;
@@ -106,6 +108,8 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 .dtbl tbody tr{border-bottom:1px solid var(--border)}
 .dtbl tbody tr:hover td{background:var(--bg3)}
 .dtbl tbody td{padding:7px 10px;vertical-align:middle;white-space:nowrap}
+.dtbl tbody tr.row-total td{background:var(--green-dim)}
+.dtbl tbody tr.row-total td:first-child{box-shadow:inset 4px 0 0 var(--green)}
 .desc-cell{max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2)}
 .dtbl td.r{text-align:right;font-variant-numeric:tabular-nums}
 .status-badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:10px;font-weight:600;white-space:nowrap}
@@ -540,6 +544,7 @@ function renderDetalhe(itens){
         <option value="total">Totalmente recebido</option>
       </select>
       <span class="btn btn-primary" id="btnExportarItens" onclick="exportarItensSelecionadosExcel()" style="opacity:.5;pointer-events:none">📤 Exportar selecionados (Excel)</span>
+      <span class="btn" onclick="gerarPdfCobranca()">📄 PDF de cobrança</span>
     </div>
     <div class="tbl-wrap" id="tblWrap"></div>`;
   aplicarFiltros();
@@ -583,7 +588,7 @@ function renderTabela(itens){
       </tr></thead>
       <tbody>
         ${itens.map(it => `
-        <tr id="row-${it.id}">
+        <tr id="row-${it.id}" class="${it.status_recebimento === 'total' ? 'row-total' : ''}">
           <td><input type="checkbox" class="chkItem" ${itensSelecionados.has(it.id) ? 'checked' : ''} onchange="toggleItemSelecionado(${it.id}, this.checked)"></td>
           <td>${it.sc}</td>
           <td>${it.item_seq}</td>
@@ -633,38 +638,167 @@ function atualizarBotaoExportarItens(){
   btn.style.pointerEvents = n ? 'auto' : 'none';
 }
 
-function exportarItensSelecionadosExcel(){
+function gerarPdfCobranca(){
+  const base = itensSelecionados.size ? TODOS_ITENS.filter(it => itensSelecionados.has(it.id)) : TODOS_ITENS;
+  const pendentes = base.filter(it => Number(it.quantidade_pendente) > 0);
+  if (!pendentes.length){ showMsg('Nenhum item pendente para cobrar.', true); return; }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const PAG_H = 280;
+  const COLS = [
+    { t: 'SC / Item', x: 14, a: 'left' },
+    { t: 'Descrição', x: 36, a: 'left' },
+    { t: 'OC', x: 104, a: 'left' },
+    { t: 'UM', x: 120, a: 'left' },
+    { t: 'Solicitado', x: 156, a: 'right' },
+    { t: 'Recebido', x: 176, a: 'right' },
+    { t: 'Pendente', x: 196, a: 'right' },
+  ];
+  const pedidoTxt = PEDIDO_ATUAL ? `Pedido ${PEDIDO_ATUAL.numero}${PEDIDO_ATUAL.cliente ? ' — ' + PEDIDO_ATUAL.cliente : ''}` : '';
+  let y = 0;
+
+  function novaPagina(primeira){
+    if (!primeira) doc.addPage();
+    doc.setFont(undefined, 'bold'); doc.setFontSize(14); doc.setTextColor(16, 42, 68);
+    doc.text('Itens pendentes de entrega', 14, 16);
+    doc.setFont(undefined, 'bold'); doc.setFontSize(13); doc.setTextColor(16, 42, 68);
+    doc.text(pedidoTxt, 14, 25);
+    doc.setFont(undefined, 'normal'); doc.setFontSize(9); doc.setTextColor(91, 107, 120);
+    doc.text(`Emitido em ${new Date().toLocaleDateString('pt-BR')}`, 14, 31);
+    y = 40;
+    doc.setFillColor(241, 245, 249); doc.rect(14, y - 4.5, 182, 6.5, 'F');
+    doc.setFont(undefined, 'bold'); doc.setFontSize(8.5); doc.setTextColor(60, 70, 80);
+    COLS.forEach(c => doc.text(c.t, c.x, y, { align: c.a }));
+    y += 6;
+  }
+
+  const grupos = {};
+  pendentes.forEach(it => {
+    const f = it.fornecedor || 'Sem fornecedor';
+    if (!grupos[f]) grupos[f] = [];
+    grupos[f].push(it);
+  });
+
+  novaPagina(true);
+  Object.keys(grupos).sort((a, b) => a.localeCompare(b, 'pt-BR')).forEach(fornecedor => {
+    if (y + 16 > PAG_H) novaPagina(false);
+    doc.setFillColor(224, 234, 246); doc.rect(14, y - 4.5, 182, 7, 'F');
+    doc.setFont(undefined, 'bold'); doc.setFontSize(10); doc.setTextColor(16, 42, 68);
+    doc.text(`${fornecedor}  (${grupos[fornecedor].length})`, 16, y);
+    y += 7;
+
+    grupos[fornecedor].forEach(it => {
+      const linhasDesc = doc.splitTextToSize(it.descricao || '—', 66);
+      const alturaLinha = Math.max(linhasDesc.length, 1) * 4 + 3;
+      if (y + alturaLinha > PAG_H) novaPagina(false);
+      const valores = [`${it.sc} / ${it.item_seq}`, linhasDesc, it.oc || '—', it.pc || '—',
+        Number(it.quantidade_solicitada).toLocaleString('pt-BR'),
+        Number(it.quantidade_recebida).toLocaleString('pt-BR'),
+        Number(it.quantidade_pendente).toLocaleString('pt-BR')];
+      doc.setFontSize(8);
+      COLS.forEach((c, i) => {
+        const pendenteAtivo = i === COLS.length - 1 && Number(it.quantidade_pendente) > 0;
+        doc.setFont(undefined, pendenteAtivo ? 'bold' : 'normal');
+        doc.setTextColor(...(pendenteAtivo ? [190, 40, 40] : [23, 33, 43]));
+        doc.text(valores[i], c.x, y, { align: c.a });
+      });
+      doc.setDrawColor(226, 232, 240);
+      doc.line(14, y + alturaLinha - 3, 196, y + alturaLinha - 3);
+      y += alturaLinha;
+    });
+    y += 4;
+  });
+
+  const total = doc.internal.getNumberOfPages();
+  for (let p = 1; p <= total; p++){
+    doc.setPage(p);
+    doc.setFont(undefined, 'normal'); doc.setFontSize(8); doc.setTextColor(91, 107, 120);
+    doc.text(`Página ${p} de ${total}`, 196, 290, { align: 'right' });
+  }
+
+  const nomeArq = (PEDIDO_ATUAL?.numero || 'pedido').replace(/[^\w-]+/g, '_');
+  doc.save(`Pendentes_${nomeArq}_${new Date().toISOString().slice(0, 10)}.pdf`);
+}
+
+async function exportarItensSelecionadosExcel(){
   const itens = TODOS_ITENS.filter(it => itensSelecionados.has(it.id));
   if (!itens.length) return;
 
-  const linhas = itens.map(it => ({
-    'SC': it.sc,
-    'Item': it.item_seq,
-    'Pedido': it.pedidos?.numero_pedido || it.pedido_bruto || '',
-    'Família': it.familia || '',
-    'Código': it.codigo_produto || '',
-    'Descrição': it.descricao || '',
-    'UM': it.pc || '',
-    'Fornecedor': it.fornecedor || '',
-    'OC': it.oc || '',
-    'Sit. OC': it.situacao_oc || '',
-    'Requisitante': it.requisitante || '',
-    'Desenho': it.desenho || '',
-    'Qtd. Solic.': Number(it.quantidade_solicitada) || 0,
-    'Qtd. Recebida': Number(it.quantidade_recebida) || 0,
-    'Qtd. Pendente': Number(it.quantidade_pendente) || 0,
-    'Data Geração (SC)': it.data_solicitacao || '',
-    'Data Previsão Entrega': it.data_prevista_entrega || '',
-    'NF': it.nf || '',
-    'Data Receb. NF': it.data_recebimento_nf || '',
-    'Observação': it.observacao || '',
-    'Status': it.status_recebimento === 'total' ? 'Totalmente recebido' : it.status_recebimento === 'parcial' ? 'Parcial' : 'Pendente',
-  }));
+  const dataExcel = s => { const m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null; };
+  const COLS = [
+    { h: 'SC', w: 9, v: it => it.sc, centro: true },
+    { h: 'Item', w: 7, v: it => it.item_seq, centro: true },
+    { h: 'Pedido', w: 11, v: it => it.pedidos?.numero_pedido || it.pedido_bruto || '', centro: true },
+    { h: 'Família', w: 11, v: it => it.familia || '' },
+    { h: 'Código', w: 16, v: it => it.codigo_produto || '' },
+    { h: 'Descrição', w: 50, v: it => it.descricao || '', quebra: true },
+    { h: 'UM', w: 6, v: it => it.pc || '', centro: true },
+    { h: 'Fornecedor', w: 30, v: it => it.fornecedor || '', quebra: true },
+    { h: 'OC', w: 9, v: it => it.oc || '', centro: true },
+    { h: 'Sit. OC', w: 14, v: it => it.situacao_oc || '' },
+    { h: 'Requisitante', w: 22, v: it => it.requisitante || '', quebra: true },
+    { h: 'Desenho', w: 16, v: it => it.desenho || '' },
+    { h: 'Qtd. Solic.', w: 12, v: it => Number(it.quantidade_solicitada) || 0, numero: true },
+    { h: 'Qtd. Recebida', w: 13, v: it => Number(it.quantidade_recebida) || 0, numero: true },
+    { h: 'Qtd. Pendente', w: 13, v: it => Number(it.quantidade_pendente) || 0, numero: true, pendente: true },
+    { h: 'Data Geração (SC)', w: 17, v: it => dataExcel(it.data_solicitacao), data: true },
+    { h: 'Data Previsão Entrega', w: 20, v: it => dataExcel(it.data_prevista_entrega), data: true },
+    { h: 'NF', w: 12, v: it => it.nf || '', centro: true },
+    { h: 'Data Receb. NF', w: 15, v: it => dataExcel(it.data_recebimento_nf), data: true },
+    { h: 'Observação', w: 34, v: it => it.observacao || '', quebra: true },
+    { h: 'Status', w: 20, v: it => it.status_recebimento === 'total' ? 'Totalmente recebido' : it.status_recebimento === 'parcial' ? 'Parcial' : 'Pendente', status: true },
+  ];
+  const STATUS_COR = {
+    total: { fundo: 'FFD1FAE5', fonte: 'FF047857' },
+    parcial: { fundo: 'FFFAEDD9', fonte: 'FFB5690A' },
+    pendente: { fundo: 'FFFEE2E2', fonte: 'FFB91C1C' },
+  };
+  const borda = { top: { style: 'thin', color: { argb: 'FFD9DEE5' } }, left: { style: 'thin', color: { argb: 'FFD9DEE5' } }, bottom: { style: 'thin', color: { argb: 'FFD9DEE5' } }, right: { style: 'thin', color: { argb: 'FFD9DEE5' } } };
+  const preenchimento = cor => ({ type: 'pattern', pattern: 'solid', fgColor: { argb: cor } });
 
-  const ws = XLSX.utils.json_to_sheet(linhas);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Almoxarifado');
-  XLSX.writeFile(wb, `Almoxarifado_selecionados_${new Date().toISOString().slice(0,10)}.xlsx`);
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('Almoxarifado');
+  ws.columns = COLS.map(c => ({ width: c.w }));
+
+  const cabecalho = ws.addRow(COLS.map(c => c.h));
+  cabecalho.height = 26;
+  cabecalho.eachCell(cell => {
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    cell.fill = preenchimento('FF102A44');
+    cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+    cell.border = borda;
+  });
+
+  itens.forEach((it, idx) => {
+    const linha = ws.addRow(COLS.map(c => c.v(it)));
+    COLS.forEach((c, i) => {
+      const cell = linha.getCell(i + 1);
+      cell.border = borda;
+      cell.alignment = { vertical: 'middle', horizontal: c.numero ? 'right' : c.centro ? 'center' : 'left', wrapText: !!c.quebra };
+      if (c.numero) cell.numFmt = '#,##0';
+      if (c.data) cell.numFmt = 'dd/mm/yyyy';
+      if (idx % 2 === 1) cell.fill = preenchimento('FFF8FAFC');
+      if (c.pendente && Number(it.quantidade_pendente) > 0) cell.font = { bold: true, color: { argb: 'FFB91C1C' } };
+      if (c.status){
+        const cor = STATUS_COR[it.status_recebimento] || STATUS_COR.pendente;
+        cell.fill = preenchimento(cor.fundo);
+        cell.font = { bold: true, color: { argb: cor.fonte } };
+      }
+    });
+  });
+
+  ws.views = [{ state: 'frozen', ySplit: 1 }];
+  ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: COLS.length } };
+  ws.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
+
+  const buffer = await wb.xlsx.writeBuffer();
+  const url = URL.createObjectURL(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `Almoxarifado_selecionados_${new Date().toISOString().slice(0, 10)}.xlsx`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 // ── SALVAR RECEBIMENTO -- com auto-save (sem precisar clicar) ──────────────
@@ -719,6 +853,8 @@ async function salvarRecebimento(id, { silencioso = false } = {}){
     if (celPend) celPend.textContent = item.quantidade_pendente.toLocaleString('pt-BR');
     const celStatus = document.getElementById(`status-${id}`);
     if (celStatus) celStatus.innerHTML = badgeStatus(item.status_recebimento);
+    const linha = document.getElementById(`row-${id}`);
+    if (linha) linha.classList.toggle('row-total', item.status_recebimento === 'total');
   }
 
   linhasSujas.delete(id);
