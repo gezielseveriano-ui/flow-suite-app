@@ -140,6 +140,39 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 .resumo-stat.err .v{color:var(--red)}
 .resumo-stat.warn .v{color:var(--amber)}
 .resumo-stat.ok .v{color:var(--green)}
+
+/* ── Abas do módulo (Compras | Estoque MDE) e Estoque MDE ── */
+.mod-tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:1.1rem}
+.mod-tab{padding:10px 18px;border:none;background:none;font-family:inherit;font-size:13.5px;font-weight:600;color:var(--text2);cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-1px}
+.mod-tab:hover{color:var(--text)}
+.mod-tab.active{color:var(--blue);border-bottom-color:var(--blue)}
+.chips{display:flex;gap:8px;margin-bottom:1.1rem;flex-wrap:wrap}
+.chip{padding:8px 16px;border-radius:999px;border:1px solid var(--border);background:var(--bg2);font-size:13px;font-weight:600;color:var(--text2);cursor:pointer}
+.chip:hover{border-color:var(--blue);color:var(--blue)}
+.chip.active{background:var(--blue);border-color:var(--blue);color:#fff}
+.chip .n{font-weight:500;opacity:.75;margin-left:4px}
+.btn-baixa{background:var(--red);border-color:var(--red);color:#fff;font-weight:600}
+.btn-baixa:hover{background:#B91C1C;border-color:#B91C1C;color:#fff}
+.btn-mini{padding:4px 9px;font-size:11.5px}
+.chk{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--text2);cursor:pointer}
+.dtbl tbody tr.row-minimo td{background:var(--amber-dim)}
+.dtbl tbody tr.row-zerado td{color:var(--text3)}
+.saldo-cell{font-weight:700;font-size:13px}
+.mov-entrada{color:var(--green);font-weight:700}
+.mov-saida{color:var(--red);font-weight:700}
+.dtbl tbody tr.row-estornado td{text-decoration:line-through;color:var(--text3)}
+.modal-box.sm{max-width:640px}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 14px}
+.form-grid label{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:600;color:var(--text2)}
+.form-grid label.full{grid-column:1 / -1}
+.form-grid input, .form-grid select, .form-grid textarea{padding:9px 11px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg2);color:var(--text);font-size:13px;font-family:inherit;font-weight:400}
+.form-grid input:focus, .form-grid select:focus, .form-grid textarea:focus{outline:none;border-color:var(--blue)}
+.form-grid .req::after{content:' *';color:var(--red)}
+.saldo-info{grid-column:1 / -1;padding:9px 12px;border-radius:var(--radius-sm);background:var(--bg3);font-size:12.5px;color:var(--text2)}
+.saldo-info b{color:var(--text)}
+.link-acao{color:var(--blue);cursor:pointer;font-size:12px;font-weight:600}
+.link-acao:hover{text-decoration:underline}
+@media (max-width:640px){.form-grid{grid-template-columns:1fr}.content{padding:1.25rem 1rem}}
 </style>
 </head>
 <body>
@@ -219,6 +252,10 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
       <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12.5 4 7 10l5.5 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
     <main class="content">
+      <div class="mod-tabs">
+        <button class="mod-tab active" id="tabCompras" onclick="renderHome()">📦 Compras (SC / O.C.)</button>
+        <button class="mod-tab" id="tabEstoque" onclick="renderEstoque()">🏷️ Estoque MDE</button>
+      </div>
       <div class="nav-bar" id="navBar"></div>
       <div id="msgBox" class="msg-box"></div>
       <div id="content"><div class="empty">Carregando...</div></div>
@@ -257,6 +294,98 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
     <div class="modal-actions">
       <button class="btn" onclick="fecharPreviewFornecedor()">Cancelar</button>
       <button class="btn btn-primary" id="btnConfirmarImportacaoFornecedor" onclick="confirmarImportacaoFornecedor()">Confirmar importação</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── ESTOQUE MDE: entrada / saída (baixa) ── -->
+<div class="modal-overlay" id="modalMovimento">
+  <div class="modal-box sm">
+    <div class="modal-title" id="movTitulo"></div>
+    <div class="modal-sub" id="movSub"></div>
+    <div id="movErro" class="msg-box err"></div>
+    <div class="form-grid">
+      <label class="full"><span class="req">Item</span>
+        <input id="movFiltro" placeholder="🔍 Filtrar a lista (descrição, código, especificação)..." oninput="preencherSelectItensMov()">
+        <select id="movItem" onchange="onMovItemMudou()"></select>
+        <span class="link-acao" onclick="abrirItemEstoque(null, true)">Não achou? ＋ Cadastrar item novo</span>
+      </label>
+      <div class="saldo-info" id="movSaldo"></div>
+      <label><span class="req" id="movQtdLabel">Quantidade</span><input id="movQtd" type="number" min="0" step="any" oninput="onMovQtdMudou()"></label>
+      <label id="movKgWrap">Peso (kg)<input id="movKg" type="number" min="0" step="any" oninput="this.dataset.manual='1'"></label>
+      <label><span class="req">Data</span><input id="movData" type="date"></label>
+
+      <label class="so-entrada">Origem
+        <select id="movOrigem"></select>
+      </label>
+      <label class="so-entrada">Nota fiscal<input id="movNf"></label>
+      <label class="so-entrada">Fornecedor<input id="movFornecedor"></label>
+
+      <label class="so-saida"><span class="req">Pedido de destino</span>
+        <select id="movPedido"></select>
+      </label>
+      <label class="so-saida"><span class="req">Quem retirou</span><input id="movRetirado"></label>
+      <label class="so-saida"><span class="req">Setor</span><input id="movSetor" list="estSetoresLista"></label>
+      <datalist id="estSetoresLista"></datalist>
+
+      <label class="full">Observação<textarea id="movObs" rows="2"></textarea></label>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="fecharModalEstoque('modalMovimento')">Cancelar</button>
+      <button class="btn btn-primary" id="btnConfirmarMov" onclick="confirmarMovimento()">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── ESTOQUE MDE: cadastrar / editar item ── -->
+<div class="modal-overlay" id="modalItemEstoque">
+  <div class="modal-box sm">
+    <div class="modal-title" id="itemEstTitulo">Cadastrar item</div>
+    <div class="modal-sub">O cadastro não mexe no saldo — depois de cadastrar, lance a <b>Entrada</b>.</div>
+    <div id="itemEstErro" class="msg-box err"></div>
+    <div class="form-grid">
+      <label><span class="req">Tipo</span>
+        <select id="ieTipo" onchange="onItemTipoMudou()">
+          <option value="comprado">Item comprado</option>
+          <option value="materia_prima">Matéria-prima</option>
+        </select>
+      </label>
+      <label>Código (opcional)<input id="ieCodigo" placeholder="código interno / Sapiens"></label>
+      <label class="full"><span class="req">Descrição</span><input id="ieDescricao" placeholder="ex.: ROLAMENTO RÍGIDO DE ESFERAS"></label>
+      <label>Categoria<input id="ieCategoria" list="ieCategoriasLista"></label>
+      <datalist id="ieCategoriasLista"></datalist>
+      <label>Especificação<input id="ieEspecificacao" placeholder="ex.: 6204-2RS  ·  L 2&quot; x 1/4&quot; x 6 m"></label>
+      <label><span class="req">Unidade</span>
+        <select id="ieUnidade">
+          <option>PÇ</option><option>JG</option><option>CJ</option><option>BARRA</option><option>M</option><option>KG</option><option>L</option>
+        </select>
+      </label>
+      <label id="iePesoWrap">Peso por unidade (kg)<input id="iePeso" type="number" min="0" step="any" placeholder="calcula o kg na entrada/saída"></label>
+      <label>Localização<input id="ieLocal" placeholder="ex.: Prateleira A3"></label>
+      <label>Estoque mínimo<input id="ieMinimo" type="number" min="0" step="any" placeholder="avisa quando chegar nele"></label>
+      <label class="chk full" id="ieAtivoWrap"><input type="checkbox" id="ieAtivo" checked> Item ativo (desmarque para esconder da lista)</label>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="fecharModalEstoque('modalItemEstoque')">Cancelar</button>
+      <button class="btn btn-primary" id="btnSalvarItemEst" onclick="salvarItemEstoque()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── ESTOQUE MDE: histórico de um item ── -->
+<div class="modal-overlay" id="modalHistorico">
+  <div class="modal-box">
+    <div class="modal-title" id="histTitulo"></div>
+    <div class="modal-sub" id="histSub"></div>
+    <div id="histErro" class="msg-box"></div>
+    <div class="tbl-wrap" style="max-height:460px;overflow-y:auto">
+      <table class="dtbl">
+        <thead><tr><th>Data</th><th>Movimento</th><th class="r">Qtd.</th><th class="r">kg</th><th>Origem / Destino</th><th>NF</th><th>Retirado por</th><th>Setor</th><th>Observação</th><th>Lançado por</th><th></th></tr></thead>
+        <tbody id="histTbody"></tbody>
+      </table>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="fecharModalEstoque('modalHistorico')">Fechar</button>
     </div>
   </div>
 </div>
@@ -369,7 +498,8 @@ async function init(){
   document.getElementById('userAvatar').textContent = (AUTH.nome || '').trim().split(/\s+/).map(p => p[0]).slice(0, 2).join('').toUpperCase() || '··';
   iniciarSininho('sininhoWrap');
   iniciarCartinha('cartinhaWrap');
-  await renderHome();
+  if (location.hash === '#estoque') await renderEstoque();
+  else await renderHome();
 }
 
 function renderNav(){
@@ -404,6 +534,7 @@ async function buscarContagemPorPedido(){
 
 async function renderHome(){
   VISAO = 'home'; PEDIDO_ATUAL = null;
+  marcarAbaModulo('compras');
   if (floatScrollEl) floatScrollEl.classList.remove('show');
   renderNav();
   const content = document.getElementById('content');
@@ -1131,6 +1262,552 @@ async function confirmarImportacaoFornecedor(){
   showMsg(`Fornecedores atualizados — ${atualizados} item(ns) atualizado(s)${naoAchados ? `, ${naoAchados} não encontrado(s) no sistema (ainda não importados pelo relatório principal)` : ''}.`, true);
   fecharPreviewFornecedor();
   await renderHome();
+}
+
+// ── ESTOQUE MDE ─────────────────────────────────────────────────────────────
+// Aba separada das Compras: o que JÁ ESTÁ no estoque da MDE (estoque antigo,
+// sobras, itens comprados pra estoque). Dois tipos -- itens comprados
+// (rolamento, mancal, bucha...) e matéria-prima (cantoneira, chapa... que
+// controla peças/barras E kg). Saldo só muda pelas RPCs de 075_estoque_mde.sql
+// (entrada / saída / estorno) -- a tela nunca grava saldo direto.
+let EST_TIPO = 'comprado';            // 'comprado' | 'materia_prima'
+let EST_ITENS = [];                    // todos os itens (os 2 tipos -- o relatório Excel usa os dois)
+let EST_PEDIDOS = null;                // cache dos pedidos pro select da baixa
+let EST_MOV_TIPO = 'entrada';          // modal de movimento aberto como entrada ou saída
+let EST_ITEM_EDITANDO = null;          // id do item no modal de cadastro (null = novo)
+let EST_VOLTAR_PRO_MOV = false;        // cadastro aberto de dentro do modal de movimento
+let EST_HIST_ITEM = null;
+
+const EST_TIPO_ROTULO = { comprado: 'Itens comprados', materia_prima: 'Matéria-prima' };
+const EST_CATEGORIAS = {
+  comprado: ['Rolamento', 'Mancal', 'Bucha de fixação', 'Anel de fixação', 'Motorredutor', 'Fixação (parafuso/porca/arruela)', 'Outros'],
+  materia_prima: ['Cantoneira', 'Chapa', 'Tubo', 'Barra chata', 'Barra redonda', 'Perfil U', 'Perfil W / I', 'Outros'],
+};
+const EST_SETORES = ['Caldeiraria', 'Montagem', 'Usinagem', 'Pintura', 'Manutenção', 'Expedição'];
+const EST_ORIGENS = ['Estoque antigo', 'NF de compra', 'Inventário (acerto)', 'Devolução de obra', 'Sobra de produção'];
+
+function fmtNum(n, casas = 3){ return Number(n || 0).toLocaleString('pt-BR', { maximumFractionDigits: casas }); }
+function hojeISO(){ const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); }
+function fmtData(s){ const m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : ''; }
+
+function marcarAbaModulo(qual){
+  document.getElementById('tabCompras').classList.toggle('active', qual === 'compras');
+  document.getElementById('tabEstoque').classList.toggle('active', qual === 'estoque');
+  try { history.replaceState(null, '', qual === 'estoque' ? '#estoque' : location.pathname + location.search); } catch (e) {}
+}
+
+function fecharModalEstoque(id){ document.getElementById(id).classList.remove('show'); }
+
+async function carregarItensEstoque(){
+  let todos = [], de = 0;
+  while (true){
+    const { data, error } = await sb.from('estoque_itens').select('*').order('descricao').range(de, de + 999);
+    if (error) throw error;
+    todos = todos.concat(data);
+    if (data.length < 1000) break;
+    de += 1000;
+  }
+  EST_ITENS = todos;
+}
+
+async function renderEstoque(tipo){
+  if (tipo) EST_TIPO = tipo;
+  VISAO = 'estoque';
+  marcarAbaModulo('estoque');
+  if (floatScrollEl) floatScrollEl.classList.remove('show');
+  clearMsg();
+  document.getElementById('navBar').innerHTML = `<span class="nav-crumb active">Almoxarifado — Estoque MDE</span>`;
+  const content = document.getElementById('content');
+  content.innerHTML = `
+    <div class="chips" id="estChips"></div>
+    <div class="search-row">
+      <span class="btn btn-primary" onclick="abrirMovimento('entrada')">➕ Entrada</span>
+      <span class="btn btn-baixa" onclick="abrirMovimento('saida')">➖ Saída (baixa)</span>
+      <span class="btn" onclick="abrirItemEstoque(null)">＋ Cadastrar item</span>
+      <span style="flex:1"></span>
+      <span class="btn" onclick="relatorioEstoqueExcel()" title="Saldo dos itens comprados e da matéria-prima, uma aba cada">📊 Relatório Excel</span>
+      <span class="btn" onclick="relatorioEstoquePdf()" title="Saldo do que está filtrado na tela">📄 Relatório PDF</span>
+    </div>
+    <div class="search-row">
+      <input class="main" id="estBusca" placeholder="🔍 Buscar por descrição, código, especificação ou localização..." oninput="renderTabelaEstoque()">
+      <select id="estCategoria" onchange="renderTabelaEstoque()"></select>
+      <label class="chk"><input type="checkbox" id="estSoComSaldo" onchange="renderTabelaEstoque()"> Só com saldo</label>
+      <label class="chk"><input type="checkbox" id="estInativos" onchange="renderTabelaEstoque()"> Mostrar inativos</label>
+    </div>
+    <div id="estResumo"></div>
+    <div id="estTabela"><div class="empty">Carregando...</div></div>`;
+
+  try { await carregarItensEstoque(); }
+  catch (err){ document.getElementById('estTabela').innerHTML = `<div class="empty">Erro: ${esc(err.message)}</div>`; return; }
+
+  const doTipo = EST_ITENS.filter(i => i.tipo === EST_TIPO);
+  const cats = [...new Set([...EST_CATEGORIAS[EST_TIPO], ...doTipo.map(i => i.categoria).filter(Boolean)])].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  document.getElementById('estCategoria').innerHTML = `<option value="">Todas as categorias</option>` + cats.map(c => `<option>${esc(c)}</option>`).join('');
+  renderChipsEstoque();
+  renderTabelaEstoque();
+}
+
+function renderChipsEstoque(){
+  const n = t => EST_ITENS.filter(i => i.tipo === t && i.ativo).length;
+  document.getElementById('estChips').innerHTML = ['comprado', 'materia_prima'].map(t => `
+    <span class="chip ${EST_TIPO === t ? 'active' : ''}" onclick="renderEstoque('${t}')">${t === 'comprado' ? '⚙️' : '🔩'} ${EST_TIPO_ROTULO[t]}<span class="n">(${n(t)})</span></span>`).join('');
+}
+
+function itensEstoqueFiltrados(){
+  const termo = (document.getElementById('estBusca')?.value || '').trim().toLowerCase();
+  const cat = document.getElementById('estCategoria')?.value || '';
+  const soSaldo = document.getElementById('estSoComSaldo')?.checked;
+  const inativos = document.getElementById('estInativos')?.checked;
+  return EST_ITENS.filter(i => i.tipo === EST_TIPO
+    && (inativos || i.ativo)
+    && (!cat || i.categoria === cat)
+    && (!soSaldo || Number(i.saldo_qtd) > 0)
+    && (!termo || [i.descricao, i.codigo, i.especificacao, i.localizacao, i.categoria].some(v => String(v || '').toLowerCase().includes(termo))));
+}
+
+function abaixoDoMinimo(i){ return Number(i.estoque_minimo) > 0 && Number(i.saldo_qtd) <= Number(i.estoque_minimo); }
+
+function renderTabelaEstoque(){
+  const itens = itensEstoqueFiltrados();
+  const mp = EST_TIPO === 'materia_prima';
+  const comSaldo = itens.filter(i => Number(i.saldo_qtd) > 0).length;
+  const minimo = itens.filter(abaixoDoMinimo).length;
+  const kgTotal = itens.reduce((s, i) => s + Number(i.saldo_kg || 0), 0);
+
+  document.getElementById('estResumo').innerHTML = `
+    <div class="resumo-grid">
+      <div class="resumo-stat"><div class="k">Itens</div><div class="v">${itens.length}</div></div>
+      <div class="resumo-stat ok"><div class="k">Com saldo</div><div class="v">${comSaldo}</div></div>
+      <div class="resumo-stat ${minimo ? 'warn' : ''}"><div class="k">No mínimo / abaixo</div><div class="v">${minimo}</div></div>
+      ${mp ? `<div class="resumo-stat"><div class="k">Peso em estoque</div><div class="v">${fmtNum(kgTotal, 1)} kg</div></div>` : ''}
+    </div>`;
+
+  if (!itens.length){
+    document.getElementById('estTabela').innerHTML = EST_ITENS.some(i => i.tipo === EST_TIPO)
+      ? `<div class="empty">Nenhum item com esse filtro.</div>`
+      : `<div class="empty">Nenhum item de ${EST_TIPO_ROTULO[EST_TIPO].toLowerCase()} cadastrado ainda.<br>Clique em <b>➕ Entrada</b> (ou <b>＋ Cadastrar item</b>) pra lançar o primeiro.</div>`;
+    return;
+  }
+
+  document.getElementById('estTabela').innerHTML = `
+    <div class="tbl-wrap">
+      <table class="dtbl">
+        <thead><tr>
+          <th>Código</th><th>Descrição</th><th>Categoria</th><th>Especificação</th><th>Localização</th>
+          <th class="r">Saldo</th><th>Un.</th>${mp ? '<th class="r">kg</th>' : ''}<th class="r">Mínimo</th><th></th>
+        </tr></thead>
+        <tbody>${itens.map(i => `
+          <tr class="${abaixoDoMinimo(i) ? 'row-minimo' : Number(i.saldo_qtd) <= 0 ? 'row-zerado' : ''}">
+            <td>${esc(i.codigo || '—')}</td>
+            <td class="desc-cell" style="color:var(--text);max-width:320px" title="${esc(i.descricao)}">${esc(i.descricao)}${i.ativo ? '' : ' <span class="sem-link">(inativo)</span>'}</td>
+            <td>${esc(i.categoria || '—')}</td>
+            <td class="desc-cell" title="${esc(i.especificacao || '')}">${esc(i.especificacao || '—')}</td>
+            <td>${esc(i.localizacao || '—')}</td>
+            <td class="r saldo-cell">${fmtNum(i.saldo_qtd)}</td>
+            <td>${esc(i.unidade)}</td>
+            ${mp ? `<td class="r">${fmtNum(i.saldo_kg, 1)}</td>` : ''}
+            <td class="r">${i.estoque_minimo != null ? fmtNum(i.estoque_minimo) : '—'}${abaixoDoMinimo(i) ? ' ⚠' : ''}</td>
+            <td style="display:flex;gap:5px">
+              <span class="btn btn-mini" onclick="abrirMovimento('entrada', ${i.id})" title="Entrada">➕</span>
+              <span class="btn btn-mini" onclick="abrirMovimento('saida', ${i.id})" title="Saída (baixa)">➖</span>
+              <span class="btn btn-mini" onclick="abrirHistorico(${i.id})">Histórico</span>
+              <span class="btn btn-mini" onclick="abrirItemEstoque(${i.id})" title="Editar cadastro">✎</span>
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+// ── modal de entrada / saída ──
+async function abrirMovimento(tipo, itemId){
+  EST_MOV_TIPO = tipo;
+  const saida = tipo === 'saida';
+  document.getElementById('movTitulo').textContent = saida ? `➖ Saída (baixa) — ${EST_TIPO_ROTULO[EST_TIPO]}` : `➕ Entrada — ${EST_TIPO_ROTULO[EST_TIPO]}`;
+  document.getElementById('movSub').textContent = saida
+    ? 'Desconta do estoque. Informe para qual pedido foi, quem retirou e o setor.'
+    : 'Soma no estoque. Use "Estoque antigo" para lançar o que já existe hoje na MDE.';
+  document.querySelectorAll('#modalMovimento .so-entrada').forEach(el => el.style.display = saida ? 'none' : '');
+  document.querySelectorAll('#modalMovimento .so-saida').forEach(el => el.style.display = saida ? '' : 'none');
+  document.getElementById('movKgWrap').style.display = EST_TIPO === 'materia_prima' ? '' : 'none';
+  const btn = document.getElementById('btnConfirmarMov');
+  btn.textContent = saida ? 'Confirmar baixa' : 'Confirmar entrada';
+  btn.className = saida ? 'btn btn-baixa' : 'btn btn-primary';
+  btn.disabled = false;
+
+  ['movFiltro', 'movQtd', 'movKg', 'movNf', 'movFornecedor', 'movRetirado', 'movSetor', 'movObs'].forEach(id => { document.getElementById(id).value = ''; });
+  delete document.getElementById('movKg').dataset.manual;
+  document.getElementById('movData').value = hojeISO();
+  document.getElementById('movOrigem').innerHTML = EST_ORIGENS.map(o => `<option>${esc(o)}</option>`).join('');
+  document.getElementById('estSetoresLista').innerHTML = EST_SETORES.map(s => `<option value="${esc(s)}">`).join('');
+  document.getElementById('movErro').classList.remove('show');
+
+  preencherSelectItensMov(itemId);
+  document.getElementById('modalMovimento').classList.add('show');
+
+  if (saida) await preencherSelectPedidos();
+}
+
+function preencherSelectItensMov(selecionarId){
+  const sel = document.getElementById('movItem');
+  const atual = selecionarId ?? Number(sel.value || 0);
+  const termo = document.getElementById('movFiltro').value.trim().toLowerCase();
+  let lista = EST_ITENS.filter(i => i.tipo === EST_TIPO && i.ativo);
+  if (EST_MOV_TIPO === 'saida') lista = lista.filter(i => Number(i.saldo_qtd) > 0 || i.id === atual);
+  if (termo) lista = lista.filter(i => [i.descricao, i.codigo, i.especificacao, i.categoria].some(v => String(v || '').toLowerCase().includes(termo)) || i.id === atual);
+  sel.innerHTML = `<option value="">— escolha o item (${lista.length}) —</option>` + lista.map(i =>
+    `<option value="${i.id}" ${i.id === atual ? 'selected' : ''}>${esc(i.descricao)}${i.especificacao ? ' — ' + esc(i.especificacao) : ''}${i.codigo ? ' [' + esc(i.codigo) + ']' : ''}  ·  saldo ${fmtNum(i.saldo_qtd)} ${esc(i.unidade)}</option>`).join('');
+  if (!sel.value && lista.length === 1 && termo) sel.value = String(lista[0].id);
+  onMovItemMudou();
+}
+
+function itemMovSelecionado(){ const id = Number(document.getElementById('movItem').value || 0); return EST_ITENS.find(i => i.id === id) || null; }
+
+function onMovItemMudou(){
+  const it = itemMovSelecionado();
+  document.getElementById('movQtdLabel').textContent = it ? `Quantidade (${it.unidade})` : 'Quantidade';
+  document.getElementById('movSaldo').innerHTML = it
+    ? `Em estoque: <b>${fmtNum(it.saldo_qtd)} ${esc(it.unidade)}</b>${EST_TIPO === 'materia_prima' ? ` · <b>${fmtNum(it.saldo_kg, 1)} kg</b>` : ''}${it.localizacao ? ` · local: ${esc(it.localizacao)}` : ''}`
+    : 'Escolha o item acima.';
+  onMovQtdMudou();
+}
+
+// kg sugerido = qtd × peso por unidade do cadastro, até a pessoa digitar o kg na mão
+function onMovQtdMudou(){
+  const kg = document.getElementById('movKg');
+  if (kg.dataset.manual) return;
+  const it = itemMovSelecionado();
+  const qtd = Number(document.getElementById('movQtd').value || 0);
+  kg.value = it && it.peso_unitario_kg && qtd ? Math.round(qtd * Number(it.peso_unitario_kg) * 1000) / 1000 : '';
+}
+
+async function preencherSelectPedidos(){
+  if (!EST_PEDIDOS){
+    const { data, error } = await sb.from('pedidos').select('*').order('numero_pedido', { ascending: false });
+    if (error){ erroMov('Erro ao carregar pedidos: ' + error.message); return; }
+    EST_PEDIDOS = (data || []).filter(p => !p.arquivado);
+  }
+  document.getElementById('movPedido').innerHTML = `<option value="">— escolha o pedido —</option><option value="interno">Uso interno / manutenção (sem pedido)</option>`
+    + EST_PEDIDOS.map(p => `<option value="${p.id}">${esc(p.numero_pedido)}${p.cliente ? ' — ' + esc(p.cliente) : ''}</option>`).join('');
+}
+
+function erroMov(t){ const b = document.getElementById('movErro'); b.textContent = t; b.classList.add('show'); }
+
+async function confirmarMovimento(){
+  const it = itemMovSelecionado();
+  const saida = EST_MOV_TIPO === 'saida';
+  const qtd = Number(document.getElementById('movQtd').value || 0);
+  const kg = EST_TIPO === 'materia_prima' ? Number(document.getElementById('movKg').value || 0) : 0;
+  const pedidoVal = document.getElementById('movPedido').value;
+  const retirado = document.getElementById('movRetirado').value.trim();
+  const setor = document.getElementById('movSetor').value.trim();
+
+  if (!it) return erroMov('Escolha o item.');
+  if (!(qtd > 0)) return erroMov('Informe a quantidade.');
+  if (!document.getElementById('movData').value) return erroMov('Informe a data.');
+  if (saida){
+    if (!pedidoVal) return erroMov('Escolha o pedido de destino (ou "Uso interno").');
+    if (!retirado) return erroMov('Informe quem retirou.');
+    if (!setor) return erroMov('Informe o setor.');
+    if (qtd > Number(it.saldo_qtd)) return erroMov(`Saldo insuficiente: tem ${fmtNum(it.saldo_qtd)} ${it.unidade} em estoque.`);
+    if (kg > Number(it.saldo_kg)) return erroMov(`Saldo em kg insuficiente: tem ${fmtNum(it.saldo_kg, 1)} kg em estoque.`);
+  }
+
+  const btn = document.getElementById('btnConfirmarMov');
+  btn.disabled = true; btn.textContent = 'Gravando...';
+  const { error } = await sb.rpc('lancar_movimento_estoque', {
+    p_item_id: it.id,
+    p_tipo: EST_MOV_TIPO,
+    p_quantidade: qtd,
+    p_peso_kg: kg,
+    p_data: document.getElementById('movData').value,
+    p_origem: saida ? null : document.getElementById('movOrigem').value,
+    p_nota_fiscal: saida ? null : document.getElementById('movNf').value,
+    p_fornecedor: saida ? null : document.getElementById('movFornecedor').value,
+    p_pedido_id: saida && pedidoVal !== 'interno' ? Number(pedidoVal) : null,
+    p_uso_interno: saida && pedidoVal === 'interno',
+    p_retirado_por: saida ? retirado : null,
+    p_setor: saida ? setor : null,
+    p_observacao: document.getElementById('movObs').value,
+  });
+  if (error){
+    btn.disabled = false; btn.textContent = saida ? 'Confirmar baixa' : 'Confirmar entrada';
+    return erroMov('Erro: ' + error.message);
+  }
+
+  fecharModalEstoque('modalMovimento');
+  await renderEstoque();
+  showMsg(`${saida ? 'Baixa' : 'Entrada'} lançada: ${fmtNum(qtd)} ${it.unidade}${kg ? ` (${fmtNum(kg, 1)} kg)` : ''} — ${it.descricao}.`, true);
+}
+
+// ── modal de cadastro do item ──
+function abrirItemEstoque(id, voltarProMov){
+  EST_ITEM_EDITANDO = id;
+  EST_VOLTAR_PRO_MOV = !!voltarProMov;
+  const it = id ? EST_ITENS.find(i => i.id === id) : null;
+  document.getElementById('itemEstTitulo').textContent = it ? `Editar item — ${it.descricao}` : 'Cadastrar item';
+  document.getElementById('ieTipo').value = it ? it.tipo : EST_TIPO;
+  document.getElementById('ieCodigo').value = it?.codigo || '';
+  document.getElementById('ieDescricao').value = it?.descricao || '';
+  document.getElementById('ieCategoria').value = it?.categoria || '';
+  document.getElementById('ieEspecificacao').value = it?.especificacao || '';
+  document.getElementById('ieLocal').value = it?.localizacao || '';
+  document.getElementById('ieMinimo').value = it?.estoque_minimo ?? '';
+  document.getElementById('iePeso').value = it?.peso_unitario_kg ?? '';
+  document.getElementById('ieAtivo').checked = it ? it.ativo : true;
+  document.getElementById('ieAtivoWrap').style.display = it ? '' : 'none';
+  document.getElementById('itemEstErro').classList.remove('show');
+  document.getElementById('btnSalvarItemEst').disabled = false;
+  onItemTipoMudou();
+  document.getElementById('ieUnidade').value = it ? it.unidade : (document.getElementById('ieTipo').value === 'materia_prima' ? 'BARRA' : 'PÇ');
+  document.getElementById('modalItemEstoque').classList.add('show');
+  setTimeout(() => document.getElementById('ieDescricao').focus(), 50);
+}
+
+function onItemTipoMudou(){
+  const tipo = document.getElementById('ieTipo').value;
+  document.getElementById('iePesoWrap').style.display = tipo === 'materia_prima' ? '' : 'none';
+  const cats = [...new Set([...EST_CATEGORIAS[tipo], ...EST_ITENS.filter(i => i.tipo === tipo).map(i => i.categoria).filter(Boolean)])];
+  document.getElementById('ieCategoriasLista').innerHTML = cats.map(c => `<option value="${esc(c)}">`).join('');
+}
+
+async function salvarItemEstoque(){
+  const erro = t => { const b = document.getElementById('itemEstErro'); b.textContent = t; b.classList.add('show'); };
+  const tipo = document.getElementById('ieTipo').value;
+  const dados = {
+    tipo,
+    codigo: document.getElementById('ieCodigo').value,
+    descricao: document.getElementById('ieDescricao').value.trim().toUpperCase(),
+    categoria: document.getElementById('ieCategoria').value,
+    especificacao: document.getElementById('ieEspecificacao').value,
+    unidade: document.getElementById('ieUnidade').value,
+    peso_unitario_kg: tipo === 'materia_prima' ? document.getElementById('iePeso').value : '',
+    localizacao: document.getElementById('ieLocal').value,
+    estoque_minimo: document.getElementById('ieMinimo').value,
+    ativo: document.getElementById('ieAtivo').checked,
+  };
+  if (!dados.descricao) return erro('Informe a descrição.');
+
+  const btn = document.getElementById('btnSalvarItemEst');
+  btn.disabled = true;
+  const { data, error } = await sb.rpc('salvar_item_estoque', { p_id: EST_ITEM_EDITANDO, p_dados: dados });
+  btn.disabled = false;
+  if (error) return erro(/duplicate|unique/i.test(error.message) ? 'Já existe um item com esse código.' : 'Erro: ' + error.message);
+
+  fecharModalEstoque('modalItemEstoque');
+  await carregarItensEstoque();
+  if (EST_VOLTAR_PRO_MOV){
+    // volta pro modal de entrada/saída já com o item novo escolhido
+    if (data.tipo !== EST_TIPO){ EST_TIPO = data.tipo; await renderEstoque(); await abrirMovimento(EST_MOV_TIPO, data.id); return; }
+    document.getElementById('movFiltro').value = '';
+    preencherSelectItensMov(data.id);
+    renderChipsEstoque(); renderTabelaEstoque();
+    return;
+  }
+  EST_TIPO = data.tipo;
+  await renderEstoque();
+  showMsg(EST_ITEM_EDITANDO ? 'Cadastro atualizado.' : `Item cadastrado: ${data.descricao}. Agora lance a entrada (➕) dele.`, true);
+}
+
+// ── histórico do item (com estorno) ──
+async function abrirHistorico(itemId){
+  EST_HIST_ITEM = EST_ITENS.find(i => i.id === itemId);
+  const it = EST_HIST_ITEM;
+  document.getElementById('histTitulo').textContent = `Histórico — ${it.descricao}${it.especificacao ? ' — ' + it.especificacao : ''}`;
+  document.getElementById('histSub').innerHTML = `Saldo atual: <b>${fmtNum(it.saldo_qtd)} ${esc(it.unidade)}</b>${it.tipo === 'materia_prima' ? ` · <b>${fmtNum(it.saldo_kg, 1)} kg</b>` : ''}. Lançamento errado? Use <b>Estornar</b> — ele cria o lançamento contrário e o histórico fica registrado.`;
+  document.getElementById('histErro').className = 'msg-box';
+  document.getElementById('histTbody').innerHTML = `<tr><td colspan="11" class="empty">Carregando...</td></tr>`;
+  document.getElementById('modalHistorico').classList.add('show');
+  await renderHistorico();
+}
+
+async function renderHistorico(){
+  const it = EST_HIST_ITEM;
+  const { data: movs, error } = await sb.from('estoque_movimentos').select('*, pedidos(numero_pedido)').eq('item_id', it.id).order('criado_em', { ascending: false });
+  if (error){ document.getElementById('histTbody').innerHTML = `<tr><td colspan="11" class="empty">Erro: ${esc(error.message)}</td></tr>`; return; }
+
+  // nome de quem lançou -- se a leitura de perfis não for permitida, só fica em branco
+  const nomes = {};
+  const ids = [...new Set(movs.map(m => m.usuario_id).filter(Boolean))];
+  if (ids.length){
+    const { data: perfis } = await sb.from('perfis').select('id, nome').in('id', ids);
+    (perfis || []).forEach(p => { nomes[p.id] = p.nome; });
+  }
+  const estornados = new Set(movs.map(m => m.estorno_de).filter(Boolean));
+
+  document.getElementById('histTbody').innerHTML = movs.length ? movs.map(m => {
+    const destino = m.tipo === 'saida'
+      ? (m.estorno_de ? 'Estorno' : m.uso_interno ? 'Uso interno' : esc(m.pedidos?.numero_pedido || '—'))
+      : (m.estorno_de ? 'Estorno' : esc(m.origem || '—'));
+    const podeEstornar = !m.estorno_de && !estornados.has(m.id);
+    return `<tr class="${estornados.has(m.id) ? 'row-estornado' : ''}" id="histRow-${m.id}">
+      <td>${fmtData(m.data_movimento)}</td>
+      <td class="${m.tipo === 'entrada' ? 'mov-entrada' : 'mov-saida'}">${m.tipo === 'entrada' ? '➕ Entrada' : '➖ Saída'}</td>
+      <td class="r">${fmtNum(m.quantidade)}</td>
+      <td class="r">${Number(m.peso_kg) ? fmtNum(m.peso_kg, 1) : '—'}</td>
+      <td>${destino}</td>
+      <td>${esc(m.nota_fiscal || '—')}</td>
+      <td>${esc(m.retirado_por || '—')}</td>
+      <td>${esc(m.setor || '—')}</td>
+      <td class="desc-cell" title="${esc(m.observacao || '')}">${esc(m.observacao || '—')}</td>
+      <td>${esc(nomes[m.usuario_id] || '—')}<br><span style="font-size:10.5px;color:var(--text3)">${new Date(m.criado_em).toLocaleString('pt-BR')}</span></td>
+      <td id="histAcao-${m.id}">${podeEstornar ? `<span class="btn btn-mini" onclick="pedirMotivoEstorno(${m.id})">Estornar</span>` : estornados.has(m.id) ? '<span class="sem-link">estornado</span>' : ''}</td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="11" class="empty">Nenhum lançamento ainda.</td></tr>`;
+}
+
+function pedirMotivoEstorno(movId){
+  document.getElementById(`histAcao-${movId}`).innerHTML = `
+    <div style="display:flex;gap:5px">
+      <input class="edit-input txt" id="motivoEstorno-${movId}" placeholder="motivo do estorno" style="width:150px" onkeydown="if(event.key==='Enter') confirmarEstorno(${movId})">
+      <span class="btn btn-mini btn-baixa" onclick="confirmarEstorno(${movId})">OK</span>
+      <span class="btn btn-mini" onclick="renderHistorico()">✕</span>
+    </div>`;
+  document.getElementById(`motivoEstorno-${movId}`).focus();
+}
+
+async function confirmarEstorno(movId){
+  const motivo = document.getElementById(`motivoEstorno-${movId}`).value.trim();
+  const box = document.getElementById('histErro');
+  if (!motivo){ box.textContent = 'Informe o motivo do estorno.'; box.className = 'msg-box show err'; return; }
+  const { error } = await sb.rpc('estornar_movimento_estoque', { p_movimento_id: movId, p_motivo: motivo });
+  if (error){ box.textContent = 'Erro: ' + error.message; box.className = 'msg-box show err'; return; }
+  await carregarItensEstoque();
+  EST_HIST_ITEM = EST_ITENS.find(i => i.id === EST_HIST_ITEM.id);
+  await abrirHistorico(EST_HIST_ITEM.id);
+  box.textContent = 'Lançamento estornado — saldo corrigido.'; box.className = 'msg-box show ok';
+  renderChipsEstoque(); renderTabelaEstoque();
+}
+
+// ── relatórios ──
+async function relatorioEstoqueExcel(){
+  const borda = { top: { style: 'thin', color: { argb: 'FFD9DEE5' } }, left: { style: 'thin', color: { argb: 'FFD9DEE5' } }, bottom: { style: 'thin', color: { argb: 'FFD9DEE5' } }, right: { style: 'thin', color: { argb: 'FFD9DEE5' } } };
+  const preenchimento = cor => ({ type: 'pattern', pattern: 'solid', fgColor: { argb: cor } });
+  const wb = new ExcelJS.Workbook();
+
+  ['comprado', 'materia_prima'].forEach(tipo => {
+    const mp = tipo === 'materia_prima';
+    const itens = EST_ITENS.filter(i => i.tipo === tipo && i.ativo).sort((a, b) => (a.categoria || '').localeCompare(b.categoria || '', 'pt-BR') || a.descricao.localeCompare(b.descricao, 'pt-BR'));
+    const COLS = [
+      { h: 'Código', w: 14, v: i => i.codigo || '' },
+      { h: 'Categoria', w: 22, v: i => i.categoria || '' },
+      { h: 'Descrição', w: 44, v: i => i.descricao, quebra: true },
+      { h: 'Especificação', w: 28, v: i => i.especificacao || '', quebra: true },
+      { h: 'Localização', w: 16, v: i => i.localizacao || '' },
+      { h: 'Saldo', w: 11, v: i => Number(i.saldo_qtd) || 0, numero: true },
+      { h: 'Un.', w: 8, v: i => i.unidade, centro: true },
+      ...(mp ? [{ h: 'Saldo (kg)', w: 12, v: i => Number(i.saldo_kg) || 0, numero: true, kg: true }] : []),
+      { h: 'Estoque mínimo', w: 14, v: i => i.estoque_minimo != null ? Number(i.estoque_minimo) : '', numero: true },
+      { h: 'Situação', w: 16, v: i => abaixoDoMinimo(i) ? 'No mínimo' : Number(i.saldo_qtd) > 0 ? 'OK' : 'Sem saldo' },
+    ];
+    const ws = wb.addWorksheet(EST_TIPO_ROTULO[tipo]);
+    ws.columns = COLS.map(c => ({ width: c.w }));
+    const cab = ws.addRow(COLS.map(c => c.h));
+    cab.height = 24;
+    cab.eachCell(cell => {
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.fill = preenchimento('FF102A44');
+      cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+      cell.border = borda;
+    });
+    itens.forEach((it, idx) => {
+      const linha = ws.addRow(COLS.map(c => c.v(it)));
+      COLS.forEach((c, k) => {
+        const cell = linha.getCell(k + 1);
+        cell.border = borda;
+        cell.alignment = { vertical: 'middle', horizontal: c.numero ? 'right' : c.centro ? 'center' : 'left', wrapText: !!c.quebra };
+        if (c.numero) cell.numFmt = c.kg ? '#,##0.0' : '#,##0.###';
+        if (abaixoDoMinimo(it)) cell.fill = preenchimento('FFFAEDD9');
+        else if (idx % 2 === 1) cell.fill = preenchimento('FFF8FAFC');
+      });
+    });
+    if (mp && itens.length){
+      const tot = ws.addRow(COLS.map(c => c.h === 'Saldo (kg)' ? itens.reduce((s, i) => s + Number(i.saldo_kg || 0), 0) : c.h === 'Descrição' ? 'TOTAL' : ''));
+      tot.font = { bold: true };
+      tot.getCell(COLS.findIndex(c => c.kg) + 1).numFmt = '#,##0.0';
+    }
+    ws.views = [{ state: 'frozen', ySplit: 1 }];
+    ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: COLS.length } };
+    ws.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
+  });
+
+  const buffer = await wb.xlsx.writeBuffer();
+  const url = URL.createObjectURL(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `Estoque_MDE_${hojeISO()}.xlsx`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function relatorioEstoquePdf(){
+  const itens = itensEstoqueFiltrados();
+  if (!itens.length){ showMsg('Nenhum item na tela para o relatório.', false); return; }
+  const mp = EST_TIPO === 'materia_prima';
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const PAG_H = 280;
+  const COLS = [
+    { t: 'Código', x: 14, a: 'left' },
+    { t: 'Descrição / Especificação', x: 36, a: 'left' },
+    { t: 'Local', x: 124, a: 'left' },
+    { t: 'Saldo', x: mp ? 162 : 180, a: 'right' },
+    { t: 'Un.', x: mp ? 164 : 182, a: 'left' },
+    ...(mp ? [{ t: 'kg', x: 196, a: 'right' }] : []),
+  ];
+  let y = 0;
+  function novaPagina(primeira){
+    if (!primeira) doc.addPage();
+    doc.setFont(undefined, 'bold'); doc.setFontSize(14); doc.setTextColor(16, 42, 68);
+    doc.text(`Estoque MDE — ${EST_TIPO_ROTULO[EST_TIPO]}`, 14, 16);
+    doc.setFont(undefined, 'normal'); doc.setFontSize(9); doc.setTextColor(91, 107, 120);
+    doc.text(`Emitido em ${new Date().toLocaleDateString('pt-BR')}`, 14, 22);
+    y = 32;
+    doc.setFillColor(241, 245, 249); doc.rect(14, y - 4.5, 182, 6.5, 'F');
+    doc.setFont(undefined, 'bold'); doc.setFontSize(8.5); doc.setTextColor(60, 70, 80);
+    COLS.forEach(c => doc.text(c.t, c.x, y, { align: c.a }));
+    y += 6;
+  }
+  const grupos = {};
+  itens.forEach(i => { const c = i.categoria || 'Sem categoria'; (grupos[c] = grupos[c] || []).push(i); });
+
+  novaPagina(true);
+  Object.keys(grupos).sort((a, b) => a.localeCompare(b, 'pt-BR')).forEach(cat => {
+    if (y + 16 > PAG_H) novaPagina(false);
+    doc.setFillColor(224, 234, 246); doc.rect(14, y - 4.5, 182, 7, 'F');
+    doc.setFont(undefined, 'bold'); doc.setFontSize(10); doc.setTextColor(16, 42, 68);
+    doc.text(`${cat}  (${grupos[cat].length})`, 16, y);
+    y += 7;
+    grupos[cat].forEach(i => {
+      const desc = doc.splitTextToSize(i.descricao + (i.especificacao ? ' — ' + i.especificacao : ''), 84);
+      const h = Math.max(desc.length, 1) * 4 + 3;
+      if (y + h > PAG_H) novaPagina(false);
+      const vals = [i.codigo || '—', desc, i.localizacao || '—', fmtNum(i.saldo_qtd), i.unidade, ...(mp ? [fmtNum(i.saldo_kg, 1)] : [])];
+      doc.setFontSize(8);
+      COLS.forEach((c, k) => {
+        const destaque = c.t === 'Saldo';
+        doc.setFont(undefined, destaque ? 'bold' : 'normal');
+        doc.setTextColor(...(destaque && abaixoDoMinimo(i) ? [181, 105, 10] : [23, 33, 43]));
+        doc.text(vals[k], c.x, y, { align: c.a });
+      });
+      doc.setDrawColor(226, 232, 240);
+      doc.line(14, y + h - 3, 196, y + h - 3);
+      y += h;
+    });
+    y += 4;
+  });
+  if (mp){
+    if (y + 8 > PAG_H) novaPagina(false);
+    doc.setFont(undefined, 'bold'); doc.setFontSize(10); doc.setTextColor(16, 42, 68);
+    doc.text(`Peso total em estoque: ${fmtNum(itens.reduce((s, i) => s + Number(i.saldo_kg || 0), 0), 1)} kg`, 196, y + 2, { align: 'right' });
+  }
+  const total = doc.internal.getNumberOfPages();
+  for (let p = 1; p <= total; p++){
+    doc.setPage(p);
+    doc.setFont(undefined, 'normal'); doc.setFontSize(8); doc.setTextColor(91, 107, 120);
+    doc.text(`Página ${p} de ${total}`, 196, 290, { align: 'right' });
+  }
+  doc.save(`Estoque_MDE_${EST_TIPO}_${hojeISO()}.pdf`);
 }
 
 init().catch(err => {
