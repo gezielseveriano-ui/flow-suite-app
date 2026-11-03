@@ -122,6 +122,24 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 .kpi-tbl td:first-child,.kpi-tbl th:first-child{text-align:left;font-weight:600}
 .kpi-tbl td.tot{font-weight:700;color:var(--blue);background:var(--blue-dim)}
 .kpi-warn td.tot{color:var(--red);background:var(--red-dim)}
+
+.print-only{display:none}
+@media print{
+  @page{size:A4 landscape;margin:10mm}
+  body{background:#fff}
+  .app-header,.sidebar,.sidebar-fab,.nav-bar,.msg-box,.search-row,.no-print{display:none !important}
+  .content{padding:0;overflow:visible}
+  .print-only{display:block}
+  .print-head{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #102A43;padding-bottom:6px;margin-bottom:10px}
+  .print-head h1{font-size:16px;color:#102A43}
+  .print-head div{font-size:11px;color:#444;text-align:right}
+  .tbl-wrap{border:none;box-shadow:none;border-radius:0;overflow:visible}
+  .dtbl{font-size:10.5px}
+  .dtbl thead th{position:static;background:#eef1f5 !important;color:#111;border:1px solid #bbb;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .dtbl tbody td{border:1px solid #ccc;white-space:normal}
+  .dtbl tbody tr{page-break-inside:avoid}
+  .status-badge{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
 </style>
 </head>
 <body>
@@ -272,6 +290,7 @@ const SUGESTOES_TIPO_DESVIO = ['ENGENHARIA/DESENHO', 'QUALIDADE', 'FABRICAÇÃO'
 const SUGESTOES_RESPONSAVEL_NC = ['ENGENHARIA', 'FORNECEDOR', 'FÁBRICA', 'MONTAGEM', 'QUALIDADE', 'PCP'];
 const SUGESTOES_ESPECIFICACAO = ['DESENHO DETALHE', 'ESPECIFICAÇÃO TÉCNICA', 'NORMA'];
 const SUGESTOES_LOCAL_NC = ['RECEBIMENTO MDE', 'FABRICA MDE', 'MONTAGEM MDE', 'MONTAGEM OBRA', 'ENGENHARIA MDE'];
+const SUGESTOES_DEBITO = ['ENGENHARIA', 'PCP', 'FÁBRICA', 'MONTAGEM', 'QUALIDADE', 'SUPRIMENTOS', 'LOGÍSTICA', 'FORNECEDOR', 'CLIENTE'];
 
 // ── NAVEGAÇÃO ────────────────────────────────────────────────────────────
 function renderNav(){
@@ -305,17 +324,30 @@ function filtrarLista(){
   });
 }
 
+// a barra de busca é desenhada uma vez; ao digitar só a tabela é redesenhada,
+// senão o campo perde o foco a cada letra
 function renderLista(){
-  const itens = filtrarLista();
-  let h = `<div class="search-row">
-    <input class="main" placeholder="🔍 Buscar por número, pedido, fornecedor, tipo de desvio, desenho..." value="${esc(FILTRO_TERMO)}" oninput="FILTRO_TERMO=this.value;renderLista()">
-    <select onchange="FILTRO_STATUS=this.value;renderLista()">
+  document.getElementById('content').innerHTML = `<div class="search-row">
+    <input class="main" placeholder="🔍 Buscar por número, pedido, fornecedor, tipo de desvio, desenho..." value="${esc(FILTRO_TERMO)}" oninput="FILTRO_TERMO=this.value;renderTabelaRNC()">
+    <select onchange="FILTRO_STATUS=this.value;renderTabelaRNC()">
       <option value="">Todos os status</option>
       <option value="em_aberto" ${FILTRO_STATUS==='em_aberto'?'selected':''}>Em Aberto</option>
       <option value="encerrado" ${FILTRO_STATUS==='encerrado'?'selected':''}>Encerrado</option>
     </select>
+    <button class="btn" onclick="window.print()">🖨 Imprimir lista</button>
     <button class="btn" onclick="irIndicadores()">📊 Indicador RNCs</button>
     <button class="btn btn-primary" onclick="irNovo()">+ Novo RNC</button>
+  </div>
+  <div id="tabelaRNC"></div>`;
+  renderTabelaRNC();
+}
+
+function renderTabelaRNC(){
+  const itens = filtrarLista();
+  const filtros = [FILTRO_TERMO.trim() ? 'Busca: "' + FILTRO_TERMO.trim() + '"' : '', FILTRO_STATUS ? 'Status: ' + LABEL_STATUS[FILTRO_STATUS] : ''].filter(Boolean).join(' · ') || 'Todos os RNCs';
+  let h = `<div class="print-only print-head">
+    <h1>Relatório de RNCs — MDE</h1>
+    <div>${esc(filtros)} · ${itens.length} RNC(s)<br>Impresso em ${new Date().toLocaleString('pt-BR')}</div>
   </div>`;
 
   if (!itens.length){
@@ -324,7 +356,7 @@ function renderLista(){
     h += `<div class="tbl-wrap"><table class="dtbl">
       <thead><tr>
         <th>Nº RNC</th><th>Status</th><th>Empresa</th><th>Pedido</th><th>Fornecedor</th>
-        <th>Tipo de Desvio</th><th>Desenho</th><th>Data Abertura</th><th>Emitido por</th><th>Documento</th>
+        <th>Tipo de Desvio</th><th>Desenho</th><th>Data Abertura</th><th>Emitido por</th><th class="no-print">Documento</th>
       </tr></thead>
       <tbody>${itens.map(r => `
         <tr onclick="irEditar(${r.id})">
@@ -337,12 +369,12 @@ function renderLista(){
           <td>${esc(r.desenho || '—')}</td>
           <td>${fmtData(r.data_abertura)}</td>
           <td>${esc(r.emitido_por || '—')}</td>
-          <td><span class="btn" onclick="event.stopPropagation();gerarDocumentoRNC(${r.id})">📄 Gerar</span></td>
+          <td class="no-print"><span class="btn" onclick="event.stopPropagation();gerarDocumentoRNC(${r.id})">📄 Gerar</span></td>
         </tr>`).join('')}
       </tbody>
     </table></div>`;
   }
-  document.getElementById('content').innerHTML = h;
+  document.getElementById('tabelaRNC').innerHTML = h;
 }
 
 // ── FORMULÁRIO ───────────────────────────────────────────────────────────
@@ -352,14 +384,14 @@ function campoTexto(id, label, valor, opts){
   const datalist = opts.sugestoes ? `<datalist id="dl_${id}">${opts.sugestoes.map(s => `<option value="${esc(s)}">`).join('')}</datalist>` : '';
   return `<div class="field${opts.wide?' wide':''}">
     <label for="f_${id}">${label}</label>
-    <input id="f_${id}" type="${opts.type||'text'}" value="${esc(valor ?? '')}" ${list} ${opts.step?`step="${opts.step}"`:''}>
+    <input id="f_${id}" type="${opts.type||'text'}" spellcheck="true" lang="pt-BR" value="${esc(valor ?? '')}" ${list} ${opts.step?`step="${opts.step}"`:''}>
     ${datalist}
   </div>`;
 }
 function campoArea(id, label, valor, wide){
   return `<div class="field${wide?' wide':''}">
     <label for="f_${id}">${label}</label>
-    <textarea id="f_${id}">${esc(valor ?? '')}</textarea>
+    <textarea id="f_${id}" spellcheck="true" lang="pt-BR">${esc(valor ?? '')}</textarea>
   </div>`;
 }
 function campoSelect(id, label, valor, opcoes){
@@ -428,6 +460,7 @@ function renderForm(r){
     <div class="form-grid">
       ${campoArea('causa', 'Causa', r?.causa, true)}
       ${campoSelect('origem_rnc', 'Origem do RNC', r?.origem_rnc, [['interno','Interno'],['fornecedor','Externo — Fornecedor'],['cliente','Externo — Cliente']])}
+      ${campoTexto('debito', 'Débito', r?.debito, {sugestoes: SUGESTOES_DEBITO})}
     </div>
   </div>
 
@@ -498,6 +531,7 @@ function coletarDadosForm(){
     data_abertura: v('data_abertura') || null,
     causa: v('causa') || null,
     origem_rnc: v('origem_rnc') || null,
+    debito: v('debito') || null,
     responsavel_disposicao: v('responsavel_disposicao') || null,
     disposicao: radio('disposicao'),
     descricao_disposicao: v('descricao_disposicao') || null,
@@ -618,10 +652,10 @@ async function gerarDocumentoRNC(id){
     doc.text(texto.toUpperCase(), M, y);
     doc.setDrawColor(...COR.line); doc.setLineWidth(0.35);
     doc.line(M, y+1.8, M+CW, y+1.8);
-    return y + 7;
+    return y + 6;
   }
   function checarQuebra(y, alturaNecessaria){
-    if (y + alturaNecessaria > 275){
+    if (y + alturaNecessaria > 284){
       rodape(doc.internal.getNumberOfPages());
       doc.addPage();
       return 20;
@@ -638,17 +672,17 @@ async function gerarDocumentoRNC(id){
       doc.setFont(undefined,'bold'); doc.setFontSize(9.5); doc.setTextColor(...COR.ink);
       doc.text(String(valor ?? '—') || '—', x, y+5, { maxWidth: w-4 });
     });
-    return y + 11;
+    return y + 10;
   }
   function blocoTexto(y, label, texto){
     doc.setFont(undefined,'normal'); doc.setFontSize(7); doc.setTextColor(...COR.inkSoft);
     doc.text(label.toUpperCase(), M, y);
-    y += 4.5;
+    y += 4;
     doc.setFont(undefined,'normal'); doc.setFontSize(9); doc.setTextColor(...COR.ink);
     const linhas = doc.splitTextToSize(texto && texto.trim() ? texto : '—', CW);
-    y = checarQuebra(y, linhas.length * 4.3 + 4);
+    y = checarQuebra(y, linhas.length * 4 + 3);
     doc.text(linhas, M, y);
-    return y + linhas.length * 4.3 + 5;
+    return y + linhas.length * 4 + 3.5;
   }
   function checkbox(x, y, marcado){
     doc.setDrawColor(...COR.ink); doc.setLineWidth(0.35);
@@ -666,10 +700,11 @@ async function gerarDocumentoRNC(id){
     doc.setFont(undefined,'normal'); doc.setFontSize(8.5); doc.setTextColor(...COR.ink);
     Object.entries(opcoesMap).forEach(([v,l]) => {
       checkbox(x, y, valorAtual === v);
+      doc.setFont(undefined,'normal'); doc.setFontSize(8.5);
       doc.text(l, x+5, y);
       x += doc.getTextWidth(l) + 16;
     });
-    return y + 8;
+    return y + 7;
   }
 
   // ── cabeçalho ──
@@ -681,7 +716,7 @@ async function gerarDocumentoRNC(id){
   doc.setFont(undefined,'normal'); doc.setFontSize(9);
   doc.text(`RNC Nº ${formatarNumeroRNC(r)}  ·  MG-008`, M+CW, 18, { align: 'right' });
 
-  let y = 35;
+  let y = 34;
 
   // status + empresa
   const corStatus = r.status_nc === 'encerrado' ? COR.green : COR.amber;
@@ -690,7 +725,7 @@ async function gerarDocumentoRNC(id){
   doc.text((LABEL_STATUS[r.status_nc]||r.status_nc).toUpperCase(), M+17, y, { align:'center' });
   doc.setFont(undefined,'normal'); doc.setFontSize(9); doc.setTextColor(...COR.ink);
   doc.text(esc_pdf(r.empresa), M+CW, y, { align:'right' });
-  y += 10;
+  y += 9;
 
   y = tituloSecao(y, 'Identificação');
   y = linhaCampos(y, [
@@ -704,7 +739,7 @@ async function gerarDocumentoRNC(id){
     ['Item da OC', r.item_oc || 'NA'],
     ['Nota Fiscal', r.nota_fiscal || 'NA'],
   ]);
-  y += 2;
+  y += 1;
 
   y = tituloSecao(y, 'Desenho / Item');
   y = linhaCampos(y, [
@@ -719,7 +754,7 @@ async function gerarDocumentoRNC(id){
     ['Quant. Segregada', r.quantidade_segregada ?? 'NA'],
     ['Unid. de Medida', r.unidade_medida || 'NA'],
   ]);
-  y += 2;
+  y += 1;
 
   y = checarQuebra(y, 30);
   y = tituloSecao(y, 'Descrição da Não Conformidade');
@@ -734,23 +769,28 @@ async function gerarDocumentoRNC(id){
     ['Emitido por', r.emitido_por || 'NA'],
     ['Data de Abertura', fmtData(r.data_abertura)],
   ]);
-  y += 2;
+  y += 1;
 
   y = checarQuebra(y, 25);
   y = tituloSecao(y, 'Causa e Origem');
   y = blocoTexto(y, 'Causa', r.causa);
-  y = linhaCampos(y, [['Origem do RNC', LABEL_ORIGEM[r.origem_rnc] || 'NA']]);
-  y += 2;
+  y = linhaCampos(y, [
+    ['Origem do RNC', LABEL_ORIGEM[r.origem_rnc] || 'NA'],
+    ['Débito', r.debito || 'NA'],
+  ]);
+  y += 1;
 
-  y = checarQuebra(y, 45);
+  y = checarQuebra(y, 35);
   y = tituloSecao(y, 'Disposição');
-  y = linhaCampos(y, [['Responsável pela Disposição', r.responsavel_disposicao || 'NA']]);
+  y = linhaCampos(y, [
+    ['Responsável pela Disposição', r.responsavel_disposicao || 'NA'],
+    ['Prazo para Execução', fmtData(r.prazo_execucao)],
+  ]);
   y = grupoOpcoes(y, 'Disposição', LABEL_DISPOSICAO, r.disposicao);
   y = blocoTexto(y, 'Descrição da Disposição', r.descricao_disposicao);
-  y = linhaCampos(y, [['Prazo para Execução', fmtData(r.prazo_execucao)]]);
-  y += 2;
+  y += 1;
 
-  y = checarQuebra(y, 25);
+  y = checarQuebra(y, 22);
   y = tituloSecao(y, 'Verificação de Eficácia');
   y = grupoOpcoes(y, 'Verificação de Eficácia', LABEL_EFICACIA, r.verificacao_eficacia);
   y = linhaCampos(y, [
