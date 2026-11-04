@@ -123,6 +123,19 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 .kpi-tbl td.tot{font-weight:700;color:var(--blue);background:var(--blue-dim)}
 .kpi-warn td.tot{color:var(--red);background:var(--red-dim)}
 
+.modo-tabs{display:inline-flex;border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;background:var(--bg2)}
+.modo-tabs button{padding:8px 16px;border:none;background:none;font-size:12.5px;font-weight:500;color:var(--text2);cursor:pointer;font-family:inherit}
+.modo-tabs button+button{border-left:1px solid var(--border)}
+.modo-tabs button.active{background:var(--blue);color:#fff;font-weight:600}
+.grafico-topo{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:.6rem}
+.grafico-topo .kpi-obj{margin-bottom:0}
+.grafico-legenda{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--text2)}
+.grafico-legenda span{display:inline-flex;align-items:center;gap:6px}
+.grafico-legenda i{width:11px;height:11px;border-radius:3px;display:inline-block}
+.grafico-legenda i.leg-obj{width:18px;height:0;border-radius:0;border-top:2px dashed var(--red)}
+.grafico-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-sm);padding:10px 12px 4px}
+.grafico-card svg{display:block}
+
 .print-only{display:none}
 @media print{
   @page{size:A4 landscape;margin:10mm}
@@ -139,6 +152,9 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
   .dtbl tbody td{border:1px solid #ccc;white-space:normal}
   .dtbl tbody tr{page-break-inside:avoid}
   .status-badge{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .grafico-bloco{page-break-inside:avoid;margin-bottom:8mm}
+  .grafico-card{box-shadow:none}
+  .grafico-card svg,.grafico-legenda i{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 }
 </style>
 </head>
@@ -572,8 +588,16 @@ async function salvarRNC(){
 const MESES = ['JAN','FEV','MAR','ABR','MAI','JUN','JUL','AGO','SET','OUT','NOV','DEZ'];
 let ANO_INDICADOR = new Date().getFullYear();
 
-function tabelaIndicador(titulo, origemFiltro, objetivo){
-  const linhas = EMPRESAS.map(emp => {
+let MODO_INDICADOR = 'tabelas'; // 'tabelas' | 'graficos'
+
+// os mesmos quadros (tabela e gráfico) usam esta contagem mensal por empresa
+const INDICADORES = [
+  { titulo: 'Reclamação de Cliente — Controle Externo de RNC', origem: 'cliente', objetivo: 5 },
+  { titulo: 'Controle Interno de RNC', origem: 'interno', objetivo: 5 },
+  { titulo: 'Controle de RNC Fornecedores', origem: 'fornecedor', objetivo: 5 },
+];
+function contagensIndicador(origemFiltro){
+  return EMPRESAS.map(emp => {
     const contagens = MESES.map((_, mIdx) => RNCS.filter(r =>
       r.empresa === emp && r.origem_rnc === origemFiltro && r.data_abertura &&
       new Date(r.data_abertura + 'T00:00:00').getFullYear() === ANO_INDICADOR &&
@@ -582,6 +606,10 @@ function tabelaIndicador(titulo, origemFiltro, objetivo){
     const total = contagens.reduce((a,b) => a+b, 0);
     return { emp, contagens, total };
   });
+}
+
+function tabelaIndicador(titulo, origemFiltro, objetivo){
+  const linhas = contagensIndicador(origemFiltro);
   return `<div class="kpi-block">
     <div class="kpi-title">${titulo} — ${ANO_INDICADOR}</div>
     <div class="kpi-obj">Objetivo: máximo de ${objetivo} não conformidades por mês</div>
@@ -604,13 +632,82 @@ function renderIndicadores(){
     <select onchange="ANO_INDICADOR=Number(this.value);renderIndicadores()">
       ${anos.map(a => `<option value="${a}" ${a===ANO_INDICADOR?'selected':''}>${a}</option>`).join('')}
     </select>
+    <div class="modo-tabs">
+      <button class="${MODO_INDICADOR==='tabelas'?'active':''}" onclick="MODO_INDICADOR='tabelas';renderIndicadores()">Tabelas</button>
+      <button class="${MODO_INDICADOR==='graficos'?'active':''}" onclick="MODO_INDICADOR='graficos';renderIndicadores()">Gráficos</button>
+    </div>
+    ${MODO_INDICADOR==='graficos' ? `<button class="btn" onclick="window.print()">🖨 Imprimir gráficos</button>` : ''}
     <button class="btn" onclick="irLista()">← Voltar para lista de RNCs</button>
   </div>`;
-  h += tabelaIndicador('Reclamação de Cliente — Controle Externo de RNC', 'cliente', 5);
-  h += tabelaIndicador('Controle Interno de RNC', 'interno', 5);
-  h += tabelaIndicador('Controle de RNC Fornecedores', 'fornecedor', 5);
+  if (MODO_INDICADOR === 'graficos'){
+    h += `<div class="print-only print-head"><h1>Indicadores de RNC — MDE — ${ANO_INDICADOR}</h1><div>Impresso em ${new Date().toLocaleString('pt-BR')}</div></div>`;
+    h += INDICADORES.map(i => graficoIndicador(i.titulo, i.origem, i.objetivo)).join('');
+  } else {
+    h += INDICADORES.map(i => tabelaIndicador(i.titulo, i.origem, i.objetivo)).join('');
+  }
 
   document.getElementById('content').innerHTML = h;
+}
+
+// gráfico de barras agrupadas (SVG): 12 meses x empresas, linha tracejada no objetivo
+const CORES_EMPRESA = ['#2a78d6', '#eb6834'];
+function graficoIndicador(titulo, origemFiltro, objetivo){
+  const linhas = contagensIndicador(origemFiltro);
+  const W = 960, H = 235, mL = 34, mR = 12, mT = 16, mB = 28;
+  const plotW = W - mL - mR, plotH = H - mT - mB;
+  const maxVal = Math.max(objetivo + 1, ...linhas.flatMap(l => l.contagens));
+  const passo = maxVal <= 8 ? 1 : maxVal <= 20 ? 2 : 5;
+  const yMax = Math.ceil(maxVal / passo) * passo;
+  const y = v => mT + plotH - (v / yMax) * plotH;
+  const grupoW = plotW / 12;
+  const barW = Math.min(22, (grupoW - 14) / linhas.length);
+  const gap = 2;
+
+  let svg = '';
+  // faixa de destaque nos meses acima do objetivo
+  MESES.forEach((_, m) => {
+    if (linhas.some(l => l.contagens[m] > objetivo))
+      svg += `<rect x="${mL + m*grupoW}" y="${mT}" width="${grupoW}" height="${plotH}" fill="#FEE2E2" opacity=".6"/>`;
+  });
+  // grade + eixo Y
+  for (let v = 0; v <= yMax; v += passo){
+    svg += `<line x1="${mL}" x2="${W-mR}" y1="${y(v)}" y2="${y(v)}" stroke="${v===0?'#9CA3AF':'#EEF0F3'}" stroke-width="1"/>`;
+    svg += `<text x="${mL-8}" y="${y(v)+3.5}" text-anchor="end" font-size="10.5" fill="#6B7280">${v}</text>`;
+  }
+  // barras
+  MESES.forEach((mes, m) => {
+    const larguraGrupo = linhas.length * barW + (linhas.length - 1) * gap;
+    const x0 = mL + m*grupoW + (grupoW - larguraGrupo) / 2;
+    linhas.forEach((l, i) => {
+      const v = l.contagens[m];
+      if (!v) return;
+      const x = x0 + i*(barW + gap), yt = y(v), hgt = mT + plotH - yt, rr = Math.min(4, hgt, barW/2);
+      svg += `<path d="M${x},${mT+plotH} V${yt+rr} Q${x},${yt} ${x+rr},${yt} H${x+barW-rr} Q${x+barW},${yt} ${x+barW},${yt+rr} V${mT+plotH} Z" fill="${CORES_EMPRESA[i]}"/>`;
+      svg += `<text x="${x+barW/2}" y="${yt-4}" text-anchor="middle" font-size="10.5" font-weight="600" fill="#111827">${v}</text>`;
+    });
+    svg += `<text x="${mL + m*grupoW + grupoW/2}" y="${H-9}" text-anchor="middle" font-size="10.5" fill="#6B7280">${mes}/${String(ANO_INDICADOR).slice(2)}</text>`;
+    // área de hover do mês inteiro (dica com os números das empresas)
+    const dica = `${mes}/${ANO_INDICADOR}\n` + linhas.map(l => `${l.emp}: ${l.contagens[m]}`).join('\n') + `\nObjetivo: máx. ${objetivo}`;
+    svg += `<rect x="${mL + m*grupoW}" y="${mT}" width="${grupoW}" height="${plotH}" fill="transparent"><title>${esc(dica)}</title></rect>`;
+  });
+  // linha do objetivo
+  svg += `<line x1="${mL}" x2="${W-mR}" y1="${y(objetivo)}" y2="${y(objetivo)}" stroke="#DC2626" stroke-width="1.5" stroke-dasharray="6 4"/>`;
+  svg += `<text x="${W-mR-4}" y="${y(objetivo)-5}" text-anchor="end" font-size="10.5" font-weight="600" fill="#DC2626">Objetivo: máx. ${objetivo}</text>`;
+
+  const totalGeral = linhas.reduce((a, l) => a + l.total, 0);
+  return `<div class="kpi-block grafico-bloco">
+    <div class="grafico-topo">
+      <div>
+        <div class="kpi-title">${titulo} — ${ANO_INDICADOR}</div>
+        <div class="kpi-obj">Objetivo: máximo de ${objetivo} não conformidades por mês · Total no ano: <strong>${totalGeral}</strong></div>
+      </div>
+      <div class="grafico-legenda">
+        ${linhas.map((l, i) => `<span><i style="background:${CORES_EMPRESA[i]}"></i>${esc(l.emp)} (${l.total})</span>`).join('')}
+        <span><i class="leg-obj"></i>Objetivo</span>
+      </div>
+    </div>
+    <div class="grafico-card"><svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="${esc(titulo)} ${ANO_INDICADOR}">${svg}</svg></div>
+  </div>`;
 }
 
 // ── DOCUMENTO RNC (PDF) ──────────────────────────────────────────────────
