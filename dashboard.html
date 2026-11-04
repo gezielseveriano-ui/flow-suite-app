@@ -1249,38 +1249,51 @@ function renderRelatorioGeral(){
     </table></div>
     </div>
     <div class="section" id="conhecimentoSec" style="padding-top:1.25rem">
-      <div class="section-title">Desenhos para Conhecimento — ${esc(state.pedido)}</div>
+      <div class="section-title">Desenhos e Documentos — ${esc(state.pedido)}</div>
       <div class="empty">Carregando desenhos...</div>
     </div>`;
   setStatus(`Relatório Geral · ${state.pedido} · ${itens.length} itens · ${abertos.length} em aberto · ${expedidos.length} expedidos`);
   carregarDesenhosConhecimento(state.pedido);
 }
 
-/* desenhos marcados como "Conhecimento" na Engenharia não geram item de
-   produção, então não aparecem na tabela acima -- listados à parte pra quem
-   está na obra poder baixar e analisar */
+/* todo desenho que a Engenharia subiu pro pedido (fabricação, conhecimento,
+   compra, documento), com download -- quem está na obra só tem acesso pelo
+   Dashboard. Conhecimento/documento não geram item de produção, então não
+   apareceriam na tabela acima. */
+function tipoDesenho(d){
+  if (String(d.setor || '').toUpperCase() === 'DOCUMENTOS') return 'Documento';
+  const tipos = [];
+  if (d.is_fabricacao) tipos.push('Fabricação');
+  if (d.is_conhecimento) tipos.push('Conhecimento');
+  if (d.is_compra) tipos.push('Compra');
+  return tipos.join(' / ') || '—';
+}
 async function carregarDesenhosConhecimento(numeroPedido){
   const sec = document.getElementById('conhecimentoSec');
   const pedido = PEDIDOS_INFO[numeroPedido];
   if (!sec || !pedido) return;
   const { data, error } = await sb.from('desenhos_engenharia')
-    .select('id, codigo_mde, desenho_mde, desenho_cliente, revisao, nome_equipamento, observacao, arquivo_path, remessa, remessas(numero), tags(nome)')
-    .eq('pedido_id', pedido.id).eq('is_conhecimento', true)
+    .select('id, codigo_mde, desenho_mde, desenho_cliente, revisao, nome_equipamento, setor, observacao, arquivo_path, remessa, is_fabricacao, is_conhecimento, is_compra, paralisado, remessas(numero), tags(nome)')
+    .eq('pedido_id', pedido.id)
     .order('desenho_mde');
   // o usuário pode ter saído da tela enquanto carregava
   if (state.tela !== 'relatorioGeral' || state.pedido !== numeroPedido) return;
-  const titulo = `<div class="section-title">Desenhos para Conhecimento — ${esc(numeroPedido)}${data ? ' (' + data.length + ')' : ''}</div>`;
+  const titulo = `<div class="section-title">Desenhos e Documentos — ${esc(numeroPedido)}${data ? ' (' + data.length + ')' : ''}</div>`;
   if (error){ sec.innerHTML = titulo + `<div class="empty">Erro ao carregar desenhos: ${esc(error.message)}</div>`; return; }
-  if (!data.length){ sec.innerHTML = titulo + `<div class="empty">Nenhum desenho para conhecimento neste pedido.</div>`; return; }
+  if (!data.length){ sec.innerHTML = titulo + `<div class="empty">Nenhum desenho enviado pela Engenharia neste pedido.</div>`; return; }
+  const remessaDe = d => d.remessas?.numero ?? d.remessa ?? '';
+  data.sort((a, b) => (Number(remessaDe(a)) || 0) - (Number(remessaDe(b)) || 0) || String(a.desenho_mde).localeCompare(String(b.desenho_mde)));
   const rows = data.map(d => {
-    const remessa = d.remessas?.numero ?? d.remessa ?? '';
-    const chave = `${numeroPedido} ${d.codigo_mde||''} ${d.desenho_mde||''} ${d.desenho_cliente||''} ${d.nome_equipamento||''} ${d.tags?.nome||''} ${remessa} ${d.observacao||''} conhecimento`.toLowerCase();
+    const remessa = remessaDe(d), tipo = tipoDesenho(d);
+    const chave = `${numeroPedido} ${d.codigo_mde||''} ${d.desenho_mde||''} ${d.desenho_cliente||''} ${d.nome_equipamento||''} ${d.setor||''} ${d.tags?.nome||''} ${remessa} ${d.observacao||''} ${tipo}`.toLowerCase();
     return `<tr data-search="${esc(chave)}">
       <td>${esc(d.codigo_mde ?? '')}</td>
       <td>${esc(d.desenho_mde || '')}</td>
       <td>${esc(d.desenho_cliente || '—')}</td>
       <td>${esc(d.revisao || '—')}</td>
-      <td class="desc-cell">${esc(d.nome_equipamento || '—')}</td>
+      <td class="desc-cell">${esc(d.nome_equipamento || '—')}${d.paralisado ? ' <span class="status-badge sb-info">Paralisado</span>' : ''}</td>
+      <td>${esc(tipo)}</td>
+      <td>${esc(d.setor || '—')}</td>
       <td>${esc(d.tags?.nome || '—')}</td>
       <td>${esc(remessa || '—')}</td>
       <td class="desc-cell">${esc(d.observacao || '—')}</td>
@@ -1288,7 +1301,7 @@ async function carregarDesenhosConhecimento(numeroPedido){
     </tr>`;
   }).join('');
   sec.innerHTML = titulo + `<div id="conhecimentoWrap" class="tbl-wrap"><table class="dtbl">
-    <thead><tr><th>Cód. MDE</th><th>Desenho MDE</th><th>Desenho Cliente</th><th>Rev.</th><th>Nome do equipamento</th><th>TAG</th><th>Remessa</th><th>Observação</th><th>Arquivo</th></tr></thead>
+    <thead><tr><th>Cód. MDE</th><th>Desenho MDE</th><th>Desenho Cliente</th><th>Rev.</th><th>Nome do equipamento</th><th>Tipo</th><th>Setor</th><th>TAG</th><th>Remessa</th><th>Observação</th><th>Arquivo</th></tr></thead>
     <tbody>${rows}</tbody>
   </table></div>`;
   aplicarFiltroDash('filtroRelGeral', 'conhecimentoWrap');
