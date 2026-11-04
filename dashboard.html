@@ -1197,7 +1197,7 @@ function renderRelatorioGeral(){
   document.getElementById('headerArea').innerHTML = `
   <div class="toolbar">
     <button class="btn" onclick="irPedido()">← ${esc(state.pedido)}</button>
-    <input class="filter-input" style="flex:1;min-width:260px" id="filtroRelGeral" placeholder="🔍 Filtrar por produto, descrição, desenho, desenho cliente, tag, remessa, status, LE ou nota fiscal..." oninput="aplicarFiltroDash('filtroRelGeral','relGeralWrap')">
+    <input class="filter-input" style="flex:1;min-width:260px" id="filtroRelGeral" placeholder="🔍 Filtrar por produto, fornecedor, descrição, desenho, desenho cliente, tag, remessa, status, LE ou nota fiscal..." oninput="aplicarFiltroDash('filtroRelGeral','relGeralWrap')">
   </div>`;
 
   const itens = todosItensDoPedido(state.pedido);
@@ -1207,7 +1207,8 @@ function renderRelatorioGeral(){
   const linha = it => {
     const les = (it.expedicoes || []).map(e => e.numero ? `${e.numero}${e.notaFiscal ? ' (NF ' + e.notaFiscal + ')' : ''}` : null).filter(Boolean).join(', ') || '—';
     const notasFiscais = (it.expedicoes || []).map(e => e.notaFiscal).filter(Boolean).join(' ');
-    const chave = `${state.pedido} ${cli?.cliente||''} ${it.produto||''} ${it.descricao||''} ${it.desenho||''} ${it.desenho_cliente||''} ${it.tag||''} ${it.remessa||''} ${it.status_expedicao||''} ${les} ${notasFiscais}`.toLowerCase();
+    const fornecedor = grupoFornecedorDoItem(it);
+    const chave = `${state.pedido} ${cli?.cliente||''} ${it.produto||''} ${fornecedor} ${it.descricao||''} ${it.desenho||''} ${it.desenho_cliente||''} ${it.tag||''} ${it.remessa||''} ${it.status_expedicao||''} ${les} ${notasFiscais}`.toLowerCase();
     const statusHtml = it.status_expedicao === 'expedido' ? '<span class="status-badge sb-ok">Expedido</span>'
       : it.status_expedicao === 'parcial' ? '<span class="status-badge sb-info">Em Aberto (parcial)</span>'
       : '<span class="status-badge sb-info">Em Aberto</span>';
@@ -1215,6 +1216,7 @@ function renderRelatorioGeral(){
       <td>${esc(state.pedido)}</td>
       <td>${esc(cli?.cliente || '')}</td>
       <td>${esc(it.produto || '')}</td>
+      <td>${esc(fornecedor)}</td>
       <td class="desc-cell">${esc(it.descricao || '—')}</td>
       <td>${esc(it.desenho || '')}</td>
       <td>${esc(it.desenho_cliente || '—')}</td>
@@ -1235,14 +1237,14 @@ function renderRelatorioGeral(){
     <div class="section-title">Relatório Geral — ${esc(state.pedido)}${cli?.cliente ? ' · ' + esc(cli.cliente) : ''}</div>
     <div id="relGeralWrap" class="tbl-wrap"><table class="dtbl">
       <thead><tr>
-        <th>Pedido</th><th>Cliente</th><th>Produto</th><th>Descrição</th><th>Desenho MDE</th><th>Desenho Cliente</th><th>TAG</th><th>Remessa</th>
+        <th>Pedido</th><th>Cliente</th><th>Produto</th><th>Fornecedor</th><th>Descrição</th><th>Desenho MDE</th><th>Desenho Cliente</th><th>TAG</th><th>Remessa</th>
         <th class="r">Quantidade</th><th class="r">% Fabricado</th><th class="r">Qtd. expedida</th><th class="r">Saldo</th><th>Status</th><th>Romaneio/LE</th><th>Arquivo</th>
       </tr></thead>
       <tbody>
-        <tr class="group-row"><td colspan="15">Itens em Aberto (${abertos.length})</td></tr>
-        ${abertos.length ? abertos.map(linha).join('') : `<tr><td colspan="15" class="empty">Nenhum item em aberto.</td></tr>`}
-        <tr class="group-row"><td colspan="15">Itens Expedidos (${expedidos.length})</td></tr>
-        ${expedidos.length ? expedidos.map(linha).join('') : `<tr><td colspan="15" class="empty">Nenhum item expedido ainda.</td></tr>`}
+        <tr class="group-row"><td colspan="16">Itens em Aberto (${abertos.length})</td></tr>
+        ${abertos.length ? abertos.map(linha).join('') : `<tr><td colspan="16" class="empty">Nenhum item em aberto.</td></tr>`}
+        <tr class="group-row"><td colspan="16">Itens Expedidos (${expedidos.length})</td></tr>
+        ${expedidos.length ? expedidos.map(linha).join('') : `<tr><td colspan="16" class="empty">Nenhum item expedido ainda.</td></tr>`}
       </tbody>
     </table></div>
     </div>`;
