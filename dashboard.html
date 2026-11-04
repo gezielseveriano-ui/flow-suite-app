@@ -1197,7 +1197,7 @@ function renderRelatorioGeral(){
   document.getElementById('headerArea').innerHTML = `
   <div class="toolbar">
     <button class="btn" onclick="irPedido()">← ${esc(state.pedido)}</button>
-    <input class="filter-input" style="flex:1;min-width:260px" id="filtroRelGeral" placeholder="🔍 Filtrar por produto, fornecedor, descrição, desenho, desenho cliente, tag, remessa, status, LE ou nota fiscal..." oninput="aplicarFiltroDash('filtroRelGeral','relGeralWrap')">
+    <input class="filter-input" style="flex:1;min-width:260px" id="filtroRelGeral" placeholder="🔍 Filtrar por produto, fornecedor, descrição, desenho, desenho cliente, tag, remessa, status, LE ou nota fiscal..." oninput="aplicarFiltroDash('filtroRelGeral','relGeralWrap');aplicarFiltroDash('filtroRelGeral','conhecimentoWrap')">
   </div>`;
 
   const itens = todosItensDoPedido(state.pedido);
@@ -1247,8 +1247,51 @@ function renderRelatorioGeral(){
         ${expedidos.length ? expedidos.map(linha).join('') : `<tr><td colspan="16" class="empty">Nenhum item expedido ainda.</td></tr>`}
       </tbody>
     </table></div>
+    </div>
+    <div class="section" id="conhecimentoSec" style="padding-top:1.25rem">
+      <div class="section-title">Desenhos para Conhecimento — ${esc(state.pedido)}</div>
+      <div class="empty">Carregando desenhos...</div>
     </div>`;
   setStatus(`Relatório Geral · ${state.pedido} · ${itens.length} itens · ${abertos.length} em aberto · ${expedidos.length} expedidos`);
+  carregarDesenhosConhecimento(state.pedido);
+}
+
+/* desenhos marcados como "Conhecimento" na Engenharia não geram item de
+   produção, então não aparecem na tabela acima -- listados à parte pra quem
+   está na obra poder baixar e analisar */
+async function carregarDesenhosConhecimento(numeroPedido){
+  const sec = document.getElementById('conhecimentoSec');
+  const pedido = PEDIDOS_INFO[numeroPedido];
+  if (!sec || !pedido) return;
+  const { data, error } = await sb.from('desenhos_engenharia')
+    .select('id, codigo_mde, desenho_mde, desenho_cliente, revisao, nome_equipamento, observacao, arquivo_path, remessa, remessas(numero), tags(nome)')
+    .eq('pedido_id', pedido.id).eq('is_conhecimento', true)
+    .order('desenho_mde');
+  // o usuário pode ter saído da tela enquanto carregava
+  if (state.tela !== 'relatorioGeral' || state.pedido !== numeroPedido) return;
+  const titulo = `<div class="section-title">Desenhos para Conhecimento — ${esc(numeroPedido)}${data ? ' (' + data.length + ')' : ''}</div>`;
+  if (error){ sec.innerHTML = titulo + `<div class="empty">Erro ao carregar desenhos: ${esc(error.message)}</div>`; return; }
+  if (!data.length){ sec.innerHTML = titulo + `<div class="empty">Nenhum desenho para conhecimento neste pedido.</div>`; return; }
+  const rows = data.map(d => {
+    const remessa = d.remessas?.numero ?? d.remessa ?? '';
+    const chave = `${numeroPedido} ${d.codigo_mde||''} ${d.desenho_mde||''} ${d.desenho_cliente||''} ${d.nome_equipamento||''} ${d.tags?.nome||''} ${remessa} ${d.observacao||''} conhecimento`.toLowerCase();
+    return `<tr data-search="${esc(chave)}">
+      <td>${esc(d.codigo_mde ?? '')}</td>
+      <td>${esc(d.desenho_mde || '')}</td>
+      <td>${esc(d.desenho_cliente || '—')}</td>
+      <td>${esc(d.revisao || '—')}</td>
+      <td class="desc-cell">${esc(d.nome_equipamento || '—')}</td>
+      <td>${esc(d.tags?.nome || '—')}</td>
+      <td>${esc(remessa || '—')}</td>
+      <td class="desc-cell">${esc(d.observacao || '—')}</td>
+      <td>${d.arquivo_path ? `<span class="btn" onclick="baixarDesenho(${d.id}, this)">📎 Baixar</span>` : '—'}</td>
+    </tr>`;
+  }).join('');
+  sec.innerHTML = titulo + `<div id="conhecimentoWrap" class="tbl-wrap"><table class="dtbl">
+    <thead><tr><th>Cód. MDE</th><th>Desenho MDE</th><th>Desenho Cliente</th><th>Rev.</th><th>Nome do equipamento</th><th>TAG</th><th>Remessa</th><th>Observação</th><th>Arquivo</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table></div>`;
+  aplicarFiltroDash('filtroRelGeral', 'conhecimentoWrap');
 }
 
 /* ── ITENS EXPEDIDOS (consolidado de todos os romaneios do pedido) ── */
