@@ -152,7 +152,12 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
   .dtbl tbody td{border:1px solid #ccc;white-space:normal}
   .dtbl tbody tr{page-break-inside:avoid}
   .status-badge{-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  .grafico-bloco{page-break-inside:avoid;margin-bottom:8mm}
+  /* gráficos: folha em pé, os 3 quadros numa página só */
+  @page graficos{size:A4 portrait;margin:10mm}
+  .graficos-print{page:graficos}
+  .grafico-bloco{page-break-inside:avoid;margin-bottom:5mm}
+  .grafico-bloco .kpi-title{font-size:12px}
+  .grafico-card{padding:4px 6px 0}
   .grafico-card{box-shadow:none}
   .grafico-card svg,.grafico-legenda i{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 }
@@ -640,8 +645,8 @@ function renderIndicadores(){
     <button class="btn" onclick="irLista()">← Voltar para lista de RNCs</button>
   </div>`;
   if (MODO_INDICADOR === 'graficos'){
-    h += `<div class="print-only print-head"><h1>Indicadores de RNC — MDE — ${ANO_INDICADOR}</h1><div>Impresso em ${new Date().toLocaleString('pt-BR')}</div></div>`;
-    h += INDICADORES.map(i => graficoIndicador(i.titulo, i.origem, i.objetivo)).join('');
+    h += `<div class="graficos-print"><div class="print-only print-head"><h1>Indicadores de RNC — MDE — ${ANO_INDICADOR}</h1><div>Impresso em ${new Date().toLocaleString('pt-BR')}</div></div>`;
+    h += INDICADORES.map(i => graficoIndicador(i.titulo, i.origem, i.objetivo)).join('') + `</div>`;
   } else {
     h += INDICADORES.map(i => tabelaIndicador(i.titulo, i.origem, i.objetivo)).join('');
   }
