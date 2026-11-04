@@ -178,6 +178,9 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 .lote-bar .edit-input{width:140px}
 .lote-bar .lote-chk input{width:15px;height:15px}
 .lote-alvo{font-size:11.5px;color:var(--text2)}
+.somente-leitura .so-editor{display:none !important}
+.aviso-leitura{margin:0 0 12px;padding:8px 14px;border-radius:10px;background:#FEF3C7;color:#92400E;font-size:12.5px}
+.edit-input:disabled{background:transparent;border-color:transparent;color:var(--text)}
 </style>
 </head>
 <body>
@@ -257,6 +260,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
       <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12.5 4 7 10l5.5 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
     <main class="content">
+      <div class="aviso-leitura" id="avisoLeitura" style="display:none">👁 Modo visualização — você pode consultar e tirar relatórios. Lançamentos e baixas só pelo Almoxarifado, Logística ou Administrador.</div>
       <div class="mod-tabs">
         <button class="mod-tab active" id="tabCompras" onclick="renderHome()">📦 Compras (SC / O.C.)</button>
         <button class="mod-tab" id="tabEstoque" onclick="renderEstoque()">🏷️ Estoque MDE</button>
@@ -496,9 +500,20 @@ function showMsg(text, ok){
 }
 function clearMsg(){ document.getElementById('msgBox').classList.remove('show'); }
 
+const PERFIS_EDITAM_ALMOX = ['almoxarifado', 'logistica', 'admin'];
+let PODE_EDITAR = false;
+const RO = () => PODE_EDITAR ? '' : 'disabled'; // atributo dos campos editáveis da tabela
+
 async function init(){
-  AUTH = await exigirLogin(['almoxarifado', 'logistica', 'admin']);
+  AUTH = await exigirLogin(null);
   if (!AUTH) return;
+  // todo perfil entra; quem não é almoxarifado/logística/admin fica só
+  // visualizando (o banco também recusa a escrita -- ver sql/066, 073, 075)
+  PODE_EDITAR = PERFIS_EDITAM_ALMOX.includes(AUTH.perfil);
+  if (!PODE_EDITAR){
+    document.body.classList.add('somente-leitura');
+    document.getElementById('avisoLeitura').style.display = '';
+  }
   document.getElementById('userNome').textContent = AUTH.nome;
   document.getElementById('userAvatar').textContent = (AUTH.nome || '').trim().split(/\s+/).map(p => p[0]).slice(0, 2).join('').toUpperCase() || '··';
   iniciarSininho('sininhoWrap');
@@ -545,9 +560,9 @@ async function renderHome(){
   const content = document.getElementById('content');
   content.innerHTML = `
     <div class="search-row">
-      <span class="btn btn-primary" onclick="document.getElementById('inputImportarSapiens').click()">📥 Importar Arquivo do Sapiens</span>
+      <span class="btn btn-primary so-editor" onclick="document.getElementById('inputImportarSapiens').click()">📥 Importar Arquivo do Sapiens</span>
       <input type="file" id="inputImportarSapiens" accept=".xlsx" style="display:none" onchange="onArquivoSapiensSelecionado(this)">
-      <span class="btn btn-primary" onclick="document.getElementById('inputImportarFornecedor').click()" title="Relatório de Ordem de Compra do Sapiens (1 O.C. por exportação) -- preenche o Fornecedor casando por SC+Item">🏭 Importar Fornecedores (O.C.)</span>
+      <span class="btn btn-primary so-editor" onclick="document.getElementById('inputImportarFornecedor').click()" title="Relatório de Ordem de Compra do Sapiens (1 O.C. por exportação) -- preenche o Fornecedor casando por SC+Item">🏭 Importar Fornecedores (O.C.)</span>
       <input type="file" id="inputImportarFornecedor" accept=".xlsx" style="display:none" onchange="onArquivoFornecedorSelecionado(this)">
     </div>
     <div class="search-row">
@@ -682,7 +697,7 @@ function renderDetalhe(itens){
       <span class="btn btn-primary" id="btnExportarItens" onclick="exportarItensSelecionadosExcel()" style="opacity:.5;pointer-events:none">📤 Exportar selecionados (Excel)</span>
       <span class="btn" onclick="gerarPdfCobranca()">📄 PDF de cobrança</span>
     </div>
-    <div class="lote-bar">
+    <div class="lote-bar so-editor">
       <strong>Lançar em lote</strong>
       <label>NF <input class="edit-input txt" id="loteNf" placeholder="nº da NF"></label>
       <label>Data Receb. NF <input class="edit-input" id="loteData" type="date"></label>
@@ -728,7 +743,7 @@ function renderTabela(itens){
         <th>SC</th><th>Item</th><th>Pedido</th><th>Família</th><th>Descrição</th><th>UM</th>
         <th>Fornecedor</th><th>OC</th><th>Sit. OC</th><th>Desenho</th>
         <th class="r">Qtd. Solic.</th><th class="r">Qtd. Recebida</th><th class="r">Qtd. Pendente</th>
-        <th>NF</th><th>Data Receb. NF</th><th>Observação</th><th>Status</th><th></th>
+        <th>NF</th><th>Data Receb. NF</th><th>Observação</th><th>Status</th><th class="so-editor"></th>
       </tr></thead>
       <tbody>
         ${itens.map(it => `
@@ -745,13 +760,13 @@ function renderTabela(itens){
           <td>${esc(it.situacao_oc || '—')}</td>
           <td>${esc(it.desenho || '—')}</td>
           <td class="r">${Number(it.quantidade_solicitada).toLocaleString('pt-BR')}</td>
-          <td class="r"><input class="edit-input" id="qtd-${it.id}" type="number" step="0.001" min="0" value="${it.quantidade_recebida}" oninput="marcarLinhaSuja(${it.id})" onblur="salvarRecebimento(${it.id}, {silencioso:true})"></td>
+          <td class="r"><input class="edit-input" id="qtd-${it.id}" type="number" step="0.001" min="0" ${RO()} value="${it.quantidade_recebida}" oninput="marcarLinhaSuja(${it.id})" onblur="salvarRecebimento(${it.id}, {silencioso:true})"></td>
           <td class="r" id="qtdPend-${it.id}">${Number(it.quantidade_pendente).toLocaleString('pt-BR')}</td>
-          <td><input class="edit-input txt" id="nf-${it.id}" value="${esc(it.nf || '')}" oninput="marcarLinhaSuja(${it.id})" onblur="salvarRecebimento(${it.id}, {silencioso:true})"></td>
-          <td><input class="edit-input" id="dataNf-${it.id}" type="date" value="${it.data_recebimento_nf || ''}" oninput="marcarLinhaSuja(${it.id})" onblur="salvarRecebimento(${it.id}, {silencioso:true})"></td>
-          <td><input class="edit-input txt" id="obs-${it.id}" value="${esc(it.observacao || '')}" oninput="marcarLinhaSuja(${it.id})" onblur="salvarRecebimento(${it.id}, {silencioso:true})"></td>
+          <td><input class="edit-input txt" id="nf-${it.id}" ${RO()} value="${esc(it.nf || '')}" oninput="marcarLinhaSuja(${it.id})" onblur="salvarRecebimento(${it.id}, {silencioso:true})"></td>
+          <td><input class="edit-input" id="dataNf-${it.id}" type="date" ${RO()} value="${it.data_recebimento_nf || ''}" oninput="marcarLinhaSuja(${it.id})" onblur="salvarRecebimento(${it.id}, {silencioso:true})"></td>
+          <td><input class="edit-input txt" id="obs-${it.id}" ${RO()} title="${esc(it.observacao || '')}" value="${esc(it.observacao || '')}" oninput="marcarLinhaSuja(${it.id})" onblur="salvarRecebimento(${it.id}, {silencioso:true})"></td>
           <td id="status-${it.id}">${badgeStatus(it.status_recebimento)}</td>
-          <td><span class="btn" id="btnSalvar-${it.id}" onclick="salvarRecebimento(${it.id})">Salvar</span></td>
+          <td class="so-editor"><span class="btn" id="btnSalvar-${it.id}" onclick="salvarRecebimento(${it.id})">Salvar</span></td>
         </tr>`).join('')}
       </tbody>
     </table>`;
@@ -1381,9 +1396,9 @@ async function renderEstoque(tipo){
   content.innerHTML = `
     <div class="chips" id="estChips"></div>
     <div class="search-row">
-      <span class="btn btn-primary" onclick="abrirMovimento('entrada')">➕ Entrada</span>
-      <span class="btn btn-baixa" onclick="abrirMovimento('saida')">➖ Saída (baixa)</span>
-      <span class="btn" onclick="abrirItemEstoque(null)">＋ Cadastrar item</span>
+      <span class="btn btn-primary so-editor" onclick="abrirMovimento('entrada')">➕ Entrada</span>
+      <span class="btn btn-baixa so-editor" onclick="abrirMovimento('saida')">➖ Saída (baixa)</span>
+      <span class="btn so-editor" onclick="abrirItemEstoque(null)">＋ Cadastrar item</span>
       <span style="flex:1"></span>
       <span class="btn" onclick="relatorioEstoqueExcel()" title="Saldo dos itens comprados e da matéria-prima, uma aba cada">📊 Relatório Excel</span>
       <span class="btn" onclick="relatorioEstoquePdf()" title="Saldo do que está filtrado na tela">📄 Relatório PDF</span>
@@ -1468,10 +1483,10 @@ function renderTabelaEstoque(){
             ${mp ? `<td class="r">${fmtNum(i.saldo_kg, 1)}</td>` : ''}
             <td class="r">${i.estoque_minimo != null ? fmtNum(i.estoque_minimo) : '—'}${abaixoDoMinimo(i) ? ' ⚠' : ''}</td>
             <td style="display:flex;gap:5px">
-              <span class="btn btn-mini" onclick="abrirMovimento('entrada', ${i.id})" title="Entrada">➕</span>
-              <span class="btn btn-mini" onclick="abrirMovimento('saida', ${i.id})" title="Saída (baixa)">➖</span>
+              <span class="btn btn-mini so-editor" onclick="abrirMovimento('entrada', ${i.id})" title="Entrada">➕</span>
+              <span class="btn btn-mini so-editor" onclick="abrirMovimento('saida', ${i.id})" title="Saída (baixa)">➖</span>
               <span class="btn btn-mini" onclick="abrirHistorico(${i.id})">Histórico</span>
-              <span class="btn btn-mini" onclick="abrirItemEstoque(${i.id})" title="Editar cadastro">✎</span>
+              <span class="btn btn-mini so-editor" onclick="abrirItemEstoque(${i.id})" title="Editar cadastro">✎</span>
             </td>
           </tr>`).join('')}
         </tbody>
@@ -1699,7 +1714,7 @@ async function renderHistorico(){
     const destino = m.tipo === 'saida'
       ? (m.estorno_de ? 'Estorno' : m.uso_interno ? 'Uso interno' : esc(m.pedidos?.numero_pedido || '—'))
       : (m.estorno_de ? 'Estorno' : esc(m.origem || '—'));
-    const podeEstornar = !m.estorno_de && !estornados.has(m.id);
+    const podeEstornar = PODE_EDITAR && !m.estorno_de && !estornados.has(m.id);
     return `<tr class="${estornados.has(m.id) ? 'row-estornado' : ''}" id="histRow-${m.id}">
       <td>${fmtData(m.data_movimento)}</td>
       <td class="${m.tipo === 'entrada' ? 'mov-entrada' : 'mov-saida'}">${m.tipo === 'entrada' ? '➕ Entrada' : '➖ Saída'}</td>
