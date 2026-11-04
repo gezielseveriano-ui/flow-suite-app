@@ -799,7 +799,11 @@ async function gerarDocumentoRNC(id){
   ]);
 
   rodape(doc.internal.getNumberOfPages());
-  doc.save(`RNC_${formatarNumeroRNC(r).replace('/','-')}.pdf`);
+  // nome do arquivo: RNC_02-2026_P-215_BOSTON.pdf (pedido e cliente quando houver)
+  const partesNome = ['RNC_' + formatarNumeroRNC(r).replace('/','-'), r.pedidos?.numero_pedido, r.pedidos?.cliente]
+    .filter(Boolean)
+    .map(p => String(p).trim().replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, '_'));
+  doc.save(partesNome.join('_') + '.pdf');
 }
 function esc_pdf(s){ return s == null ? '' : String(s); }
 
