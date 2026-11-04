@@ -173,6 +173,11 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 .link-acao{color:var(--blue);cursor:pointer;font-size:12px;font-weight:600}
 .link-acao:hover{text-decoration:underline}
 @media (max-width:640px){.form-grid{grid-template-columns:1fr}.content{padding:1.25rem 1rem}}
+.lote-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:-.4rem 0 1rem;padding:10px 14px;background:var(--bg2);border:1px dashed var(--border-strong, #CBD5E1);border-radius:var(--radius-sm, 10px);font-size:12.5px}
+.lote-bar label{display:inline-flex;align-items:center;gap:6px;color:var(--text2)}
+.lote-bar .edit-input{width:140px}
+.lote-bar .lote-chk input{width:15px;height:15px}
+.lote-alvo{font-size:11.5px;color:var(--text2)}
 </style>
 </head>
 <body>
@@ -677,6 +682,14 @@ function renderDetalhe(itens){
       <span class="btn btn-primary" id="btnExportarItens" onclick="exportarItensSelecionadosExcel()" style="opacity:.5;pointer-events:none">📤 Exportar selecionados (Excel)</span>
       <span class="btn" onclick="gerarPdfCobranca()">📄 PDF de cobrança</span>
     </div>
+    <div class="lote-bar">
+      <strong>Lançar em lote</strong>
+      <label>NF <input class="edit-input txt" id="loteNf" placeholder="nº da NF"></label>
+      <label>Data Receb. NF <input class="edit-input" id="loteData" type="date"></label>
+      <label class="lote-chk"><input type="checkbox" id="loteQtdTotal"> Qtd. recebida = Qtd. solicitada</label>
+      <span class="btn btn-primary" id="btnLote" onclick="aplicarLote()">Aplicar</span>
+      <span class="lote-alvo" id="loteAlvo"></span>
+    </div>
     <div class="tbl-wrap" id="tblWrap"></div>`;
   aplicarFiltros();
 }
@@ -744,6 +757,51 @@ function renderTabela(itens){
     </table>`;
   atualizarBotaoExportarItens();
   conectarBarraFlutuanteNaTabela();
+  atualizarAlvoLote();
+}
+
+// ── LANÇAR EM LOTE ──────────────────────────────────────────────────────────
+// chega uma NF com dezenas de itens da mesma OC: filtra a OC, preenche NF e
+// data uma vez e aplica em todas as linhas filtradas (ou só nas marcadas, se
+// tiver alguma marcada) -- e já salva, uma por uma, pela mesma RPC da linha.
+function linhasAlvoLote(){
+  const visiveis = window.__itensRenderizados || [];
+  const marcadas = visiveis.filter(it => itensSelecionados.has(it.id));
+  return marcadas.length ? { itens: marcadas, tipo: 'marcados' } : { itens: visiveis, tipo: 'filtrados' };
+}
+function atualizarAlvoLote(){
+  const el = document.getElementById('loteAlvo');
+  if (!el) return;
+  const { itens, tipo } = linhasAlvoLote();
+  el.textContent = `vai aplicar em ${itens.length} item(ns) ${tipo}`;
+}
+async function aplicarLote(){
+  const nf = document.getElementById('loteNf').value.trim();
+  const data = document.getElementById('loteData').value;
+  const qtdTotal = document.getElementById('loteQtdTotal').checked;
+  if (!nf && !data && !qtdTotal){ showMsg('Preencha a NF, a data ou marque "Qtd. recebida = Qtd. solicitada".', false); return; }
+  const { itens, tipo } = linhasAlvoLote();
+  if (!itens.length){ showMsg('Nenhum item na lista.', false); return; }
+  const oque = [nf && `NF ${nf}`, data && `data ${data.split('-').reverse().join('/')}`, qtdTotal && 'qtd. recebida = solicitada'].filter(Boolean).join(', ');
+  if (!confirm(`Aplicar ${oque} em ${itens.length} item(ns) ${tipo}?`)) return;
+
+  const btn = document.getElementById('btnLote');
+  btn.style.pointerEvents = 'none'; btn.style.opacity = '.6';
+  itens.forEach(it => {
+    if (nf) document.getElementById(`nf-${it.id}`).value = nf;
+    if (data) document.getElementById(`dataNf-${it.id}`).value = data;
+    if (qtdTotal) document.getElementById(`qtd-${it.id}`).value = Number(it.quantidade_solicitada);
+    linhasSujas.add(it.id); // sai da lista quando salvar com sucesso
+  });
+  let feitos = 0;
+  for (const it of itens){
+    btn.textContent = `Salvando ${++feitos}/${itens.length}...`;
+    await salvarRecebimento(it.id, { silencioso: true });
+  }
+  btn.textContent = 'Aplicar'; btn.style.pointerEvents = ''; btn.style.opacity = '';
+  const comErro = itens.filter(it => linhasSujas.has(it.id)).length;
+  if (comErro) showMsg(`${itens.length - comErro} item(ns) salvos; ${comErro} com erro (botão Salvar em destaque).`, false);
+  else showMsg(`${itens.length} item(ns) atualizados.`, true);
 }
 
 // ── SELECIONAR ITENS E EXPORTAR EM EXCEL ────────────────────────────────────
@@ -752,12 +810,14 @@ function toggleItemSelecionado(id, marcado){
   const chkTodos = document.getElementById('chkTodosItens');
   if (chkTodos) chkTodos.checked = (window.__itensRenderizados || []).every(it => itensSelecionados.has(it.id));
   atualizarBotaoExportarItens();
+  atualizarAlvoLote();
 }
 
 function toggleTodosItens(marcado){
   (window.__itensRenderizados || []).forEach(it => marcado ? itensSelecionados.add(it.id) : itensSelecionados.delete(it.id));
   document.querySelectorAll('.chkItem').forEach(chk => chk.checked = marcado);
   atualizarBotaoExportarItens();
+  atualizarAlvoLote();
 }
 
 function atualizarBotaoExportarItens(){
