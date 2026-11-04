@@ -136,11 +136,17 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 .grafico-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-sm);padding:10px 12px 4px}
 .grafico-card svg{display:block}
 
+.mod-tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:1rem}
+.mod-tab{padding:9px 16px;border:none;background:none;font-size:13px;font-weight:500;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;font-family:inherit}
+.mod-tab:hover{color:var(--text)}
+.mod-tab.active{color:var(--blue);border-bottom-color:var(--blue);font-weight:600}
+.dtbl td.desc-desvio{max-width:320px;overflow:hidden;text-overflow:ellipsis}
+
 .print-only{display:none}
 @media print{
   @page{size:A4 landscape;margin:10mm}
   body{background:#fff}
-  .app-header,.sidebar,.sidebar-fab,.nav-bar,.msg-box,.search-row,.no-print{display:none !important}
+  .app-header,.sidebar,.sidebar-fab,.nav-bar,.mod-tabs,.msg-box,.search-row,.no-print{display:none !important}
   .app-shell,.app-body{display:block;min-height:0}
   .content{padding:0;overflow:visible}
   .print-only{display:block}
@@ -241,6 +247,10 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
       <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12.5 4 7 10l5.5 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
     <main class="content">
+      <div class="mod-tabs">
+        <button class="mod-tab active" id="tabRNC" onclick="irLista()">📋 RNCs</button>
+        <button class="mod-tab" id="tabDesvios" onclick="irDesvios()">⚠️ Controle de Desvio Cliente</button>
+      </div>
       <div class="nav-bar" id="navBar"></div>
       <div id="msgBox" class="msg-box"></div>
       <div id="content"><div class="empty">Carregando...</div></div>
@@ -284,7 +294,7 @@ async function init(){
   const { data: pedidos } = await sb.from('pedidos').select('id, numero_pedido, cliente').order('numero_pedido');
   PEDIDOS = pedidos || [];
 
-  await carregarRNCs();
+  await Promise.all([carregarRNCs(), carregarDesvios()]);
   irLista();
 }
 
@@ -317,9 +327,18 @@ const SUGESTOES_DEBITO = ['ENGENHARIA', 'PCP', 'FÁBRICA', 'MONTAGEM', 'QUALIDAD
 // ── NAVEGAÇÃO ────────────────────────────────────────────────────────────
 function renderNav(){
   const nav = document.getElementById('navBar');
-  let h = `<span class="nav-crumb ${VISAO==='lista'?'active':''}" onclick="irLista()">Qualidade — RNCs</span>`;
-  if (VISAO === 'form') h += `<span class="nav-sep">›</span><span class="nav-crumb active">${RNC_EDITANDO ? 'Editar RNC ' + formatarNumeroRNC(RNC_EDITANDO) : 'Novo RNC'}</span>`;
-  if (VISAO === 'indicadores') h += `<span class="nav-sep">›</span><span class="nav-crumb active">Indicador RNCs</span>`;
+  const emDesvios = VISAO === 'desvios' || VISAO === 'desvioForm';
+  document.getElementById('tabRNC').classList.toggle('active', !emDesvios);
+  document.getElementById('tabDesvios').classList.toggle('active', emDesvios);
+  let h;
+  if (emDesvios){
+    h = `<span class="nav-crumb ${VISAO==='desvios'?'active':''}" onclick="irDesvios()">Qualidade — Controle de Desvio Cliente</span>`;
+    if (VISAO === 'desvioForm') h += `<span class="nav-sep">›</span><span class="nav-crumb active">${DESVIO_EDITANDO ? 'Editar Desvio ' + formatarNumeroDesvio(DESVIO_EDITANDO) : 'Novo Desvio'}</span>`;
+  } else {
+    h = `<span class="nav-crumb ${VISAO==='lista'?'active':''}" onclick="irLista()">Qualidade — RNCs</span>`;
+    if (VISAO === 'form') h += `<span class="nav-sep">›</span><span class="nav-crumb active">${RNC_EDITANDO ? 'Editar RNC ' + formatarNumeroRNC(RNC_EDITANDO) : 'Novo RNC'}</span>`;
+    if (VISAO === 'indicadores') h += `<span class="nav-sep">›</span><span class="nav-crumb active">Indicador RNCs</span>`;
+  }
   nav.innerHTML = h;
 }
 
@@ -331,6 +350,205 @@ function irEditar(id){
   VISAO = 'form'; RNC_EDITANDO = r; renderNav(); renderForm(r); clearMsg();
 }
 function irIndicadores(){ VISAO = 'indicadores'; RNC_EDITANDO = null; renderNav(); renderIndicadores(); clearMsg(); }
+function irDesvios(){ VISAO = 'desvios'; DESVIO_EDITANDO = null; renderNav(); renderListaDesvios(); clearMsg(); }
+function irNovoDesvio(){ VISAO = 'desvioForm'; DESVIO_EDITANDO = null; renderNav(); renderFormDesvio(null); clearMsg(); }
+function irEditarDesvio(id){
+  const d = DESVIOS.find(x => x.id === id);
+  if (!d) return;
+  VISAO = 'desvioForm'; DESVIO_EDITANDO = d; renderNav(); renderFormDesvio(d); clearMsg();
+}
+
+// ── CONTROLE DE DESVIO CLIENTE (aba "Controle de Desvio Cliente" da MG-008) ──
+// tipo "RNC" conta no quadro Reclamação de Cliente do Indicador; "Desvio" não.
+let DESVIOS = [];
+let DESVIO_EDITANDO = null;
+let FILTRO_DESVIO_TERMO = '', FILTRO_DESVIO_STATUS = '', FILTRO_DESVIO_TIPO = '';
+const LABEL_TIPO_DESVIO = { rnc: 'RNC', desvio: 'Desvio' };
+const LABEL_STATUS_DESVIO = { em_aberto: 'Em Aberto', encerrado: 'Encerrado' };
+
+async function carregarDesvios(){
+  const { data, error } = await sb
+    .from('desvios_cliente')
+    .select('*, pedidos(numero_pedido, cliente)')
+    .order('ano_desvio', { ascending: false })
+    .order('numero_desvio', { ascending: false });
+  if (error){ DESVIOS = []; console.warn('desvios_cliente:', error.message); return; }
+  DESVIOS = data || [];
+}
+function formatarNumeroDesvio(d){ return String(d.numero_desvio).padStart(2, '0') + '/' + d.ano_desvio; }
+
+function filtrarDesvios(){
+  const termo = FILTRO_DESVIO_TERMO.toLowerCase();
+  return DESVIOS.filter(d => {
+    if (FILTRO_DESVIO_STATUS && d.status_desvio !== FILTRO_DESVIO_STATUS) return false;
+    if (FILTRO_DESVIO_TIPO && d.tipo !== FILTRO_DESVIO_TIPO) return false;
+    if (!termo) return true;
+    const chave = `${formatarNumeroDesvio(d)} ${d.empresa||''} ${d.cliente||''} ${d.pedidos?.numero_pedido||''} ${d.desenho||''} ${d.desenho_cliente||''} ${d.posicao||''} ${d.tag||''} ${LABEL_TIPO_DESVIO[d.tipo]||''} ${d.descricao||''} ${d.responsavel_resposta||''} ${d.resposta||''} ${d.debito||''}`.toLowerCase();
+    return chave.includes(termo);
+  });
+}
+
+function renderListaDesvios(){
+  document.getElementById('content').innerHTML = `<div class="search-row">
+    <input class="main" placeholder="🔍 Buscar por número, cliente, pedido, desenho, TAG, descrição, responsável..." value="${esc(FILTRO_DESVIO_TERMO)}" oninput="FILTRO_DESVIO_TERMO=this.value;renderTabelaDesvios()">
+    <select onchange="FILTRO_DESVIO_TIPO=this.value;renderTabelaDesvios()">
+      <option value="">Todos os tipos</option>
+      <option value="rnc" ${FILTRO_DESVIO_TIPO==='rnc'?'selected':''}>RNC</option>
+      <option value="desvio" ${FILTRO_DESVIO_TIPO==='desvio'?'selected':''}>Desvio</option>
+    </select>
+    <select onchange="FILTRO_DESVIO_STATUS=this.value;renderTabelaDesvios()">
+      <option value="">Todos os status</option>
+      <option value="em_aberto" ${FILTRO_DESVIO_STATUS==='em_aberto'?'selected':''}>Em Aberto</option>
+      <option value="encerrado" ${FILTRO_DESVIO_STATUS==='encerrado'?'selected':''}>Encerrado</option>
+    </select>
+    <button class="btn" onclick="window.print()">🖨 Imprimir lista</button>
+    <button class="btn btn-primary" onclick="irNovoDesvio()">+ Novo Desvio</button>
+  </div>
+  <div id="tabelaDesvios"></div>`;
+  renderTabelaDesvios();
+}
+
+function renderTabelaDesvios(){
+  const itens = filtrarDesvios();
+  const filtros = [FILTRO_DESVIO_TERMO.trim() ? 'Busca: "' + FILTRO_DESVIO_TERMO.trim() + '"' : '', FILTRO_DESVIO_TIPO ? 'Tipo: ' + LABEL_TIPO_DESVIO[FILTRO_DESVIO_TIPO] : '', FILTRO_DESVIO_STATUS ? 'Status: ' + LABEL_STATUS_DESVIO[FILTRO_DESVIO_STATUS] : ''].filter(Boolean).join(' · ') || 'Todos os desvios';
+  let h = `<div class="print-only print-head">
+    <h1>Controle de Desvios Cliente — MDE</h1>
+    <div>${esc(filtros)} · ${itens.length} registro(s)<br>Impresso em ${new Date().toLocaleString('pt-BR')}</div>
+  </div>`;
+  if (!itens.length){
+    h += `<div class="empty">Nenhum desvio encontrado.</div>`;
+  } else {
+    h += `<div class="tbl-wrap"><table class="dtbl">
+      <thead><tr>
+        <th>Nº Desvio</th><th>Status</th><th>Tipo</th><th>Empresa</th><th>Cliente</th><th>Pedido</th><th>Desenho</th><th>Desenho Cliente</th>
+        <th>Posição</th><th>TAG</th><th>Data</th><th>Descrição</th><th>Prazo Resposta</th><th>Responsável</th><th>Prazo Execução</th><th class="r">Custo</th><th>Débito</th>
+      </tr></thead>
+      <tbody>${itens.map(d => `
+        <tr onclick="irEditarDesvio(${d.id})">
+          <td class="rnc-num">${formatarNumeroDesvio(d)}</td>
+          <td><span class="status-badge ${d.status_desvio==='encerrado'?'sb-encerrado':'sb-aberto'}">${LABEL_STATUS_DESVIO[d.status_desvio]||d.status_desvio}</span></td>
+          <td>${d.tipo==='rnc' ? '<span class="pill-count">RNC</span>' : 'Desvio'}</td>
+          <td>${esc(d.empresa)}</td>
+          <td>${esc(d.cliente || d.pedidos?.cliente || '—')}</td>
+          <td>${esc(d.pedidos?.numero_pedido || '—')}</td>
+          <td>${esc(d.desenho || '—')}</td>
+          <td>${esc(d.desenho_cliente || '—')}</td>
+          <td>${esc(d.posicao || '—')}</td>
+          <td>${esc(d.tag || '—')}</td>
+          <td>${fmtData(d.data_desvio)}</td>
+          <td class="desc-desvio" title="${esc(d.descricao || '')}">${esc(d.descricao || '—')}</td>
+          <td>${fmtData(d.prazo_resposta)}</td>
+          <td>${esc(d.responsavel_resposta || '—')}</td>
+          <td>${fmtData(d.prazo_execucao)}</td>
+          <td class="r">${d.custo != null ? 'R$ ' + Number(d.custo).toLocaleString('pt-BR', {minimumFractionDigits:2}) : '—'}</td>
+          <td>${esc(d.debito || '—')}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table></div>`;
+  }
+  document.getElementById('tabelaDesvios').innerHTML = h;
+}
+
+function renderFormDesvio(d){
+  const pedidoOpts = PEDIDOS.map(p => `<option value="${p.id}" ${d&&d.pedido_id===p.id?'selected':''}>${esc(p.numero_pedido)}${p.cliente?' · '+esc(p.cliente):''}</option>`).join('');
+  document.getElementById('content').innerHTML = `<div class="section">
+    <div class="section-title">Identificação</div>
+    <div class="form-grid">
+      <div class="field"><label>Número do Desvio</label><input value="${d ? formatarNumeroDesvio(d) : 'gerado automaticamente'}" disabled></div>
+      ${campoSelect('status_desvio', 'Status do Desvio', d?.status_desvio || 'em_aberto', [['em_aberto','Em Aberto'],['encerrado','Encerrado']])}
+      <div class="field">
+        <label>Tipo de Desvio</label>
+        <div class="radio-group">
+          <label class="radio-opt"><input type="radio" name="tipo_desvio_cli" value="rnc" ${d?.tipo==='rnc'?'checked':''}> RNC <span style="color:var(--text2);font-size:11px">(entra no indicador)</span></label>
+          <label class="radio-opt"><input type="radio" name="tipo_desvio_cli" value="desvio" ${!d || d.tipo==='desvio'?'checked':''}> Desvio</label>
+        </div>
+      </div>
+      ${campoSelect('empresa', 'Empresa', d?.empresa, EMPRESAS.map(e => [e,e]))}
+      <div class="field"><label for="f_pedido_id">Pedido</label><select id="f_pedido_id" onchange="preencherClienteDoPedido(this.value)"><option value="">— sem pedido —</option>${pedidoOpts}</select></div>
+      ${campoTexto('cliente', 'Cliente', d?.cliente)}
+      ${campoTexto('data_desvio', 'Data', d?.data_desvio || new Date().toISOString().slice(0,10), {type:'date'})}
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Desenho / Item</div>
+    <div class="form-grid">
+      ${campoTexto('desenho', 'Desenho', d?.desenho)}
+      ${campoTexto('desenho_cliente', 'Desenho Cliente', d?.desenho_cliente)}
+      ${campoTexto('posicao', 'Posição', d?.posicao)}
+      ${campoTexto('tag', 'TAG', d?.tag)}
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Descrição e Resposta</div>
+    <div class="form-grid">
+      ${campoArea('descricao', 'Descrição', d?.descricao, true)}
+      ${campoTexto('prazo_resposta', 'Prazo para Resposta', d?.prazo_resposta, {type:'date'})}
+      ${campoTexto('responsavel_resposta', 'Responsável pela Resposta', d?.responsavel_resposta, {sugestoes: SUGESTOES_RESPONSAVEL_NC})}
+      ${campoArea('resposta', 'Resposta', d?.resposta, true)}
+      ${campoTexto('prazo_execucao', 'Prazo para Execução', d?.prazo_execucao, {type:'date'})}
+      ${campoTexto('custo', 'Custo (R$)', d?.custo, {type:'number', step:'0.01'})}
+      ${campoTexto('debito', 'Débito', d?.debito, {sugestoes: SUGESTOES_DEBITO})}
+    </div>
+  </div>
+
+  <div class="form-actions">
+    <button class="btn" onclick="irDesvios()">Cancelar</button>
+    <button class="btn btn-primary" id="btnSalvarDesvio" onclick="salvarDesvio()">${d ? 'Salvar alterações' : 'Criar Desvio'}</button>
+  </div>`;
+}
+
+function preencherClienteDoPedido(pedidoId){
+  const campo = document.getElementById('f_cliente');
+  const p = PEDIDOS.find(x => x.id === Number(pedidoId));
+  if (campo && p?.cliente && !campo.value.trim()) campo.value = p.cliente;
+}
+
+async function salvarDesvio(){
+  const v = id => document.getElementById('f_' + id)?.value ?? '';
+  const dados = {
+    status_desvio: v('status_desvio') || 'em_aberto',
+    tipo: document.querySelector('input[name="tipo_desvio_cli"]:checked')?.value || 'desvio',
+    empresa: v('empresa'),
+    pedido_id: v('pedido_id') ? Number(v('pedido_id')) : null,
+    cliente: v('cliente') || null,
+    data_desvio: v('data_desvio') || null,
+    desenho: v('desenho') || null,
+    desenho_cliente: v('desenho_cliente') || null,
+    posicao: v('posicao') || null,
+    tag: v('tag') || null,
+    descricao: v('descricao') || null,
+    prazo_resposta: v('prazo_resposta') || null,
+    responsavel_resposta: v('responsavel_resposta') || null,
+    resposta: v('resposta') || null,
+    prazo_execucao: v('prazo_execucao') || null,
+    custo: v('custo') ? Number(v('custo')) : null,
+    debito: v('debito') || null,
+  };
+  if (!dados.empresa){ showMsg('Selecione a Empresa.', false); return; }
+  if (!dados.data_desvio){ showMsg('Informe a Data.', false); return; }
+
+  const btn = document.getElementById('btnSalvarDesvio');
+  btn.disabled = true; const txt = btn.textContent; btn.textContent = 'Salvando...';
+  try {
+    if (DESVIO_EDITANDO){
+      const { error } = await sb.from('desvios_cliente').update(dados).eq('id', DESVIO_EDITANDO.id);
+      if (error) throw error;
+      showMsg('Desvio ' + formatarNumeroDesvio(DESVIO_EDITANDO) + ' atualizado.', true);
+    } else {
+      const { error } = await sb.from('desvios_cliente').insert(dados);
+      if (error) throw error;
+      showMsg('Desvio criado com sucesso.', true);
+    }
+    await carregarDesvios();
+    VISAO = 'desvios'; DESVIO_EDITANDO = null; renderNav(); renderListaDesvios();
+  } catch (e){
+    showMsg('Erro ao salvar: ' + e.message, false);
+  } finally {
+    btn.disabled = false; btn.textContent = txt;
+  }
+}
 
 // ── LISTA ────────────────────────────────────────────────────────────────
 let FILTRO_STATUS = '';
@@ -602,13 +820,18 @@ const INDICADORES = [
   { titulo: 'Controle Interno de RNC', origem: 'interno', objetivo: 5 },
   { titulo: 'Controle de RNC Fornecedores', origem: 'fornecedor', objetivo: 5 },
 ];
+function noMes(data, mIdx){
+  if (!data) return false;
+  const d = new Date(data + 'T00:00:00');
+  return d.getFullYear() === ANO_INDICADOR && d.getMonth() === mIdx;
+}
 function contagensIndicador(origemFiltro){
   return EMPRESAS.map(emp => {
-    const contagens = MESES.map((_, mIdx) => RNCS.filter(r =>
-      r.empresa === emp && r.origem_rnc === origemFiltro && r.data_abertura &&
-      new Date(r.data_abertura + 'T00:00:00').getFullYear() === ANO_INDICADOR &&
-      new Date(r.data_abertura + 'T00:00:00').getMonth() === mIdx
-    ).length);
+    const contagens = MESES.map((_, mIdx) =>
+      RNCS.filter(r => r.empresa === emp && r.origem_rnc === origemFiltro && noMes(r.data_abertura, mIdx)).length
+      // desvio de cliente marcado como "RNC" conta na reclamação de cliente
+      + (origemFiltro === 'cliente' ? DESVIOS.filter(d => d.empresa === emp && d.tipo === 'rnc' && noMes(d.data_desvio, mIdx)).length : 0)
+    );
     const total = contagens.reduce((a,b) => a+b, 0);
     return { emp, contagens, total };
   });
