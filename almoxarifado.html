@@ -179,6 +179,8 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 .prot-cnpj{display:flex;gap:8px;flex-wrap:wrap}
 .prot-cnpj label{display:flex;align-items:center;gap:6px;padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg2);font-size:12.5px;cursor:pointer}
 .prot-cnpj label.on{border-color:var(--blue);color:var(--blue);font-weight:600}
+.somente-leitura-msg{display:none}
+.somente-leitura .somente-leitura-msg{display:block}
 .prot-sec{font-size:14px;font-weight:700;margin:1.5rem 0 .6rem}
 .dtbl select.cert{padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);color:var(--text);font-size:12px}
 .lote-bar .lote-chk input{width:15px;height:15px}
@@ -269,7 +271,8 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
       <div class="mod-tabs">
         <button class="mod-tab active" id="tabCompras" onclick="renderHome()">📦 Compras (SC / O.C.)</button>
         <button class="mod-tab" id="tabEstoque" onclick="renderEstoque()">🏷️ Estoque MDE</button>
-        <button class="mod-tab" id="tabProtocolo" onclick="renderProtocolo()">📑 Protocolo</button>
+        <button class="mod-tab" id="tabProtocolo" onclick="renderProtocolo('gerar')">📑 Protocolo</button>
+        <button class="mod-tab" id="tabProtocolosGerados" onclick="renderProtocolo('gerados')">🗂️ Protocolos gerados</button>
       </div>
       <div class="nav-bar" id="navBar"></div>
       <div id="msgBox" class="msg-box"></div>
@@ -525,7 +528,8 @@ async function init(){
   iniciarSininho('sininhoWrap');
   iniciarCartinha('cartinhaWrap');
   if (location.hash === '#estoque') await renderEstoque();
-  else if (location.hash === '#protocolo') await renderProtocolo();
+  else if (location.hash === '#protocolo') await renderProtocolo('gerar');
+  else if (location.hash === '#protocolos') await renderProtocolo('gerados');
   else await renderHome();
 }
 
@@ -1402,7 +1406,8 @@ function marcarAbaModulo(qual){
   document.getElementById('tabCompras').classList.toggle('active', qual === 'compras');
   document.getElementById('tabEstoque').classList.toggle('active', qual === 'estoque');
   document.getElementById('tabProtocolo').classList.toggle('active', qual === 'protocolo');
-  try { history.replaceState(null, '', qual === 'estoque' || qual === 'protocolo' ? '#' + qual : location.pathname + location.search); } catch (e) {}
+  document.getElementById('tabProtocolosGerados').classList.toggle('active', qual === 'protocolos');
+  try { history.replaceState(null, '', ['estoque', 'protocolo', 'protocolos'].includes(qual) ? '#' + qual : location.pathname + location.search); } catch (e) {}
 }
 
 function fecharModalEstoque(id){ document.getElementById(id).classList.remove('show'); }
@@ -1982,12 +1987,14 @@ async function carregarDadosProtocolo(){
     .sort((a, b) => (b.data_nf || '').localeCompare(a.data_nf || '') || a.nf.localeCompare(b.nf));
 }
 
-async function renderProtocolo(){
+let PROT_MODO = 'gerar'; // 'gerar' = aba Protocolo, 'gerados' = aba Protocolos gerados
+async function renderProtocolo(modo){
+  if (modo) PROT_MODO = modo;
   VISAO = 'protocolo';
-  marcarAbaModulo('protocolo');
+  marcarAbaModulo(PROT_MODO === 'gerados' ? 'protocolos' : 'protocolo');
   if (floatScrollEl) floatScrollEl.classList.remove('show');
   clearMsg();
-  document.getElementById('navBar').innerHTML = `<span class="nav-crumb active">Almoxarifado — Protocolo de entrega de NF</span>`;
+  document.getElementById('navBar').innerHTML = `<span class="nav-crumb active">Almoxarifado — ${PROT_MODO === 'gerados' ? 'Protocolos gerados' : 'Gerar protocolo de entrega de NF'}</span>`;
   const content = document.getElementById('content');
   content.innerHTML = `<div class="empty">Carregando...</div>`;
   try { await carregarDadosProtocolo(); }
@@ -1998,6 +2005,12 @@ async function renderProtocolo(){
     <div class="search-row">
       <div class="prot-cnpj" id="protCnpj"></div>
     </div>
+    ${PROT_MODO === 'gerados' ? `
+    <div class="search-row">
+      <input class="main" id="protBuscaGer" placeholder="🔍 Buscar por nº do protocolo, NF, O.C., fornecedor ou pedido..." oninput="renderGeradosProtocolo()">
+    </div>
+    <div class="tbl-wrap" id="protGerados"></div>` : `
+    <div class="aviso-leitura somente-leitura-msg">Gerar protocolo é só pelo Almoxarifado, Logística ou Administrador. Os protocolos já gerados estão na aba "Protocolos gerados".</div>
     <div class="so-editor">
       <div class="prot-sec">Gerar protocolo — O.C./NF lançadas e ainda sem protocolo</div>
       <div class="search-row">
@@ -2007,9 +2020,7 @@ async function renderProtocolo(){
         <span class="btn btn-primary" id="btnGerarProt" onclick="gerarProtocolo()">Gerar protocolo</span>
       </div>
       <div class="tbl-wrap" id="protPendentes"></div>
-    </div>
-    <div class="prot-sec">Protocolos gerados</div>
-    <div class="tbl-wrap" id="protGerados"></div>`;
+    </div>`}`;
   renderCnpjProtocolo();
 }
 
@@ -2018,7 +2029,8 @@ function renderCnpjProtocolo(){
     `<label class="${c === PROT_CNPJ ? 'on' : ''}"><input type="radio" name="protCnpj" ${c === PROT_CNPJ ? 'checked' : ''} onchange="PROT_CNPJ='${c}';renderCnpjProtocolo()"> ${c}</label>`).join('');
   // 1º protocolo do CNPJ: deixa escolher o número pra continuar a planilha
   const temProt = PROT_LISTA.some(p => p.cnpj === PROT_CNPJ);
-  document.getElementById('protNumIni').innerHTML = temProt ? '' :
+  const numIni = document.getElementById('protNumIni');
+  if (numIni) numIni.innerHTML = temProt ? '' :
     `<label class="chk" title="Só no primeiro protocolo deste CNPJ, pra continuar a numeração da planilha">Nº do 1º protocolo <input class="edit-input" type="number" min="1" id="protNumeroInicial" value="1"></label>`;
   renderPendentesProtocolo();
   renderGeradosProtocolo();
@@ -2095,7 +2107,7 @@ async function gerarProtocolo(){
     return;
   }
   const novo = Array.isArray(data) ? data[0] : data;
-  await renderProtocolo();
+  await renderProtocolo('gerados');
   showMsg(`Protocolo nº ${novo.numero} gerado.`, true);
   const p = PROT_LISTA.find(x => x.id === novo.id);
   if (p) pdfProtocolo(p.id);
@@ -2103,8 +2115,11 @@ async function gerarProtocolo(){
 
 function renderGeradosProtocolo(){
   const wrap = document.getElementById('protGerados');
-  const lista = PROT_LISTA.filter(p => p.cnpj === PROT_CNPJ);
-  if (!lista.length){ wrap.innerHTML = `<div class="empty">Nenhum protocolo gerado para o CNPJ ${PROT_CNPJ}.</div>`; return; }
+  if (!wrap) return;
+  const q = (document.getElementById('protBuscaGer')?.value || '').trim().toLowerCase();
+  const lista = PROT_LISTA.filter(p => p.cnpj === PROT_CNPJ && (!q || String(p.numero) === q
+    || (p.protocolos_nf_itens || []).some(l => `${l.nf} ${l.oc || ''} ${l.fornecedor || ''} ${l.pedido || ''}`.toLowerCase().includes(q))));
+  if (!lista.length){ wrap.innerHTML = `<div class="empty">Nenhum protocolo ${q ? 'encontrado' : 'gerado'} para o CNPJ ${PROT_CNPJ}.</div>`; return; }
   wrap.innerHTML = `
     <table class="dtbl">
       <thead><tr><th>Protocolo</th><th>Data</th><th class="r">NFs</th><th>Certificado pendente</th><th></th></tr></thead>
