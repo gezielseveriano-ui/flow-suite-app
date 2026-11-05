@@ -647,7 +647,7 @@ function filtrarLista(){
   return RNCS.filter(r => {
     if (FILTRO_STATUS && r.status_nc !== FILTRO_STATUS) return false;
     if (!termo) return true;
-    const chave = `${formatarNumeroRNC(r)} ${r.pedidos?.numero_pedido||''} ${r.fornecedor||''} ${r.tipo_desvio||''} ${r.desenho||''} ${r.emitido_por||''}`.toLowerCase();
+    const chave = `${formatarNumeroRNC(r)} ${r.pedidos?.numero_pedido||''} ${r.fornecedor||''} ${r.tipo_desvio||''} ${r.desenho||''} ${r.emitido_por||''} ${r.debito||''}`.toLowerCase();
     return chave.includes(termo);
   });
 }
@@ -684,7 +684,7 @@ function renderTabelaRNC(){
     h += `<div class="tbl-wrap"><table class="dtbl">
       <thead><tr>
         <th>Nº RNC</th><th>Status</th><th>Empresa</th><th>Pedido</th><th>Fornecedor</th>
-        <th>Tipo de Desvio</th><th>Desenho</th><th>Data Abertura</th><th>Emitido por</th><th class="no-print">Documento</th>
+        <th>Tipo de Desvio</th><th>Desenho</th><th>Data Abertura</th><th>Emitido por</th><th class="r">Custo</th><th>Débito</th><th class="no-print">Documento</th>
       </tr></thead>
       <tbody>${itens.map(r => `
         <tr onclick="irEditar(${r.id})">
@@ -697,6 +697,8 @@ function renderTabelaRNC(){
           <td>${esc(r.desenho || '—')}</td>
           <td>${fmtData(r.data_abertura)}</td>
           <td>${esc(r.emitido_por || '—')}</td>
+          <td class="r" style="white-space:nowrap">${r.custo != null ? 'R$ ' + Number(r.custo).toLocaleString('pt-BR', {minimumFractionDigits:2}) : '—'}</td>
+          <td>${esc(r.debito || '—')}</td>
           <td class="no-print"><span class="btn" onclick="event.stopPropagation();gerarDocumentoRNC(${r.id})">📄 Gerar</span></td>
         </tr>`).join('')}
       </tbody>
