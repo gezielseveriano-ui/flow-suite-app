@@ -176,6 +176,11 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 .lote-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:-.4rem 0 1rem;padding:10px 14px;background:var(--bg2);border:1px dashed var(--border-strong, #CBD5E1);border-radius:var(--radius-sm, 10px);font-size:12.5px}
 .lote-bar label{display:inline-flex;align-items:center;gap:6px;color:var(--text2)}
 .lote-bar .edit-input{width:140px}
+.prot-cnpj{display:flex;gap:8px;flex-wrap:wrap}
+.prot-cnpj label{display:flex;align-items:center;gap:6px;padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg2);font-size:12.5px;cursor:pointer}
+.prot-cnpj label.on{border-color:var(--blue);color:var(--blue);font-weight:600}
+.prot-sec{font-size:14px;font-weight:700;margin:1.5rem 0 .6rem}
+.dtbl select.cert{padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);color:var(--text);font-size:12px}
 .lote-bar .lote-chk input{width:15px;height:15px}
 .lote-alvo{font-size:11.5px;color:var(--text2)}
 .somente-leitura .so-editor{display:none !important}
@@ -264,6 +269,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
       <div class="mod-tabs">
         <button class="mod-tab active" id="tabCompras" onclick="renderHome()">📦 Compras (SC / O.C.)</button>
         <button class="mod-tab" id="tabEstoque" onclick="renderEstoque()">🏷️ Estoque MDE</button>
+        <button class="mod-tab" id="tabProtocolo" onclick="renderProtocolo()">📑 Protocolo</button>
       </div>
       <div class="nav-bar" id="navBar"></div>
       <div id="msgBox" class="msg-box"></div>
@@ -519,6 +525,7 @@ async function init(){
   iniciarSininho('sininhoWrap');
   iniciarCartinha('cartinhaWrap');
   if (location.hash === '#estoque') await renderEstoque();
+  else if (location.hash === '#protocolo') await renderProtocolo();
   else await renderHome();
 }
 
@@ -1394,7 +1401,8 @@ function fmtData(s){ const m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})/)
 function marcarAbaModulo(qual){
   document.getElementById('tabCompras').classList.toggle('active', qual === 'compras');
   document.getElementById('tabEstoque').classList.toggle('active', qual === 'estoque');
-  try { history.replaceState(null, '', qual === 'estoque' ? '#estoque' : location.pathname + location.search); } catch (e) {}
+  document.getElementById('tabProtocolo').classList.toggle('active', qual === 'protocolo');
+  try { history.replaceState(null, '', qual === 'estoque' || qual === 'protocolo' ? '#' + qual : location.pathname + location.search); } catch (e) {}
 }
 
 function fecharModalEstoque(id){ document.getElementById(id).classList.remove('show'); }
@@ -1916,6 +1924,332 @@ init().catch(err => {
     `<div class="empty">Erro ao iniciar a página: ${esc(err.message || err)}</div>`;
   console.error('Erro no init():', err);
 });
+// ===== Protocolo de entrega de NF (Financeiro / Qualidade) =====
+// As linhas saem do que já foi lançado em almoxarifado_itens, agrupado por
+// O.C./NF (não por item). Um par O.C./NF que já está num protocolo some da
+// lista de pendentes. Numeração separada por CNPJ (sql/078).
+const CNPJS_MDE = ['01.276.159/0001-04', '04.999.654/0001-21'];
+const LABEL_CERT = { ok: 'OK', na: 'NA', pendente: 'PENDENTE' };
+let PROT_CNPJ = CNPJS_MDE[0];
+let PROT_PENDENTES = [];   // pares O.C./NF ainda sem protocolo
+let PROT_LISTA = [];       // protocolos já gerados
+let PROT_SEL = new Set();  // chaves dos pares marcados
+let PROT_CERT = {};        // chave -> certificado escolhido
+
+const chaveOcNf = (oc, nf) => `${(oc || '').trim()}|${(nf || '').trim()}`;
+
+function primeiroDiaMesAnterior(){
+  const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+}
+
+async function carregarDadosProtocolo(){
+  let itens = [], de = 0;
+  while (true){
+    const { data, error } = await sb.from('almoxarifado_itens')
+      .select('oc, nf, fornecedor, data_recebimento_nf, pedido_bruto, pedidos(numero_pedido)')
+      .not('nf', 'is', null).neq('nf', '')
+      .order('id').range(de, de + 999);
+    if (error) throw error;
+    itens = itens.concat(data);
+    if (data.length < 1000) break;
+    de += 1000;
+  }
+  const { data: prots, error: e1 } = await sb.from('protocolos_nf')
+    .select('id, cnpj, numero, data, protocolos_nf_itens(id, oc, nf, fornecedor, data_nf, pedido, certificado)')
+    .order('numero', { ascending: false });
+  if (e1) throw e1;
+  PROT_LISTA = prots || [];
+
+  const usados = new Set();
+  PROT_LISTA.forEach(p => (p.protocolos_nf_itens || []).forEach(l => usados.add(chaveOcNf(l.oc, l.nf))));
+
+  const grupos = new Map();
+  itens.forEach(it => {
+    const oc = (it.oc && it.oc !== '0') ? String(it.oc).trim() : '';
+    const k = chaveOcNf(oc, it.nf);
+    if (usados.has(k)) return;
+    let g = grupos.get(k);
+    if (!g){ g = { chave: k, oc, nf: String(it.nf).trim(), fornecedor: '', data_nf: null, pedidos: new Set(), itens: 0 }; grupos.set(k, g); }
+    g.itens++;
+    if (!g.fornecedor && it.fornecedor) g.fornecedor = it.fornecedor;
+    if (it.data_recebimento_nf && (!g.data_nf || it.data_recebimento_nf > g.data_nf)) g.data_nf = it.data_recebimento_nf;
+    const ped = it.pedidos?.numero_pedido || it.pedido_bruto;
+    if (ped) g.pedidos.add(ped);
+  });
+  PROT_PENDENTES = [...grupos.values()]
+    .map(g => ({ ...g, pedido: [...g.pedidos].join(', ') }))
+    .sort((a, b) => (b.data_nf || '').localeCompare(a.data_nf || '') || a.nf.localeCompare(b.nf));
+}
+
+async function renderProtocolo(){
+  VISAO = 'protocolo';
+  marcarAbaModulo('protocolo');
+  if (floatScrollEl) floatScrollEl.classList.remove('show');
+  clearMsg();
+  document.getElementById('navBar').innerHTML = `<span class="nav-crumb active">Almoxarifado — Protocolo de entrega de NF</span>`;
+  const content = document.getElementById('content');
+  content.innerHTML = `<div class="empty">Carregando...</div>`;
+  try { await carregarDadosProtocolo(); }
+  catch (err){ content.innerHTML = `<div class="empty">Erro: ${esc(err.message)}</div>`; return; }
+  PROT_SEL = new Set(); PROT_CERT = {};
+
+  content.innerHTML = `
+    <div class="search-row">
+      <div class="prot-cnpj" id="protCnpj"></div>
+    </div>
+    <div class="so-editor">
+      <div class="prot-sec">Gerar protocolo — O.C./NF lançadas e ainda sem protocolo</div>
+      <div class="search-row">
+        <input class="main" id="protBusca" placeholder="🔍 Filtrar por NF, O.C., fornecedor ou pedido..." oninput="renderPendentesProtocolo()">
+        <label class="chk">NF recebida desde <input type="date" id="protDesde" value="${primeiroDiaMesAnterior()}" onchange="renderPendentesProtocolo()"></label>
+        <span id="protNumIni"></span>
+        <span class="btn btn-primary" id="btnGerarProt" onclick="gerarProtocolo()">Gerar protocolo</span>
+      </div>
+      <div class="tbl-wrap" id="protPendentes"></div>
+    </div>
+    <div class="prot-sec">Protocolos gerados</div>
+    <div class="tbl-wrap" id="protGerados"></div>`;
+  renderCnpjProtocolo();
+}
+
+function renderCnpjProtocolo(){
+  document.getElementById('protCnpj').innerHTML = '<strong style="align-self:center;font-size:12.5px">CNPJ:</strong>' + CNPJS_MDE.map(c =>
+    `<label class="${c === PROT_CNPJ ? 'on' : ''}"><input type="radio" name="protCnpj" ${c === PROT_CNPJ ? 'checked' : ''} onchange="PROT_CNPJ='${c}';renderCnpjProtocolo()"> ${c}</label>`).join('');
+  // 1º protocolo do CNPJ: deixa escolher o número pra continuar a planilha
+  const temProt = PROT_LISTA.some(p => p.cnpj === PROT_CNPJ);
+  document.getElementById('protNumIni').innerHTML = temProt ? '' :
+    `<label class="chk" title="Só no primeiro protocolo deste CNPJ, pra continuar a numeração da planilha">Nº do 1º protocolo <input class="edit-input" type="number" min="1" id="protNumeroInicial" value="1"></label>`;
+  renderPendentesProtocolo();
+  renderGeradosProtocolo();
+}
+
+function pendentesFiltrados(){
+  const q = (document.getElementById('protBusca')?.value || '').trim().toLowerCase();
+  const desde = document.getElementById('protDesde')?.value || '';
+  return PROT_PENDENTES.filter(g => {
+    if (desde && (!g.data_nf || g.data_nf < desde)) return false;
+    if (!q) return true;
+    return `${g.nf} ${g.oc} ${g.fornecedor} ${g.pedido}`.toLowerCase().includes(q);
+  });
+}
+
+function renderPendentesProtocolo(){
+  const wrap = document.getElementById('protPendentes');
+  if (!wrap) return;
+  const lista = pendentesFiltrados();
+  const vis = new Set(lista.map(g => g.chave));
+  PROT_SEL.forEach(k => { if (!vis.has(k)) PROT_SEL.delete(k); });
+  atualizarBotaoGerarProt();
+  if (!lista.length){ wrap.innerHTML = `<div class="empty">Nenhuma O.C./NF pendente de protocolo nesse filtro.</div>`; return; }
+  const todos = lista.every(g => PROT_SEL.has(g.chave));
+  wrap.innerHTML = `
+    <table class="dtbl">
+      <thead><tr>
+        <th><input type="checkbox" ${todos ? 'checked' : ''} onchange="marcarTodosProt(this.checked)"></th>
+        <th>NF</th><th>O.C.</th><th>Fornecedor</th><th>Data Receb. NF</th><th>Pedido</th><th class="r">Itens</th><th>Certificado</th>
+      </tr></thead>
+      <tbody>${lista.map(g => `
+        <tr>
+          <td><input type="checkbox" class="chkProt" data-k="${esc(g.chave)}" ${PROT_SEL.has(g.chave) ? 'checked' : ''} onchange="marcarProt(this.dataset.k, this.checked)"></td>
+          <td>${esc(g.nf)}</td><td>${esc(g.oc || '—')}</td><td>${esc(g.fornecedor || '—')}</td>
+          <td>${fmtData(g.data_nf) || '—'}</td><td>${esc(g.pedido || '—')}</td><td class="r">${g.itens}</td>
+          <td><select class="cert" data-k="${esc(g.chave)}" onchange="PROT_CERT[this.dataset.k]=this.value">
+            ${Object.entries(LABEL_CERT).map(([v, l]) => `<option value="${v}" ${(PROT_CERT[g.chave] || 'na') === v ? 'selected' : ''}>${l}</option>`).join('')}
+          </select></td>
+        </tr>`).join('')}</tbody>
+    </table>`;
+}
+
+function marcarProt(k, on){ on ? PROT_SEL.add(k) : PROT_SEL.delete(k); atualizarBotaoGerarProt(); }
+function marcarTodosProt(on){
+  pendentesFiltrados().forEach(g => on ? PROT_SEL.add(g.chave) : PROT_SEL.delete(g.chave));
+  document.querySelectorAll('.chkProt').forEach(c => c.checked = on);
+  atualizarBotaoGerarProt();
+}
+function atualizarBotaoGerarProt(){
+  const b = document.getElementById('btnGerarProt');
+  if (!b) return;
+  b.textContent = PROT_SEL.size ? `Gerar protocolo (${PROT_SEL.size} NF)` : 'Gerar protocolo';
+  b.style.opacity = PROT_SEL.size ? '' : '.5';
+  b.style.pointerEvents = PROT_SEL.size ? '' : 'none';
+}
+
+async function gerarProtocolo(){
+  const linhas = PROT_PENDENTES.filter(g => PROT_SEL.has(g.chave));
+  if (!linhas.length) return;
+  if (!confirm(`Gerar protocolo do CNPJ ${PROT_CNPJ} com ${linhas.length} NF?`)) return;
+  const numIni = parseInt(document.getElementById('protNumeroInicial')?.value, 10);
+  const btn = document.getElementById('btnGerarProt');
+  btn.style.pointerEvents = 'none'; btn.textContent = 'Gerando...';
+  const { data, error } = await sb.rpc('criar_protocolo_nf', {
+    p_cnpj: PROT_CNPJ,
+    p_itens: linhas.map(g => ({ oc: g.oc, nf: g.nf, fornecedor: g.fornecedor, data_nf: g.data_nf, pedido: g.pedido, certificado: PROT_CERT[g.chave] || 'na' })),
+    p_numero_inicial: numIni > 0 ? numIni : null,
+  });
+  if (error){
+    atualizarBotaoGerarProt();
+    showMsg(/uq_protocolos_nf_itens_oc_nf|duplicate/i.test(error.message)
+      ? 'Alguma dessas O.C./NF já entrou em outro protocolo (talvez gerado agora por outra pessoa). Recarregue a aba.'
+      : 'Erro ao gerar protocolo: ' + error.message, false);
+    return;
+  }
+  const novo = Array.isArray(data) ? data[0] : data;
+  await renderProtocolo();
+  showMsg(`Protocolo nº ${novo.numero} gerado.`, true);
+  const p = PROT_LISTA.find(x => x.id === novo.id);
+  if (p) pdfProtocolo(p.id);
+}
+
+function renderGeradosProtocolo(){
+  const wrap = document.getElementById('protGerados');
+  const lista = PROT_LISTA.filter(p => p.cnpj === PROT_CNPJ);
+  if (!lista.length){ wrap.innerHTML = `<div class="empty">Nenhum protocolo gerado para o CNPJ ${PROT_CNPJ}.</div>`; return; }
+  wrap.innerHTML = `
+    <table class="dtbl">
+      <thead><tr><th>Protocolo</th><th>Data</th><th class="r">NFs</th><th>Certificado pendente</th><th></th></tr></thead>
+      <tbody>${lista.map(p => {
+        const ls = p.protocolos_nf_itens || [];
+        const pend = ls.filter(l => l.certificado === 'pendente').length;
+        return `
+        <tr>
+          <td><strong>${p.numero}</strong></td><td>${fmtData(p.data)}</td><td class="r">${ls.length}</td>
+          <td>${pend ? `<span class="status-badge sb-pendente">${pend} pendente(s)</span>` : '—'}</td>
+          <td style="white-space:nowrap">
+            <span class="btn" onclick="abrirDetalheProtocolo(${p.id})">Ver</span>
+            <span class="btn" onclick="pdfProtocolo(${p.id})">📄 PDF</span>
+          </td>
+        </tr>
+        <tr id="protDet${p.id}" style="display:none"><td colspan="5" id="protDetTd${p.id}"></td></tr>`;
+      }).join('')}</tbody>
+    </table>`;
+}
+
+function abrirDetalheProtocolo(id){
+  const tr = document.getElementById('protDet' + id);
+  if (tr.style.display !== 'none'){ tr.style.display = 'none'; return; }
+  const p = PROT_LISTA.find(x => x.id === id);
+  const ls = ordenarLinhasProt(p.protocolos_nf_itens || []);
+  document.getElementById('protDetTd' + id).innerHTML = `
+    <table class="dtbl">
+      <thead><tr><th>NF</th><th>O.C.</th><th>Fornecedor</th><th>Data</th><th>Pedido</th><th>Certificado</th></tr></thead>
+      <tbody>${ls.map(l => `
+        <tr><td>${esc(l.nf)}</td><td>${esc(l.oc || '—')}</td><td>${esc(l.fornecedor || '—')}</td><td>${fmtData(l.data_nf) || '—'}</td><td>${esc(l.pedido || '—')}</td>
+          <td>${PODE_EDITAR
+            ? `<select class="cert" onchange="mudarCertificadoProt(${p.id}, ${l.id}, this)">${Object.entries(LABEL_CERT).map(([v, t]) => `<option value="${v}" ${l.certificado === v ? 'selected' : ''}>${t}</option>`).join('')}</select>`
+            : LABEL_CERT[l.certificado]}</td></tr>`).join('')}</tbody>
+    </table>
+    <div class="so-editor" style="margin-top:8px;text-align:right"><span class="btn btn-baixa" onclick="excluirProtocolo(${p.id})">Excluir protocolo</span></div>`;
+  tr.style.display = '';
+}
+
+function ordenarLinhasProt(ls){
+  return [...ls].sort((a, b) => (a.data_nf || '').localeCompare(b.data_nf || '') || String(a.nf).localeCompare(String(b.nf)));
+}
+
+async function mudarCertificadoProt(protId, linhaId, sel){
+  const { error } = await sb.from('protocolos_nf_itens').update({ certificado: sel.value }).eq('id', linhaId);
+  if (error){ showMsg('Erro ao salvar certificado: ' + error.message, false); return; }
+  const l = PROT_LISTA.find(p => p.id === protId).protocolos_nf_itens.find(x => x.id === linhaId);
+  l.certificado = sel.value;
+  showMsg('Certificado atualizado.', true);
+}
+
+async function excluirProtocolo(id){
+  const p = PROT_LISTA.find(x => x.id === id);
+  if (!confirm(`Excluir o protocolo nº ${p.numero} (${p.cnpj})? As NFs dele voltam para a lista de pendentes.`)) return;
+  const { error } = await sb.from('protocolos_nf').delete().eq('id', id);
+  if (error){ showMsg('Erro ao excluir: ' + error.message, false); return; }
+  await renderProtocolo();
+  showMsg(`Protocolo nº ${p.numero} excluído.`, true);
+}
+
+let logoMdeProt = null;
+function carregarLogoMdeProt(){
+  return new Promise(resolve => {
+    if (logoMdeProt){ resolve(logoMdeProt); return; }
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = img.naturalWidth; c.height = img.naturalHeight;
+      c.getContext('2d').drawImage(img, 0, 0);
+      try { logoMdeProt = { url: c.toDataURL('image/png'), w: img.naturalWidth, h: img.naturalHeight }; } catch (e) { logoMdeProt = null; }
+      resolve(logoMdeProt);
+    };
+    img.onerror = () => resolve(null);
+    img.src = 'assets/logo-mde.png';
+  });
+}
+
+async function pdfProtocolo(id){
+  const p = PROT_LISTA.find(x => x.id === id);
+  const ls = ordenarLinhasProt(p.protocolos_nf_itens || []);
+  const logo = await carregarLogoMdeProt();
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const M = 12, W = 186, ROW = 6.5;
+  const COLS = [
+    { t: 'NF', w: 26 }, { t: 'O.C.', w: 20 }, { t: 'FORNECEDOR', w: 60 },
+    { t: 'DATA', w: 24 }, { t: 'CERTIFICADO', w: 28 }, { t: 'PEDIDO', w: 28 },
+  ];
+  let y;
+
+  function cabecalho(){
+    doc.setDrawColor(0); doc.setLineWidth(0.3); doc.setTextColor(0);
+    doc.rect(M, 10, W, 20);
+    doc.line(M + 40, 10, M + 40, 30); doc.line(M + 146, 10, M + 146, 30); doc.line(M + 40, 20, M + W, 20);
+    if (logo) { const h = 12, w = Math.min(34, h * logo.w / logo.h); doc.addImage(logo.url, 'PNG', M + 3, 14, w, h); }
+    doc.setFont(undefined, 'bold'); doc.setFontSize(11);
+    doc.text('FORMULÁRIO', M + 93, 16.5, { align: 'center' });
+    doc.text('PROTOCOLO - CERTIFICADOS', M + 93, 26.5, { align: 'center' });
+    doc.text(fmtData(p.data), M + 166, 16.5, { align: 'center' });
+    doc.setFillColor(16, 42, 68); doc.rect(M + 146, 20, 40, 10, 'F'); doc.setTextColor(255);
+    doc.text(`PROTOCOLO Nº ${p.numero}`, M + 166, 26.5, { align: 'center' });
+    doc.setTextColor(0); doc.setFont('courier', 'bold'); doc.setFontSize(11);
+    doc.rect(M, 30, W, 8); doc.line(M + 100, 30, M + 100, 38);
+    doc.text('DE: ALMOXARIFADO', M + 50, 35.5, { align: 'center' });
+    doc.text(`CNPJ: ${p.cnpj}`, M + 143, 35.5, { align: 'center' });
+    doc.text('PARA: FINANCEIRO / QUALIDADE', M + 2, 43.5);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
+    y = 47;
+    doc.setFillColor(146, 208, 80); doc.rect(M, y, W, ROW, 'F'); doc.rect(M, y, W, ROW);
+    let x = M;
+    COLS.forEach(c => { doc.text(c.t, x + c.w / 2, y + 4.4, { align: 'center' }); x += c.w; doc.line(x, y, x, y + ROW); });
+    y += ROW;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+  }
+
+  cabecalho();
+  ls.forEach(l => {
+    if (y + ROW > 262){ doc.addPage(); cabecalho(); }
+    const vals = [l.nf, l.oc || '', l.fornecedor || '', fmtData(l.data_nf), LABEL_CERT[l.certificado], l.pedido || ''];
+    doc.rect(M, y, W, ROW);
+    let x = M;
+    vals.forEach((v, i) => {
+      const c = COLS[i];
+      const txt = doc.splitTextToSize(String(v), c.w - 2)[0] || '';
+      if (i === 4) doc.setFont('helvetica', 'bold');
+      doc.text(txt, x + c.w / 2, y + 4.4, { align: 'center' });
+      if (i === 4) doc.setFont('helvetica', 'normal');
+      x += c.w;
+      if (i < COLS.length - 1) doc.line(x, y, x, y + ROW);
+    });
+    y += ROW;
+  });
+
+  // assinaturas
+  y = Math.max(y + 18, 270);
+  doc.setFontSize(9); doc.setLineWidth(0.2);
+  [['Entregue por (Almoxarifado)', M], ['Recebido por (Financeiro / Qualidade)', M + 100]].forEach(([t, x]) => {
+    doc.line(x, y, x + 86, y);
+    doc.text(t, x + 43, y + 4, { align: 'center' });
+  });
+  doc.text('Data: ____/____/______', M + 143, y + 10, { align: 'center' });
+  doc.text('Data: ____/____/______', M + 43, y + 10, { align: 'center' });
+
+  doc.save(`Protocolo_${p.numero}_CNPJ_${p.cnpj.replace(/\D/g, '').slice(0, 8)}.pdf`);
+}
+
 </script>
 </body>
 </html>
