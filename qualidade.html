@@ -140,6 +140,8 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 .mod-tab{padding:9px 16px;border:none;background:none;font-size:13px;font-weight:500;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;font-family:inherit}
 .mod-tab:hover{color:var(--text)}
 .mod-tab.active{color:var(--blue);border-bottom-color:var(--blue);font-weight:600}
+.btn.btn-sm{padding:4px 9px;font-size:11.5px}
+.anexo-linha{display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13px;border-bottom:1px solid var(--border)}
 .dtbl td.desc-desvio{max-width:320px;overflow:hidden;text-overflow:ellipsis}
 
 .print-only{display:none}
@@ -369,7 +371,7 @@ const LABEL_STATUS_DESVIO = { em_aberto: 'Em Aberto', encerrado: 'Encerrado' };
 async function carregarDesvios(){
   const { data, error } = await sb
     .from('desvios_cliente')
-    .select('*, pedidos(numero_pedido, cliente)')
+    .select('*, pedidos(numero_pedido, cliente), desvios_cliente_anexos(id, arquivo_path, arquivo_nome, enviado_em)')
     .order('ano_desvio', { ascending: false })
     .order('numero_desvio', { ascending: false });
   if (error){ DESVIOS = []; console.warn('desvios_cliente:', error.message); return; }
@@ -421,7 +423,7 @@ function renderTabelaDesvios(){
     h += `<div class="tbl-wrap"><table class="dtbl">
       <thead><tr>
         <th>Nº Desvio</th><th>Status</th><th>Tipo</th><th>Empresa</th><th>Cliente</th><th>Pedido</th><th>Desenho</th><th>Desenho Cliente</th>
-        <th>Posição</th><th>TAG</th><th>Data</th><th>Descrição</th><th>Prazo Resposta</th><th>Responsável</th><th>Prazo Execução</th><th class="r">Custo</th><th>Débito</th>
+        <th>Posição</th><th>TAG</th><th>Data</th><th>Descrição</th><th>Prazo Resposta</th><th>Responsável</th><th>Prazo Execução</th><th class="r">Custo</th><th>Débito</th><th class="no-print">Documento</th>
       </tr></thead>
       <tbody>${itens.map(d => `
         <tr onclick="irEditarDesvio(${d.id})">
@@ -442,6 +444,7 @@ function renderTabelaDesvios(){
           <td>${fmtData(d.prazo_execucao)}</td>
           <td class="r">${d.custo != null ? 'R$ ' + Number(d.custo).toLocaleString('pt-BR', {minimumFractionDigits:2}) : '—'}</td>
           <td>${esc(d.debito || '—')}</td>
+          <td class="no-print" style="white-space:nowrap">${botoesAnexosDesvio(d)}</td>
         </tr>`).join('')}
       </tbody>
     </table></div>`;
@@ -493,10 +496,89 @@ function renderFormDesvio(d){
     </div>
   </div>
 
+  <div class="section">
+    <div class="section-title">Documentos do cliente</div>
+    <div id="anexosDesvio"></div>
+    <div class="field" style="margin-top:.8rem">
+      <label for="f_anexos">Anexar documento (não conformidade do cliente, fotos, relatório...)</label>
+      <input type="file" id="f_anexos" multiple onchange="listarAnexosNovos()">
+      <div id="anexosNovos" style="font-size:12px;color:var(--text2);margin-top:4px"></div>
+    </div>
+  </div>
+
   <div class="form-actions">
     <button class="btn" onclick="irDesvios()">Cancelar</button>
     <button class="btn btn-primary" id="btnSalvarDesvio" onclick="salvarDesvio()">${d ? 'Salvar alterações' : 'Criar Desvio'}</button>
   </div>`;
+  renderAnexosDesvio(d);
+}
+
+// ── documentos anexados ao desvio (bucket qualidade-docs, sql/080) ──
+function botoesAnexosDesvio(d){
+  const ax = d.desvios_cliente_anexos || [];
+  if (!ax.length) return '—';
+  return ax.map((a, i) => `<button class="btn btn-sm" title="${esc(a.arquivo_nome)}" onclick="event.stopPropagation();baixarAnexoDesvio(${a.id}, this)">⬇ ${ax.length === 1 ? 'Baixar' : i + 1}</button>`).join(' ');
+}
+
+function renderAnexosDesvio(d){
+  const ax = d?.desvios_cliente_anexos || [];
+  document.getElementById('anexosDesvio').innerHTML = ax.length
+    ? ax.map(a => `<div class="anexo-linha">📎 <span>${esc(a.arquivo_nome)}</span>
+        <span style="color:var(--text2);font-size:11px">${new Date(a.enviado_em).toLocaleDateString('pt-BR')}</span>
+        <button class="btn btn-sm" onclick="baixarAnexoDesvio(${a.id}, this)">⬇ Baixar</button>
+        <button class="btn btn-sm" onclick="removerAnexoDesvio(${a.id})" title="Remover documento">✕</button></div>`).join('')
+    : `<div style="font-size:12.5px;color:var(--text2)">Nenhum documento anexado.</div>`;
+}
+
+function listarAnexosNovos(){
+  const fs = [...(document.getElementById('f_anexos').files || [])];
+  document.getElementById('anexosNovos').textContent = fs.length ? `${fs.length} arquivo(s) — sobem quando você salvar: ${fs.map(f => f.name).join(', ')}` : '';
+}
+
+function acharAnexoDesvio(anexoId){
+  for (const d of DESVIOS){ const a = (d.desvios_cliente_anexos || []).find(x => x.id === anexoId); if (a) return { d, a }; }
+  return {};
+}
+
+async function baixarAnexoDesvio(anexoId, btnEl){
+  const { a } = acharAnexoDesvio(anexoId);
+  if (!a) return;
+  const txt = btnEl.textContent;
+  btnEl.textContent = 'Abrindo...'; btnEl.disabled = true;
+  try {
+    const { data, error } = await sb.storage.from('qualidade-docs').createSignedUrl(a.arquivo_path, 3600, { download: nomeArquivoSeguro(a.arquivo_nome) || true });
+    if (error) throw error;
+    window.open(data.signedUrl, '_blank');
+  } catch (err){
+    showMsg('Não foi possível baixar o documento: ' + (err.message || err), false);
+  } finally {
+    btnEl.textContent = txt; btnEl.disabled = false;
+  }
+}
+
+async function removerAnexoDesvio(anexoId){
+  const { d, a } = acharAnexoDesvio(anexoId);
+  if (!a || !confirm(`Remover o documento "${a.arquivo_nome}"?`)) return;
+  const { error } = await sb.from('desvios_cliente_anexos').delete().eq('id', anexoId);
+  if (error){ showMsg('Erro ao remover: ' + error.message, false); return; }
+  await sb.storage.from('qualidade-docs').remove([a.arquivo_path]);
+  d.desvios_cliente_anexos = d.desvios_cliente_anexos.filter(x => x.id !== anexoId);
+  renderAnexosDesvio(d);
+  showMsg('Documento removido.', true);
+}
+
+// sobe os arquivos escolhidos no formulário; devolve quantos falharam
+async function enviarAnexosDesvio(desvioId){
+  const arquivos = [...(document.getElementById('f_anexos')?.files || [])];
+  let falhas = 0;
+  for (const file of arquivos){
+    const path = `desvios/${desvioId}/${Date.now()}_${file.name}`.replace(/[^\w.\-\/]/g, '_');
+    const { error: upErr } = await sb.storage.from('qualidade-docs').upload(path, file);
+    if (upErr){ falhas++; console.warn('anexo', file.name, upErr.message); continue; }
+    const { error } = await sb.from('desvios_cliente_anexos').insert({ desvio_id: desvioId, arquivo_path: path, arquivo_nome: file.name });
+    if (error){ falhas++; console.warn('anexo', file.name, error.message); await sb.storage.from('qualidade-docs').remove([path]); }
+  }
+  return falhas;
 }
 
 function preencherClienteDoPedido(pedidoId){
@@ -532,15 +614,21 @@ async function salvarDesvio(){
   const btn = document.getElementById('btnSalvarDesvio');
   btn.disabled = true; const txt = btn.textContent; btn.textContent = 'Salvando...';
   try {
+    let desvioId, aviso;
     if (DESVIO_EDITANDO){
       const { error } = await sb.from('desvios_cliente').update(dados).eq('id', DESVIO_EDITANDO.id);
       if (error) throw error;
-      showMsg('Desvio ' + formatarNumeroDesvio(DESVIO_EDITANDO) + ' atualizado.', true);
+      desvioId = DESVIO_EDITANDO.id;
+      aviso = 'Desvio ' + formatarNumeroDesvio(DESVIO_EDITANDO) + ' atualizado.';
     } else {
-      const { error } = await sb.from('desvios_cliente').insert(dados);
+      const { data, error } = await sb.from('desvios_cliente').insert(dados).select('id').single();
       if (error) throw error;
-      showMsg('Desvio criado com sucesso.', true);
+      desvioId = data.id;
+      aviso = 'Desvio criado com sucesso.';
     }
+    btn.textContent = 'Enviando documentos...';
+    const falhas = await enviarAnexosDesvio(desvioId);
+    showMsg(falhas ? `${aviso} Mas ${falhas} documento(s) não subiram — abra o desvio e tente anexar de novo.` : aviso, !falhas);
     await carregarDesvios();
     VISAO = 'desvios'; DESVIO_EDITANDO = null; renderNav(); renderListaDesvios();
   } catch (e){
