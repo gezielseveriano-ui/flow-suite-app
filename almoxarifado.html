@@ -694,6 +694,7 @@ function renderDetalhe(itens){
         <option value="parcial">Parcialmente recebido</option>
         <option value="total">Totalmente recebido</option>
       </select>
+      <select id="filtroFamilia" onchange="aplicarFiltros()">${opcoesFamilia(itens)}</select>
       <span class="btn btn-primary" id="btnExportarItens" onclick="exportarItensSelecionadosExcel()" style="opacity:.5;pointer-events:none">📤 Exportar selecionados (Excel)</span>
       <span class="btn" onclick="gerarPdfCobranca()">📄 PDF de cobrança</span>
     </div>
@@ -709,6 +710,16 @@ function renderDetalhe(itens){
   aplicarFiltros();
 }
 
+// rótulo amigável das famílias que já conhecemos; família nova aparece só com o código
+const NOMES_FAMILIA = { MAP: 'Matéria-prima', PAT: 'Itens comprados' };
+function opcoesFamilia(itens){
+  const familias = [...new Set(itens.map(it => (it.familia || '').trim()).filter(Boolean))].sort();
+  const temSem = itens.some(it => !(it.familia || '').trim());
+  return '<option value="">Família: todas</option>'
+    + familias.map(f => `<option value="${esc(f)}">${esc(f)}${NOMES_FAMILIA[f] ? ' — ' + NOMES_FAMILIA[f] : ''}</option>`).join('')
+    + (temSem ? '<option value="__sem">(sem família)</option>' : '');
+}
+
 function badgeStatus(s){
   if (s === 'total') return '<span class="status-badge sb-total">Totalmente recebido</span>';
   if (s === 'parcial') return '<span class="status-badge sb-parcial">Parcial</span>';
@@ -718,8 +729,11 @@ function badgeStatus(s){
 function aplicarFiltros(){
   const q = document.getElementById('filtroPrincipal').value.trim().toLowerCase();
   const statusF = document.getElementById('filtroStatus').value;
+  const familiaF = document.getElementById('filtroFamilia').value;
   const itens = TODOS_ITENS.filter(it => {
     if (statusF && it.status_recebimento !== statusF) return false;
+    const fam = (it.familia || '').trim();
+    if (familiaF === '__sem' ? fam : (familiaF && fam !== familiaF)) return false;
     if (!q) return true;
     const chave = `${it.sc} ${it.item_seq} ${it.oc||''} ${it.pedido_bruto||''} ${it.pedidos?.numero_pedido||''} ${it.codigo_produto||''} ${it.descricao||''} ${it.fornecedor||''} ${it.requisitante||''} ${it.nf||''} ${it.nf_sistema||''} ${it.situacao_oc||''}`.toLowerCase();
     return chave.includes(q);
@@ -845,7 +859,8 @@ function atualizarBotaoExportarItens(){
 }
 
 function gerarPdfCobranca(){
-  const base = itensSelecionados.size ? TODOS_ITENS.filter(it => itensSelecionados.has(it.id)) : TODOS_ITENS;
+  // sem nada marcado, cobra o que está filtrado na tela (ex.: só a família MAP)
+  const base = itensSelecionados.size ? TODOS_ITENS.filter(it => itensSelecionados.has(it.id)) : (window.__itensRenderizados || TODOS_ITENS);
   const pendentes = base.filter(it => Number(it.quantidade_pendente) > 0);
   if (!pendentes.length){ showMsg('Nenhum item pendente para cobrar.', true); return; }
 
