@@ -140,6 +140,9 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 .mod-tab{padding:9px 16px;border:none;background:none;font-size:13px;font-weight:500;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;font-family:inherit}
 .mod-tab:hover{color:var(--text)}
 .mod-tab.active{color:var(--blue);border-bottom-color:var(--blue);font-weight:600}
+.dica-desenho{font-size:11px;color:var(--text2);margin-top:3px;min-height:14px}
+.dica-desenho.ok{color:#15803d}
+.dica-desenho.erro{color:#b91c1c}
 .btn.btn-sm{padding:4px 9px;font-size:11.5px}
 .anexo-linha{display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13px;border-bottom:1px solid var(--border)}
 .dtbl td.desc-desvio{max-width:320px;overflow:hidden;text-overflow:ellipsis}
@@ -743,7 +746,7 @@ function renderForm(r){
       ${r ? `<div class="field"><label>Número do RNC</label><input value="${formatarNumeroRNC(r)}" disabled></div>` : `<div class="field"><label>Número do RNC</label><input value="gerado automaticamente" disabled></div>`}
       ${campoSelect('status_nc', 'Status do RNC', r?.status_nc || 'em_aberto', [['em_aberto','Em Aberto'],['encerrado','Encerrado']])}
       ${campoSelect('empresa', 'Empresa', r?.empresa, EMPRESAS.map(e => [e,e]))}
-      <div class="field"><label for="f_pedido_id">Pedido</label><select id="f_pedido_id"><option value="">— sem pedido —</option>${pedidoOpts}</select></div>
+      <div class="field"><label for="f_pedido_id">Pedido</label><select id="f_pedido_id" onchange="carregarDesenhosPedidoRNC(this.value)"><option value="">— sem pedido —</option>${pedidoOpts}</select></div>
       ${campoTexto('fornecedor', 'Fornecedor', r?.fornecedor)}
       ${campoTexto('tipo_desvio', 'Tipo de Desvio', r?.tipo_desvio, {sugestoes: SUGESTOES_TIPO_DESVIO})}
       ${campoTexto('responsavel_nc', 'Responsável pela Não Conformidade', r?.responsavel_nc, {sugestoes: SUGESTOES_RESPONSAVEL_NC})}
@@ -756,7 +759,12 @@ function renderForm(r){
       ${campoTexto('ordem_compra', 'Ordem de Compra', r?.ordem_compra)}
       ${campoTexto('item_oc', 'Item da OC', r?.item_oc)}
       ${campoTexto('nota_fiscal', 'Nota Fiscal', r?.nota_fiscal)}
-      ${campoTexto('desenho', 'Desenho', r?.desenho)}
+      <div class="field">
+        <label for="f_desenho">Desenho</label>
+        <input id="f_desenho" value="${esc(r?.desenho ?? '')}" list="dl_desenhos_rnc" autocomplete="off" placeholder="opcional — do pedido" oninput="conferirDesenhoRNC()" onchange="conferirDesenhoRNC(true)">
+        <datalist id="dl_desenhos_rnc"></datalist>
+        <div class="dica-desenho" id="dicaDesenhoRNC"></div>
+      </div>
       ${campoTexto('revisao', 'Revisão', r?.revisao)}
       ${campoTexto('posicao', 'Posição / Marca', r?.posicao)}
       ${campoTexto('especificacao_tecnica', 'Especificação Técnica', r?.especificacao_tecnica, {sugestoes: SUGESTOES_ESPECIFICACAO})}
@@ -830,6 +838,73 @@ function renderForm(r){
   </div>`;
 
   document.getElementById('content').innerHTML = h;
+  DESENHO_RNC_ORIGINAL = (r?.desenho || '').trim();
+  carregarDesenhosPedidoRNC(r?.pedido_id || '');
+}
+
+// ── Desenho do RNC ligado aos desenhos que a Engenharia subiu pro pedido ──
+// Campo continua opcional; se preencher, tem que ser um desenho cadastrado
+// no pedido escolhido (os mesmos que o PCP e o Dashboard veem).
+// Exceção: RNC antigo pode ser salvo com o desenho que já tinha.
+const CACHE_DESENHOS_PEDIDO = {};
+let DESENHOS_PEDIDO_RNC = [];
+let DESENHO_RNC_ORIGINAL = '';
+const normDesenho = s => String(s || '').trim().toUpperCase().replace(/\s+/g, '');
+
+async function carregarDesenhosPedidoRNC(pedidoId){
+  DESENHOS_PEDIDO_RNC = [];
+  const dl = document.getElementById('dl_desenhos_rnc');
+  if (pedidoId){
+    if (!CACHE_DESENHOS_PEDIDO[pedidoId]){
+      const { data, error } = await sb.from('desenhos_engenharia')
+        .select('desenho_mde, revisao, nome_equipamento, setor, remessas(numero)')
+        .eq('pedido_id', Number(pedidoId));
+      if (error){ console.warn('desenhos do pedido:', error.message); }
+      // um desenho pode ter várias linhas (uma por tag) -- fica uma por número
+      const porNumero = new Map();
+      (data || []).forEach(d => { if (d.desenho_mde && !porNumero.has(normDesenho(d.desenho_mde))) porNumero.set(normDesenho(d.desenho_mde), d); });
+      CACHE_DESENHOS_PEDIDO[pedidoId] = [...porNumero.values()].sort((a, b) => a.desenho_mde.localeCompare(b.desenho_mde));
+    }
+    DESENHOS_PEDIDO_RNC = CACHE_DESENHOS_PEDIDO[pedidoId];
+  }
+  if (dl) dl.innerHTML = DESENHOS_PEDIDO_RNC.map(d => `<option value="${esc(d.desenho_mde)}">${esc([d.revisao != null && d.revisao !== '' ? 'Rev. ' + d.revisao : '', d.nome_equipamento, d.remessas?.numero ? 'Rem. ' + d.remessas.numero : ''].filter(Boolean).join(' · '))}</option>`).join('');
+  conferirDesenhoRNC();
+}
+
+function acharDesenhoRNC(valor){ return DESENHOS_PEDIDO_RNC.find(d => normDesenho(d.desenho_mde) === normDesenho(valor)); }
+
+// mostra embaixo do campo se o desenho existe no pedido; ao escolher um, preenche a revisão
+function conferirDesenhoRNC(preencher){
+  const inp = document.getElementById('f_desenho'), dica = document.getElementById('dicaDesenhoRNC');
+  if (!inp || !dica) return;
+  const valor = inp.value.trim();
+  const pedidoId = document.getElementById('f_pedido_id')?.value;
+  dica.className = 'dica-desenho';
+  if (!valor){ dica.textContent = pedidoId ? (DESENHOS_PEDIDO_RNC.length ? `${DESENHOS_PEDIDO_RNC.length} desenho(s) neste pedido — digite ou escolha na lista` : 'Nenhum desenho cadastrado pela Engenharia neste pedido') : ''; return; }
+  const d = acharDesenhoRNC(valor);
+  if (d){
+    dica.textContent = '✓ Desenho cadastrado' + (d.nome_equipamento ? ' — ' + d.nome_equipamento : '');
+    dica.classList.add('ok');
+    if (preencher){
+      inp.value = d.desenho_mde;
+      const rev = document.getElementById('f_revisao');
+      if (rev && !rev.value.trim() && d.revisao != null) rev.value = d.revisao;
+    }
+  } else if (normDesenho(valor) === normDesenho(DESENHO_RNC_ORIGINAL)){
+    dica.textContent = 'Desenho antigo deste RNC (não está cadastrado no pedido)';
+  } else {
+    dica.textContent = pedidoId ? '✕ Esse desenho não está cadastrado neste pedido' : '✕ Escolha o pedido primeiro';
+    dica.classList.add('erro');
+  }
+}
+
+function desenhoRNCValido(){
+  const valor = (document.getElementById('f_desenho')?.value || '').trim();
+  if (!valor) return true;
+  if (normDesenho(valor) === normDesenho(DESENHO_RNC_ORIGINAL)) return true;
+  if (!document.getElementById('f_pedido_id')?.value){ showMsg('Para informar o desenho, escolha primeiro o pedido.', false); return false; }
+  if (!acharDesenhoRNC(valor)){ showMsg(`O desenho "${valor}" não está cadastrado neste pedido. Confira o número (tem que ser um dos desenhos que a Engenharia subiu) ou deixe o campo em branco.`, false); return false; }
+  return true;
 }
 
 function coletarDadosForm(){
@@ -875,6 +950,7 @@ function coletarDadosForm(){
 async function salvarRNC(){
   const dados = coletarDadosForm();
   if (!dados.empresa){ showMsg('Selecione a Empresa.', false); return; }
+  if (!desenhoRNCValido()) return;
 
   const btn = document.getElementById('btnSalvarRNC');
   btn.disabled = true; const txtOriginal = btn.textContent; btn.textContent = 'Salvando...';
