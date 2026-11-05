@@ -181,6 +181,10 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 .prot-cnpj label.on{border-color:var(--blue);color:var(--blue);font-weight:600}
 .somente-leitura-msg{display:none}
 .somente-leitura .somente-leitura-msg{display:block}
+.prot-manual{margin:0 0 1rem;padding:10px 14px;border:1px dashed var(--border);border-radius:var(--radius-sm);font-size:12.5px}
+.prot-dica{color:var(--text2);font-size:12px;font-weight:400}
+.edit-input.txt.larga{width:200px}
+.prot-form td{background:var(--bg)}
 .prot-sec{font-size:14px;font-weight:700;margin:1.5rem 0 .6rem}
 .dtbl select.cert{padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);color:var(--text);font-size:12px}
 .lote-bar .lote-chk input{width:15px;height:15px}
@@ -1940,6 +1944,7 @@ let PROT_PENDENTES = [];   // pares O.C./NF ainda sem protocolo
 let PROT_LISTA = [];       // protocolos já gerados
 let PROT_SEL = new Set();  // chaves dos pares marcados
 let PROT_CERT = {};        // chave -> certificado escolhido
+let PROT_MANUAIS = [];     // NFs lançadas à mão (manutenção etc.) pro próximo protocolo
 
 const chaveOcNf = (oc, nf) => `${(oc || '').trim()}|${(nf || '').trim()}`;
 
@@ -1999,7 +2004,7 @@ async function renderProtocolo(modo){
   content.innerHTML = `<div class="empty">Carregando...</div>`;
   try { await carregarDadosProtocolo(); }
   catch (err){ content.innerHTML = `<div class="empty">Erro: ${esc(err.message)}</div>`; return; }
-  PROT_SEL = new Set(); PROT_CERT = {};
+  PROT_SEL = new Set(); PROT_CERT = {}; PROT_MANUAIS = [];
 
   content.innerHTML = `
     <div class="search-row">
@@ -2019,6 +2024,14 @@ async function renderProtocolo(modo){
         <span id="protNumIni"></span>
         <span class="btn btn-primary" id="btnGerarProt" onclick="gerarProtocolo()">Gerar protocolo</span>
       </div>
+      <div class="prot-manual">
+        <strong>NF fora da lista de compras</strong> <span class="prot-dica">(manutenção, serviço etc. — entra junto no protocolo)</span>
+        <table class="dtbl" style="margin-top:6px">
+          <thead><tr><th>NF *</th><th>O.C.</th><th>Fornecedor</th><th>Data</th><th>Pedido</th><th>Certificado</th><th></th></tr></thead>
+          <tbody id="protManuais"></tbody>
+          <tfoot>${linhaFormNfManual('protNovaGer', 'adicionarNfManualGerar()')}</tfoot>
+        </table>
+      </div>
       <div class="tbl-wrap" id="protPendentes"></div>
     </div>`}`;
   renderCnpjProtocolo();
@@ -2033,7 +2046,58 @@ function renderCnpjProtocolo(){
   if (numIni) numIni.innerHTML = temProt ? '' :
     `<label class="chk" title="Só no primeiro protocolo deste CNPJ, pra continuar a numeração da planilha">Nº do 1º protocolo <input class="edit-input" type="number" min="1" id="protNumeroInicial" value="1"></label>`;
   renderPendentesProtocolo();
+  renderManuaisGerar();
   renderGeradosProtocolo();
+}
+
+// ---- NF lançada à mão (manutenção, serviço...) -- não vem de almoxarifado_itens
+function linhaFormNfManual(pref, acao){
+  return `
+    <tr class="prot-form">
+      <td><input class="edit-input txt" id="${pref}Nf" placeholder="nº da NF"></td>
+      <td><input class="edit-input txt" id="${pref}Oc" placeholder="se tiver"></td>
+      <td><input class="edit-input txt larga" id="${pref}Forn" placeholder="fornecedor"></td>
+      <td><input class="edit-input" type="date" id="${pref}Data" value="${hojeISO()}"></td>
+      <td><input class="edit-input txt" id="${pref}Ped" placeholder="se tiver"></td>
+      <td><select class="cert" id="${pref}Cert">${Object.entries(LABEL_CERT).map(([v, l]) => `<option value="${v}" ${v === 'na' ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
+      <td><span class="btn btn-primary" onclick="${acao}">＋ Adicionar</span></td>
+    </tr>`;
+}
+function lerFormNfManual(pref){
+  const v = id => (document.getElementById(pref + id).value || '').trim();
+  const linha = { nf: v('Nf'), oc: v('Oc'), fornecedor: v('Forn'), data_nf: v('Data') || null, pedido: v('Ped'), certificado: v('Cert') || 'na' };
+  if (!linha.nf){ showMsg('Informe o número da NF.', false); document.getElementById(pref + 'Nf').focus(); return null; }
+  const k = chaveOcNf(linha.oc, linha.nf);
+  const jaUsada = PROT_LISTA.some(p => (p.protocolos_nf_itens || []).some(l => chaveOcNf(l.oc, l.nf) === k));
+  if (jaUsada){ showMsg(`A NF ${linha.nf}${linha.oc ? ' / O.C. ' + linha.oc : ''} já está em outro protocolo.`, false); return null; }
+  return linha;
+}
+function limparFormNfManual(pref){
+  ['Nf', 'Oc', 'Forn', 'Ped'].forEach(id => document.getElementById(pref + id).value = '');
+  document.getElementById(pref + 'Nf').focus();
+}
+
+function adicionarNfManualGerar(){
+  const linha = lerFormNfManual('protNovaGer');
+  if (!linha) return;
+  const k = chaveOcNf(linha.oc, linha.nf);
+  if (PROT_MANUAIS.some(m => chaveOcNf(m.oc, m.nf) === k) || PROT_PENDENTES.some(g => g.chave === k)){
+    showMsg('Essa NF já está na lista — marque ela na tabela abaixo.', false); return;
+  }
+  PROT_MANUAIS.push(linha);
+  clearMsg();
+  limparFormNfManual('protNovaGer');
+  renderManuaisGerar();
+}
+function removerNfManualGerar(i){ PROT_MANUAIS.splice(i, 1); renderManuaisGerar(); }
+function renderManuaisGerar(){
+  const tb = document.getElementById('protManuais');
+  if (!tb) return;
+  tb.innerHTML = PROT_MANUAIS.map((m, i) => `
+    <tr><td>${esc(m.nf)}</td><td>${esc(m.oc || '—')}</td><td>${esc(m.fornecedor || '—')}</td><td>${fmtData(m.data_nf) || '—'}</td>
+      <td>${esc(m.pedido || '—')}</td><td>${LABEL_CERT[m.certificado]}</td>
+      <td><span class="btn" onclick="removerNfManualGerar(${i})" title="Tirar da lista">✕</span></td></tr>`).join('');
+  atualizarBotaoGerarProt();
 }
 
 function pendentesFiltrados(){
@@ -2082,13 +2146,14 @@ function marcarTodosProt(on){
 function atualizarBotaoGerarProt(){
   const b = document.getElementById('btnGerarProt');
   if (!b) return;
-  b.textContent = PROT_SEL.size ? `Gerar protocolo (${PROT_SEL.size} NF)` : 'Gerar protocolo';
-  b.style.opacity = PROT_SEL.size ? '' : '.5';
-  b.style.pointerEvents = PROT_SEL.size ? '' : 'none';
+  const n = PROT_SEL.size + PROT_MANUAIS.length;
+  b.textContent = n ? `Gerar protocolo (${n} NF)` : 'Gerar protocolo';
+  b.style.opacity = n ? '' : '.5';
+  b.style.pointerEvents = n ? '' : 'none';
 }
 
 async function gerarProtocolo(){
-  const linhas = PROT_PENDENTES.filter(g => PROT_SEL.has(g.chave));
+  const linhas = [...PROT_PENDENTES.filter(g => PROT_SEL.has(g.chave)).map(g => ({ ...g, certificado: PROT_CERT[g.chave] || 'na' })), ...PROT_MANUAIS];
   if (!linhas.length) return;
   if (!confirm(`Gerar protocolo do CNPJ ${PROT_CNPJ} com ${linhas.length} NF?`)) return;
   const numIni = parseInt(document.getElementById('protNumeroInicial')?.value, 10);
@@ -2096,7 +2161,7 @@ async function gerarProtocolo(){
   btn.style.pointerEvents = 'none'; btn.textContent = 'Gerando...';
   const { data, error } = await sb.rpc('criar_protocolo_nf', {
     p_cnpj: PROT_CNPJ,
-    p_itens: linhas.map(g => ({ oc: g.oc, nf: g.nf, fornecedor: g.fornecedor, data_nf: g.data_nf, pedido: g.pedido, certificado: PROT_CERT[g.chave] || 'na' })),
+    p_itens: linhas.map(g => ({ oc: g.oc, nf: g.nf, fornecedor: g.fornecedor, data_nf: g.data_nf, pedido: g.pedido, certificado: g.certificado })),
     p_numero_inicial: numIni > 0 ? numIni : null,
   });
   if (error){
@@ -2143,19 +2208,58 @@ function renderGeradosProtocolo(){
 function abrirDetalheProtocolo(id){
   const tr = document.getElementById('protDet' + id);
   if (tr.style.display !== 'none'){ tr.style.display = 'none'; return; }
+  renderDetalheProtocolo(id);
+  tr.style.display = '';
+}
+
+function renderDetalheProtocolo(id){
   const p = PROT_LISTA.find(x => x.id === id);
   const ls = ordenarLinhasProt(p.protocolos_nf_itens || []);
   document.getElementById('protDetTd' + id).innerHTML = `
     <table class="dtbl">
-      <thead><tr><th>NF</th><th>O.C.</th><th>Fornecedor</th><th>Data</th><th>Pedido</th><th>Certificado</th></tr></thead>
+      <thead><tr><th>NF</th><th>O.C.</th><th>Fornecedor</th><th>Data</th><th>Pedido</th><th>Certificado</th><th class="so-editor"></th></tr></thead>
       <tbody>${ls.map(l => `
         <tr><td>${esc(l.nf)}</td><td>${esc(l.oc || '—')}</td><td>${esc(l.fornecedor || '—')}</td><td>${fmtData(l.data_nf) || '—'}</td><td>${esc(l.pedido || '—')}</td>
           <td>${PODE_EDITAR
             ? `<select class="cert" onchange="mudarCertificadoProt(${p.id}, ${l.id}, this)">${Object.entries(LABEL_CERT).map(([v, t]) => `<option value="${v}" ${l.certificado === v ? 'selected' : ''}>${t}</option>`).join('')}</select>`
-            : LABEL_CERT[l.certificado]}</td></tr>`).join('')}</tbody>
+            : LABEL_CERT[l.certificado]}</td>
+          <td class="so-editor"><span class="btn" onclick="removerLinhaProt(${p.id}, ${l.id})" title="Tirar esta NF do protocolo">✕</span></td></tr>`).join('')}</tbody>
+      ${PODE_EDITAR ? `<tfoot>${linhaFormNfManual('protNova' + p.id, `adicionarNfManualProt(${p.id})`)}</tfoot>` : ''}
     </table>
-    <div class="so-editor" style="margin-top:8px;text-align:right"><span class="btn btn-baixa" onclick="excluirProtocolo(${p.id})">Excluir protocolo</span></div>`;
-  tr.style.display = '';
+    <div class="so-editor" style="margin-top:8px;display:flex;justify-content:space-between;align-items:center">
+      <span class="prot-dica">Use a última linha para lançar à mão uma NF fora da lista de compras (manutenção, serviço etc.).</span>
+      <span class="btn btn-baixa" onclick="excluirProtocolo(${p.id})">Excluir protocolo</span>
+    </div>`;
+}
+
+async function adicionarNfManualProt(protId){
+  const linha = lerFormNfManual('protNova' + protId);
+  if (!linha) return;
+  const { data, error } = await sb.from('protocolos_nf_itens')
+    .insert({ protocolo_id: protId, ...linha, oc: linha.oc || null, pedido: linha.pedido || null, fornecedor: linha.fornecedor || null })
+    .select('id, oc, nf, fornecedor, data_nf, pedido, certificado').single();
+  if (error){
+    showMsg(/uq_protocolos_nf_itens_oc_nf|duplicate/i.test(error.message) ? `A NF ${linha.nf} já está em outro protocolo.` : 'Erro ao lançar NF: ' + error.message, false);
+    return;
+  }
+  const p = PROT_LISTA.find(x => x.id === protId);
+  p.protocolos_nf_itens.push(data);
+  renderGeradosProtocolo();
+  abrirDetalheProtocolo(protId);
+  showMsg(`NF ${data.nf} lançada no protocolo nº ${p.numero}. Gere o PDF de novo se já tinha impresso.`, true);
+}
+
+async function removerLinhaProt(protId, linhaId){
+  const p = PROT_LISTA.find(x => x.id === protId);
+  const l = p.protocolos_nf_itens.find(x => x.id === linhaId);
+  if (p.protocolos_nf_itens.length === 1){ showMsg('É a única NF do protocolo — para tirar, use "Excluir protocolo".', false); return; }
+  if (!confirm(`Tirar a NF ${l.nf} do protocolo nº ${p.numero}?`)) return;
+  const { error } = await sb.from('protocolos_nf_itens').delete().eq('id', linhaId);
+  if (error){ showMsg('Erro ao tirar NF: ' + error.message, false); return; }
+  p.protocolos_nf_itens = p.protocolos_nf_itens.filter(x => x.id !== linhaId);
+  renderGeradosProtocolo();
+  abrirDetalheProtocolo(protId);
+  showMsg(`NF ${l.nf} tirada do protocolo nº ${p.numero}.`, true);
 }
 
 function ordenarLinhasProt(ls){
