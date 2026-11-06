@@ -144,6 +144,8 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 .dica-desenho.ok{color:#15803d}
 .dica-desenho.erro{color:#b91c1c}
 .btn.btn-sm{padding:4px 9px;font-size:11.5px}
+.somente-leitura .so-editor{display:none !important}
+.aviso-leitura{margin:0 0 12px;padding:8px 14px;border-radius:10px;background:#FEF3C7;color:#92400E;font-size:12.5px}
 .anexo-linha{display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13px;border-bottom:1px solid var(--border)}
 .dtbl td.desc-desvio{max-width:320px;overflow:hidden;text-overflow:ellipsis}
 
@@ -252,6 +254,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
       <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12.5 4 7 10l5.5 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
     <main class="content">
+      <div class="aviso-leitura" id="avisoLeitura" style="display:none">👁 Modo visualização — você pode consultar, imprimir e gerar documentos. Criar e alterar RNCs e desvios só pela Qualidade ou Administrador.</div>
       <div class="mod-tabs">
         <button class="mod-tab active" id="tabRNC" onclick="irLista()">📋 RNCs</button>
         <button class="mod-tab" id="tabDesvios" onclick="irDesvios()">⚠️ Controle de Desvio Cliente</button>
@@ -289,8 +292,13 @@ function showMsg(text, ok){
 function clearMsg(){ document.getElementById('msgBox').classList.remove('show'); }
 
 async function init(){
-  AUTH = await exigirLogin(['qualidade', 'admin']);
+  AUTH = await exigirLogin(['qualidade', 'admin', 'diretor']);
   if (!AUTH) return;
+  SOMENTE_LEITURA = AUTH.perfil === 'diretor';
+  if (SOMENTE_LEITURA){
+    document.body.classList.add('somente-leitura');
+    document.getElementById('avisoLeitura').style.display = '';
+  }
   document.getElementById('userNome').textContent = AUTH.nome;
   document.getElementById('userAvatar').textContent = (AUTH.nome || '').trim().split(/\s+/).map(p => p[0]).slice(0, 2).join('').toUpperCase() || '··';
   iniciarSininho('sininhoWrap');
@@ -407,7 +415,7 @@ function renderListaDesvios(){
       <option value="encerrado" ${FILTRO_DESVIO_STATUS==='encerrado'?'selected':''}>Encerrado</option>
     </select>
     <button class="btn" onclick="window.print()">🖨 Imprimir lista</button>
-    <button class="btn btn-primary" onclick="irNovoDesvio()">+ Novo Desvio</button>
+    <button class="btn btn-primary so-editor" onclick="irNovoDesvio()">+ Novo Desvio</button>
   </div>
   <div id="tabelaDesvios"></div>`;
   renderTabelaDesvios();
@@ -502,7 +510,7 @@ function renderFormDesvio(d){
   <div class="section">
     <div class="section-title">Documentos do cliente</div>
     <div id="anexosDesvio"></div>
-    <div class="field" style="margin-top:.8rem">
+    <div class="field so-editor" style="margin-top:.8rem">
       <label for="f_anexos">Anexar documento (não conformidade do cliente, fotos, relatório...)</label>
       <input type="file" id="f_anexos" multiple onchange="listarAnexosNovos()">
       <div id="anexosNovos" style="font-size:12px;color:var(--text2);margin-top:4px"></div>
@@ -511,9 +519,17 @@ function renderFormDesvio(d){
 
   <div class="form-actions">
     <button class="btn" onclick="irDesvios()">Cancelar</button>
-    <button class="btn btn-primary" id="btnSalvarDesvio" onclick="salvarDesvio()">${d ? 'Salvar alterações' : 'Criar Desvio'}</button>
+    <button class="btn btn-primary so-editor" id="btnSalvarDesvio" onclick="salvarDesvio()">${d ? 'Salvar alterações' : 'Criar Desvio'}</button>
   </div>`;
   renderAnexosDesvio(d);
+  travarFormSeLeitura();
+}
+
+// perfil diretor: abre RNC/desvio só pra consultar (o banco já bloqueia a gravação)
+let SOMENTE_LEITURA = false;
+function travarFormSeLeitura(){
+  if (!SOMENTE_LEITURA) return;
+  document.querySelectorAll('#content input, #content select, #content textarea').forEach(el => { if (el.type !== 'file') el.disabled = true; });
 }
 
 // ── documentos anexados ao desvio (bucket qualidade-docs, sql/080) ──
@@ -529,7 +545,7 @@ function renderAnexosDesvio(d){
     ? ax.map(a => `<div class="anexo-linha">📎 <span>${esc(a.arquivo_nome)}</span>
         <span style="color:var(--text2);font-size:11px">${new Date(a.enviado_em).toLocaleDateString('pt-BR')}</span>
         <button class="btn btn-sm" onclick="baixarAnexoDesvio(${a.id}, this)">⬇ Baixar</button>
-        <button class="btn btn-sm" onclick="removerAnexoDesvio(${a.id})" title="Remover documento">✕</button></div>`).join('')
+        <button class="btn btn-sm so-editor" onclick="removerAnexoDesvio(${a.id})" title="Remover documento">✕</button></div>`).join('')
     : `<div style="font-size:12.5px;color:var(--text2)">Nenhum documento anexado.</div>`;
 }
 
@@ -667,7 +683,7 @@ function renderLista(){
     </select>
     <button class="btn" onclick="window.print()">🖨 Imprimir lista</button>
     <button class="btn" onclick="irIndicadores()">📊 Indicador RNCs</button>
-    <button class="btn btn-primary" onclick="irNovo()">+ Novo RNC</button>
+    <button class="btn btn-primary so-editor" onclick="irNovo()">+ Novo RNC</button>
   </div>
   <div id="tabelaRNC"></div>`;
   renderTabelaRNC();
@@ -834,12 +850,13 @@ function renderForm(r){
   <div class="form-actions">
     <button class="btn" onclick="irLista()">Cancelar</button>
     ${r ? `<button class="btn" onclick="gerarDocumentoRNC(${r.id})">📄 Gerar Documento</button>` : ''}
-    <button class="btn btn-primary" id="btnSalvarRNC" onclick="salvarRNC()">${r ? 'Salvar alterações' : 'Criar RNC'}</button>
+    <button class="btn btn-primary so-editor" id="btnSalvarRNC" onclick="salvarRNC()">${r ? 'Salvar alterações' : 'Criar RNC'}</button>
   </div>`;
 
   document.getElementById('content').innerHTML = h;
   DESENHO_RNC_ORIGINAL = (r?.desenho || '').trim();
   carregarDesenhosPedidoRNC(r?.pedido_id || '');
+  travarFormSeLeitura();
 }
 
 // ── Desenho do RNC ligado aos desenhos que a Engenharia subiu pro pedido ──

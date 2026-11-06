@@ -475,9 +475,9 @@ async function enviarSolicitacaoRevisao(){
 }
 
 async function init(){
-  AUTH = await exigirLogin(['producao', 'pcp', 'admin']);
+  AUTH = await exigirLogin(['producao', 'pcp', 'admin', 'diretor']);
   if (!AUTH) return;
-  SOMENTE_LEITURA = AUTH.perfil === 'pcp';
+  SOMENTE_LEITURA = AUTH.perfil === 'pcp' || AUTH.perfil === 'diretor';
   podeSolicitarRevisao = AUTH.perfil === 'producao' || AUTH.perfil === 'pcp' || AUTH.perfil === 'admin';
   document.getElementById('userNome').textContent = AUTH.nome;
   document.getElementById('userAvatar').textContent = (AUTH.nome || '').trim().split(/\s+/).map(p => p[0]).slice(0, 2).join('').toUpperCase() || '··';

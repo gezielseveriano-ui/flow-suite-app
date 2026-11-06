@@ -380,7 +380,7 @@ function abrirModal(id){ document.getElementById(id).classList.add('show'); }
 function fecharModal(id){ document.getElementById(id).classList.remove('show'); }
 
 async function init(){
-  AUTH = await exigirLogin(['apontamento', 'producao', 'admin']);
+  AUTH = await exigirLogin(['apontamento', 'producao', 'admin', 'diretor']);
   if (!AUTH) return;
   document.getElementById('userNome').textContent = AUTH.nome;
   document.getElementById('userAvatar').textContent = (AUTH.nome || '').trim().split(/\s+/).map(p => p[0]).slice(0, 2).join('').toUpperCase() || '··';
@@ -399,8 +399,16 @@ async function init(){
     document.getElementById('tabSetores').style.display = '';
   }
 
+  // diretor: só Monitoramento e Relatórios (visualização) -- sem quiosque nem correções
+  if (AUTH.perfil === 'diretor'){
+    document.getElementById('tabsBar').style.display = 'flex';
+    document.getElementById('tabPonto').style.display = 'none';
+    document.getElementById('tabMonitoramento').style.display = '';
+    document.getElementById('tabRelatorios').style.display = '';
+  }
+
   await Promise.all([carregarAtividades(), carregarSetores()]);
-  mudarTab('ponto');
+  mudarTab(AUTH.perfil === 'diretor' ? 'monitoramento' : 'ponto');
 }
 
 async function carregarAtividades(){
@@ -644,7 +652,7 @@ async function carregarAbertos(){
               <td>${esc(r.pedidos?.numero_pedido || '—')}</td>
               <td>${new Date(r.hora_inicio).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
               <td><span class="pill pill-${nivel}">${formatarDuracao(ms)}</span></td>
-              <td><span class="btn" style="cursor:pointer" onclick="fecharAbertoRapido(${r.id})">Fechar agora</span></td>
+              <td>${AUTH.perfil === 'diretor' ? '' : `<span class="btn" style="cursor:pointer" onclick="fecharAbertoRapido(${r.id})">Fechar agora</span>`}</td>
             </tr>`).join('')}
         </tbody>
       </table>

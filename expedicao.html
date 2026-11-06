@@ -255,16 +255,16 @@ function clearMsg(){
 }
 
 async function init(){
-  AUTH = await exigirLogin(['expedicao', 'logistica', 'pcp', 'admin']);
+  AUTH = await exigirLogin(['expedicao', 'logistica', 'pcp', 'admin', 'diretor']);
   if (!AUTH) return;
-  SOMENTE_LEITURA = AUTH.perfil === 'pcp';
+  SOMENTE_LEITURA = AUTH.perfil === 'pcp' || AUTH.perfil === 'diretor';
   document.getElementById('userNome').textContent = AUTH.nome;
   document.getElementById('userAvatar').textContent = (AUTH.nome || '').trim().split(/\s+/).map(p => p[0]).slice(0, 2).join('').toUpperCase() || '··';
   iniciarSininho('sininhoWrap');
   iniciarCartinha('cartinhaWrap');
 
   if (SOMENTE_LEITURA){
-    // PCP só acompanha (visualização) — quem gera romaneio é a Expedição.
+    // PCP e diretor só acompanham (visualização) — quem gera romaneio é a Expedição.
     document.getElementById('tabGerar').style.display = 'none';
     mudarAba('historico');
     return;
