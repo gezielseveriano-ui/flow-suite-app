@@ -149,6 +149,37 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 .anexo-linha{display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13px;border-bottom:1px solid var(--border)}
 .dtbl td.desc-desvio{max-width:320px;overflow:hidden;text-overflow:ellipsis}
 
+/* Databooks */
+.db-servico{display:flex;align-items:center;gap:8px;padding:9px 14px;border-radius:var(--radius-sm);font-size:12.5px;margin-bottom:1rem}
+.db-servico.on{background:var(--green-dim);color:#047857}
+.db-servico.off{background:var(--bg3);color:var(--text2)}
+.db-acoes{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:1rem}
+.db-resumo{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:1rem}
+.db-resumo span{padding:6px 12px;border-radius:20px;font-size:12px;font-weight:600;background:var(--bg3);color:var(--text2)}
+.db-resumo .ok{background:var(--green-dim);color:#047857}
+.db-resumo .pend{background:var(--amber-dim);color:var(--amber)}
+.db-resumo .err{background:var(--red-dim);color:var(--red)}
+.db-cap-titulo{display:flex;align-items:center;gap:8px}
+.db-cap-titulo input{flex:1;border:1px solid transparent;background:none;font:inherit;color:inherit;text-transform:uppercase;padding:2px 4px;border-radius:6px}
+.db-cap-titulo input:hover,.db-cap-titulo input:focus{border-color:var(--border);outline:none;background:var(--bg2)}
+.db-itens{width:100%;border-collapse:collapse;font-size:12.5px}
+.db-itens td{padding:7px 8px;border-bottom:1px solid var(--border);vertical-align:top}
+.db-itens tr.na td{color:var(--text3)}
+.db-itens td.cod{font-weight:700;color:var(--blue);white-space:nowrap;width:52px}
+.db-itens td.chk{width:28px;text-align:center}
+.db-itens td.st{width:96px;white-space:nowrap}
+.db-itens td.arq{width:34%;color:var(--text2);font-size:11.5px}
+.db-arq-lista{margin-top:4px;padding-left:14px}
+.db-arq-lista li{margin:1px 0}
+.db-arq-lista li.erro{color:var(--red)}
+.st-ok{background:var(--green-dim);color:#047857}
+.st-pend{background:var(--amber-dim);color:var(--amber)}
+.st-na{background:var(--bg3);color:var(--text3)}
+.st-err{background:var(--red-dim);color:var(--red)}
+.db-progresso{height:8px;border-radius:8px;background:var(--bg4);overflow:hidden;margin:8px 0 4px}
+.db-progresso div{height:100%;background:var(--blue);transition:width .3s}
+.db-rev td input{width:100%;padding:5px 6px;border:1px solid var(--border);border-radius:6px;font:inherit;font-size:12px}
+
 .print-only{display:none}
 @media print{
   @page{size:A4 landscape;margin:10mm}
@@ -258,6 +289,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
       <div class="mod-tabs">
         <button class="mod-tab active" id="tabRNC" onclick="irLista()">📋 RNCs</button>
         <button class="mod-tab" id="tabDesvios" onclick="irDesvios()">⚠️ Controle de Desvio Cliente</button>
+        <button class="mod-tab" id="tabDatabooks" onclick="irDatabooks()">📘 Databooks</button>
       </div>
       <div class="nav-bar" id="navBar"></div>
       <div id="msgBox" class="msg-box"></div>
@@ -341,10 +373,16 @@ const SUGESTOES_DEBITO = ['ENGENHARIA', 'PCP', 'FÁBRICA', 'MONTAGEM', 'QUALIDAD
 function renderNav(){
   const nav = document.getElementById('navBar');
   const emDesvios = VISAO === 'desvios' || VISAO === 'desvioForm';
-  document.getElementById('tabRNC').classList.toggle('active', !emDesvios);
+  const emDatabooks = VISAO === 'databooks' || VISAO === 'databookNovo' || VISAO === 'databook';
+  document.getElementById('tabRNC').classList.toggle('active', !emDesvios && !emDatabooks);
   document.getElementById('tabDesvios').classList.toggle('active', emDesvios);
+  document.getElementById('tabDatabooks').classList.toggle('active', emDatabooks);
   let h;
-  if (emDesvios){
+  if (emDatabooks){
+    h = `<span class="nav-crumb ${VISAO==='databooks'?'active':''}" onclick="irDatabooks()">Qualidade — Databooks</span>`;
+    if (VISAO === 'databookNovo') h += `<span class="nav-sep">›</span><span class="nav-crumb active">Abrir Databook</span>`;
+    if (VISAO === 'databook' && DB_ATUAL) h += `<span class="nav-sep">›</span><span class="nav-crumb active">${esc(DB_ATUAL.pedidos?.numero_pedido || '')} · ${esc(DB_ATUAL.titulo || '')}</span>`;
+  } else if (emDesvios){
     h = `<span class="nav-crumb ${VISAO==='desvios'?'active':''}" onclick="irDesvios()">Qualidade — Controle de Desvio Cliente</span>`;
     if (VISAO === 'desvioForm') h += `<span class="nav-sep">›</span><span class="nav-crumb active">${DESVIO_EDITANDO ? 'Editar Desvio ' + formatarNumeroDesvio(DESVIO_EDITANDO) : 'Novo Desvio'}</span>`;
   } else {
@@ -1141,7 +1179,8 @@ function carregarLogoMDEParaPdf(){
   });
 }
 
-async function gerarDocumentoRNC(id){
+// opts.retornar: devolve {nome, base64} em vez de baixar (usado pelo Databook, item 5.1)
+async function gerarDocumentoRNC(id, opts){
   const r = RNCS.find(x => x.id === id);
   if (!r){ showMsg('RNC não encontrado.', false); return; }
 
@@ -1312,9 +1351,522 @@ async function gerarDocumentoRNC(id){
   const partesNome = ['RNC_' + formatarNumeroRNC(r).replace('/','-'), r.pedidos?.numero_pedido, r.pedidos?.cliente]
     .filter(Boolean)
     .map(p => String(p).trim().replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, '_'));
+  if (opts?.retornar) return { nome: partesNome.join('_') + '.pdf', base64: doc.output('datauristring').split(',')[1] };
   doc.save(partesNome.join('_') + '.pdf');
 }
 function esc_pdf(s){ return s == null ? '' : String(s); }
+
+// ── DATABOOKS (padrão Vale PR-G-363 / Anexo A) ─────────────────────────────
+// Híbrido: os arquivos ficam na pasta do pedido no OneDrive (CAP I\1.1 ...),
+// o Supabase guarda só o checklist. O programa local databook_service.py
+// (Iniciar-Databook.bat, só no PC da Qualidade) cria as pastas, confere os
+// arquivos e monta o PDF final com índice paginado, links e marcadores.
+const DB_SERVICO = 'http://127.0.0.1:8010';
+const DB_CAPITULOS_PADRAO = [
+  { num: 1, titulo: 'INFORMAÇÕES DOCUMENTADAS REFERENTES AO SISTEMA DE GARANTIA DA QUALIDADE' },
+  { num: 2, titulo: 'INFORMAÇÕES DOCUMENTADAS RELATIVAS AO PROCESSO DE FABRICAÇÃO, CONSTRUÇÃO E MONTAGEM' },
+  { num: 3, titulo: 'LISTA DE MATERIAIS/COMPONENTES E CERTIFICADOS DE QUALIDADE' },
+  { num: 4, titulo: 'INFORMAÇÕES DOCUMENTADAS RELATIVAS AO CONTROLE DE FABRICAÇÃO, CONSTRUÇÃO E MONTAGEM' },
+  { num: 5, titulo: 'NÃO CONFORMIDADES' },
+  { num: 6, titulo: 'SOLICITAÇÕES DE INFORMAÇÃO TÉCNICA, NOTAS DE ALTERAÇÃO DE PROJETOS, LISTAS DE DESENHOS DO FORNECEDOR E AS BUILT' },
+  { num: 7, titulo: 'PROCEDIMENTOS' },
+];
+// [capítulo, código oficial, descrição, já vem marcado como aplicável?, origem]
+// numeração = ordem das tabelas 6.1/6.2/6.3 do PR-G-363 (é a que o P-819 usou: 4.9, 4.12, 4.18, 4.33, 4.36...)
+const DB_MODELO = [
+  [1,'1.1','Plano de Qualidade',1],
+  [1,'1.2','Procedimentos e Instruções de Trabalho',1],
+  [1,'1.3','Manuais de instalação, operação e manutenção dos equipamentos',1],
+  [1,'1.4','Plano de Inspeções e Testes aprovado pelo cliente',1],
+  [1,'1.5','Certificado do Sistema de Garantia da Qualidade',1],
+  [1,'1.6','Autorizações pertinentes (mobilização, início dos serviços, supressão vegetal etc.)',0],
+  [1,'1.7','Relação de pessoal autorizado a assinar documentação',1],
+  [1,'1.8','Organograma Organizacional',1],
+  [1,'1.9','Currículos da equipe técnica de qualidade',1],
+  [1,'1.10','Certificação/Qualificação da equipe técnica de qualidade',1],
+  [2,'2.1','EPS - Especificação de Procedimento de Soldagem',1],
+  [2,'2.2','RQPS - Registro de Qualificação de Procedimento de Soldagem',1],
+  [2,'2.3','RQS - Registro de Qualificação de Soldadores e Operadores de Soldagem',1],
+  [2,'2.4','PS - Plano de Soldagem',0],
+  [2,'2.5','Plano de Tratamento Térmico',0],
+  [2,'2.6','IEIS - Instrução para Execução e Inspeção de Soldagem',0],
+  [2,'2.7','Relação de Soldadores e Operadores Qualificados',1],
+  [2,'2.8','Controle de Desempenho de Soldadores e Operadores de Soldagem',1],
+  [2,'2.9','Plano de Rigging',0],
+  [2,'2.10','Registro de Inspetores Qualificados',1],
+  [2,'2.11','Certificado de Qualificação de Pessoal',1],
+  [2,'2.12','Relação de marcos topográficos',0],
+  [3,'3.1','Certificados de materiais metálicos e não metálicos, incluindo ensaios químicos e mecânicos da matéria prima e dos componentes',1],
+  [3,'3.2','Certificados de materiais utilizados em Ensaios Não Destrutivos (END)',1],
+  [3,'3.3','Certificados de conformidade de equipamentos eletroeletrônicos e tipos de proteção em atmosfera potencialmente explosiva',0],
+  [3,'3.4','Certificados de Qualidade de Consumíveis de Soldagem',1],
+  [3,'3.5','Certificado de Qualidade de Consumíveis de Pintura e Galvanização',1],
+  [3,'3.6','Certificados de materiais e componentes sobressalentes',0],
+  [3,'3.7','Certificados de itens comerciais',1],
+  [4,'4.1','Registros de Ensaios Não Destrutivos (Líquido Penetrante, Partícula Magnética, Ultrassom, Radiografia)',1],
+  [4,'4.2','Controle Tecnológico de Solos - Ensaios de Caracterização Completa',0],
+  [4,'4.3','Controle Tecnológico de Solos - Ensaio de compactação (frasco de areia)',0],
+  [4,'4.4','Controle Tecnológico de Concreto - Ensaio de compressão axial',0],
+  [4,'4.5','Carta Traço de concreto',0],
+  [4,'4.6','Controle Tecnológico de Insumos para fabricação de concreto',0],
+  [4,'4.7','Fundações - Estacas: Prova de Carga Estática ou Dinâmica',0],
+  [4,'4.8','Fundações - Ensaio de Penetrômetro Dinâmico Leve (PDL)',0],
+  [4,'4.9','Registros de medições de dureza',1],
+  [4,'4.10','Registro de todas as inspeções visuais e dimensionais realizadas',1],
+  [4,'4.11','Registros de Tratamentos Térmicos incluindo os gráficos e laudos de materiais e componentes',1],
+  [4,'4.12','Certificados de calibração de todos os equipamentos utilizados para inspeção, medição e ensaios durante a fabricação, construção e montagem',1],
+  [4,'4.13','Registros de testes hidrostáticos, pneumáticos e de estanqueidade',0],
+  [4,'4.14','Registro de balanceamento estático e dinâmico dos equipamentos',0],
+  [4,'4.15','Registro de teste de funcionamento mecânico, incluindo nível de ruído',0],
+  [4,'4.16','Registros das medições de vibrações',0],
+  [4,'4.17','Relatórios e certificados de testes funcionais e de desempenho',0],
+  [4,'4.18','Registro de folgas de montagem em equipamentos rotativos ou dinâmicos',1],
+  [4,'4.19','Certificado de controle geométrico da hélice, voluta e passo da engrenagem',0],
+  [4,'4.20','Certificado de espessura de cementação',0],
+  [4,'4.21','Registro das inspeções de pintura e galvanização',1],
+  [4,'4.22','Controle de recebimento de consumíveis para pintura',1],
+  [4,'4.23','Controle de recebimento de consumíveis de soldagem',1],
+  [4,'4.24','Relatório de Exame Visual e Dimensional de Soldagem',1],
+  [4,'4.25','Relatório de Exame Visual de Reparo de soldagem',0],
+  [4,'4.26','Mapa de Controle de Juntas',0],
+  [4,'4.27','Mapa de Reparo por Solda',0],
+  [4,'4.28','Mapa de localização das radiografias',0],
+  [4,'4.29','Registro de testes funcionais dos painéis elétricos',0],
+  [4,'4.30','Certificados de testes de tipo e rotina dos equipamentos elétricos',0],
+  [4,'4.31','Mapa de preservação',0],
+  [4,'4.32','Certificados de preservação',0],
+  [4,'4.33','Registro de teste de motores',1],
+  [4,'4.34','Registro de preservação de bancos de baterias',0],
+  [4,'4.35','Registros de calibração e de testes funcionais da instrumentação',0],
+  [4,'4.36','Certificado de liberação final do material (CLM) / equipamento emitido pelo cliente',1],
+  [4,'4.37','Relatório de pendências de preservação',0],
+  [4,'4.38','Termo de Aceitação dos Serviços de Construção',0],
+  [4,'4.39','Fichas de inspeção diária e mensal de guindastes',0],
+  [4,'4.40','Certificado de Revestimento dos Tambores',0],
+  [4,'4.41','Certificado de Revestimento de Roletes',0],
+  [5,'5.1','Relatórios de Não Conformidades',1,'rnc'],
+  [6,'6.1','Solicitações de Informação Técnica (SITs)',0],
+  [6,'6.2','Lista de Notas de Alteração de Projetos (NAPs)',0],
+  [6,'6.3','Relação de As Builts',0],
+  [6,'6.4','Lista de Desenhos do Fornecedor (LDF)',1,'desenhos'],
+  [7,'7.1','Procedimentos',1],
+  [7,'7.2','Prontuário NR-13',0],
+];
+const DB_ROMANO = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII'];
+const DB_LABEL_STATUS = { em_montagem: 'Em montagem', gerado: 'Gerado', enviado: 'Enviado ao cliente', aprovado: 'Aprovado' };
+
+let DATABOOKS = [];
+let DB_ATUAL = null, DB_ITENS = [], DB_REVS = [];
+let DB_SERVICO_ON = false;
+let DB_GERANDO = false;
+
+function irDatabooks(){ VISAO = 'databooks'; DB_ATUAL = null; renderNav(); renderListaDatabooks(); clearMsg(); }
+function irNovoDatabook(){ VISAO = 'databookNovo'; DB_ATUAL = null; renderNav(); renderNovoDatabook(); clearMsg(); }
+async function irDatabook(id){
+  VISAO = 'databook'; clearMsg();
+  document.getElementById('content').innerHTML = '<div class="empty">Carregando databook...</div>';
+  await carregarDatabook(id);
+  renderNav(); renderDatabook();
+}
+
+async function servicoDatabook(rota, corpo){
+  const r = await fetch(DB_SERVICO + rota, corpo === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpo) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.detail || ('Programa do Data Book respondeu ' + r.status));
+  return j;
+}
+async function checarServicoDatabook(){
+  try {
+    const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 1500);
+    const r = await fetch(DB_SERVICO + '/status', { signal: ctl.signal }); clearTimeout(t);
+    DB_SERVICO_ON = r.ok;
+  } catch { DB_SERVICO_ON = false; }
+  return DB_SERVICO_ON;
+}
+function htmlServicoDatabook(){
+  return DB_SERVICO_ON
+    ? `<div class="db-servico on">🟢 Programa do Data Book conectado neste PC — pode criar pastas, conferir arquivos e gerar.</div>`
+    : `<div class="db-servico off">⚪ Programa do Data Book não está aberto neste PC. Para criar pastas, conferir arquivos e gerar, use o PC da Qualidade e abra <b>&nbsp;Iniciar-Databook&nbsp;</b> (atalho na área de trabalho). <button class="btn btn-sm" style="margin-left:auto" onclick="recarregarServicoDatabook()">Tentar de novo</button></div>`;
+}
+async function recarregarServicoDatabook(){ await checarServicoDatabook(); if (VISAO === 'databook') renderDatabook(); else renderListaDatabooks(); }
+
+async function carregarDatabooks(){
+  const { data, error } = await sb.from('databooks')
+    .select('*, pedidos(numero_pedido, cliente), databook_itens(aplicavel, arquivos, origem)')
+    .order('criado_em', { ascending: false });
+  if (error){ DATABOOKS = []; showMsg('Databooks: ' + error.message + (/relation|does not exist|schema cache/i.test(error.message) ? ' — rode o sql/085_databooks.sql no Supabase.' : ''), false); return; }
+  DATABOOKS = data || [];
+}
+async function carregarDatabook(id){
+  const [a, b, c] = await Promise.all([
+    sb.from('databooks').select('*, pedidos(numero_pedido, cliente)').eq('id', id).single(),
+    sb.from('databook_itens').select('*').eq('databook_id', id).order('capitulo').order('ordem'),
+    sb.from('databook_revisoes').select('*').eq('databook_id', id).order('ordem'),
+  ]);
+  if (a.error){ showMsg('Erro ao abrir databook: ' + a.error.message, false); return; }
+  DB_ATUAL = a.data; DB_ITENS = b.data || []; DB_REVS = c.data || [];
+  if (!Array.isArray(DB_ATUAL.capitulos) || !DB_ATUAL.capitulos.length) DB_ATUAL.capitulos = DB_CAPITULOS_PADRAO.map(x => ({...x}));
+  await checarServicoDatabook();
+}
+
+function statusItemDatabook(it){
+  if (!it.aplicavel) return 'na';
+  const arqs = it.arquivos || [];
+  if (arqs.some(a => a.erro)) return 'err';
+  return arqs.length ? 'ok' : 'pend';
+}
+const DB_CHIP = { ok: ['st-ok', 'OK'], pend: ['st-pend', 'Pendente'], na: ['st-na', 'N/A'], err: ['st-err', 'Arquivo com erro'] };
+function resumoItensDatabook(itens){
+  const r = { ok: 0, pend: 0, na: 0, err: 0, paginas: 0 };
+  itens.forEach(it => { r[statusItemDatabook(it)]++; if (it.aplicavel) r.paginas += (it.arquivos || []).reduce((s, a) => s + (a.paginas || 0), 0); });
+  return r;
+}
+
+async function renderListaDatabooks(){
+  document.getElementById('content').innerHTML = '<div class="empty">Carregando databooks...</div>';
+  await carregarDatabooks();
+  const linhas = DATABOOKS.map(d => {
+    const r = resumoItensDatabook(d.databook_itens || []);
+    const aplic = r.ok + r.pend + r.err;
+    const pct = aplic ? Math.round(r.ok * 100 / aplic) : 0;
+    return `<tr onclick="irDatabook(${d.id})">
+      <td class="rnc-num">${esc(d.pedidos?.numero_pedido || '—')}</td>
+      <td>${esc(d.pedidos?.cliente || '—')}</td>
+      <td>${esc(d.titulo || '—')}</td>
+      <td>${esc(d.numero_cliente || '—')}</td>
+      <td>${esc(d.revisao || '0')}</td>
+      <td style="min-width:150px"><div class="db-progresso"><div style="width:${pct}%"></div></div><span style="font-size:11px;color:var(--text2)">${r.ok}/${aplic} itens · ${pct}%</span></td>
+      <td><span class="status-badge ${d.status==='aprovado'?'sb-encerrado':'sb-aberto'}">${DB_LABEL_STATUS[d.status] || d.status}</span></td>
+      <td>${d.ultima_geracao ? new Date(d.ultima_geracao).toLocaleString('pt-BR') + (d.ultima_geracao_info?.paginas ? ' · ' + d.ultima_geracao_info.paginas + ' pág.' : '') : '—'}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('content').innerHTML = `<div class="search-row">
+      <div style="flex:1;color:var(--text2);font-size:12.5px">Só os pedidos que precisam de data book. Os certificados ficam na pasta do pedido no OneDrive; aqui fica o checklist.</div>
+      <button class="btn btn-primary so-editor" onclick="irNovoDatabook()">+ Abrir Databook</button>
+    </div>
+    ${DATABOOKS.length ? `<div class="tbl-wrap"><table class="dtbl">
+      <thead><tr><th>Pedido</th><th>Cliente</th><th>Título</th><th>Nº Cliente</th><th>Rev.</th><th>Andamento</th><th>Status</th><th>Última geração</th></tr></thead>
+      <tbody>${linhas}</tbody></table></div>` : '<div class="empty">Nenhum databook aberto ainda.</div>'}`;
+}
+
+function renderNovoDatabook(){
+  const usados = new Set(DATABOOKS.map(d => d.pedido_id));
+  const opts = PEDIDOS.filter(p => !usados.has(p.id)).map(p => `<option value="${p.id}">${esc(p.numero_pedido)}${p.cliente ? ' · ' + esc(p.cliente) : ''}</option>`).join('');
+  document.getElementById('content').innerHTML = `<div class="section">
+    <div class="section-title">Abrir Databook</div>
+    <div class="form-grid">
+      <div class="field"><label for="f_db_pedido">Pedido</label><select id="f_db_pedido"><option value="">— escolha —</option>${opts}</select></div>
+      ${campoTexto('db_titulo', 'Título (equipamento)', '', {})}
+      ${campoTexto('db_projeto', 'Projeto / contrato (carimbo)', '', {})}
+      ${campoTexto('db_subtitulo', 'Fase (carimbo)', 'PROJETO DETALHADO', {})}
+      ${campoTexto('db_numero_cliente', 'Nº do documento no cliente (ex.: DF-BK-...)', '', {})}
+      ${campoTexto('db_numero_contratada', 'Nº MDE (contratada)', '', {})}
+      ${campoTexto('db_pasta', 'Pasta do databook neste pedido (caminho completo)', '', { wide: true })}
+    </div>
+    <p style="font-size:12px;color:var(--text2);margin-top:10px">A pasta é onde ficam os certificados, no OneDrive do PC da Qualidade. Ex.: <code>C:\\Users\\...\\P819 - CAPANEMA\\QUALIDADE\\DATABOOK</code>. Ao abrir, o sistema cria lá dentro uma pasta por capítulo e uma subpasta por item (padrão PR-G-363).</p>
+    <div class="form-actions"><button class="btn" onclick="irDatabooks()">Cancelar</button><button class="btn btn-primary" id="btnCriarDb" onclick="criarDatabook()">Abrir Databook</button></div>
+  </div>`;
+}
+
+async function criarDatabook(){
+  const v = id => (document.getElementById('f_' + id)?.value || '').trim();
+  const pedidoId = Number(v('db_pedido'));
+  if (!pedidoId){ showMsg('Escolha o pedido.', false); return; }
+  if (!v('db_titulo')){ showMsg('Informe o título (equipamento) do databook.', false); return; }
+  const btn = document.getElementById('btnCriarDb'); btn.disabled = true;
+  const { data: db, error } = await sb.from('databooks').insert({
+    pedido_id: pedidoId, titulo: v('db_titulo'), projeto: v('db_projeto') || null, subtitulo: v('db_subtitulo') || null,
+    numero_cliente: v('db_numero_cliente') || null, numero_contratada: v('db_numero_contratada') || null,
+    pasta: v('db_pasta') || null, capitulos: DB_CAPITULOS_PADRAO,
+    criado_por_nome: AUTH.nome, criado_data: new Date().toISOString().slice(0, 10),
+  }).select('id').single();
+  if (error){ btn.disabled = false; showMsg('Erro ao abrir databook: ' + error.message, false); return; }
+  const itens = DB_MODELO.map(([cap, cod, desc, aplic, origem], i) => ({ databook_id: db.id, capitulo: cap, codigo: cod, descricao: desc, aplicavel: !!aplic, origem: origem || 'pasta', ordem: (i + 1) * 10 }));
+  const r2 = await sb.from('databook_itens').insert(itens);
+  if (r2.error){ btn.disabled = false; showMsg('Databook criado, mas deu erro nos itens: ' + r2.error.message, false); return; }
+  await sb.from('databook_revisoes').insert({ databook_id: db.id, rev: 'A', te: 'B', descricao: 'EMISSÃO INICIAL', ordem: 1 });
+  await irDatabook(db.id);
+  if (DB_ATUAL?.pasta && DB_SERVICO_ON) await criarPastasDatabook(true);
+  showMsg('Databook aberto. Marque o que se aplica a este pedido e coloque os arquivos nas pastas.', true);
+}
+
+function renderDatabook(){
+  const d = DB_ATUAL; if (!d){ document.getElementById('content').innerHTML = '<div class="empty">Databook não encontrado.</div>'; return; }
+  const r = resumoItensDatabook(DB_ITENS);
+  const podeGerar = DB_SERVICO_ON && d.pasta && !SOMENTE_LEITURA;
+  const ed = SOMENTE_LEITURA ? 'disabled' : '';
+  let h = htmlServicoDatabook();
+  h += `<div class="db-acoes">
+    <button class="btn" onclick="abrirPastaDatabook()" ${DB_SERVICO_ON && d.pasta ? '' : 'disabled'}>📁 Abrir pasta</button>
+    <button class="btn so-editor" onclick="criarPastasDatabook()" ${podeGerar ? '' : 'disabled'}>🗂 Criar/atualizar pastas</button>
+    <button class="btn so-editor" onclick="conferirArquivosDatabook()" ${podeGerar ? '' : 'disabled'}>🔄 Conferir arquivos</button>
+    <button class="btn btn-primary so-editor" onclick="gerarDatabook()" ${podeGerar ? '' : 'disabled'}>📘 Gerar Databook</button>
+    ${d.ultima_geracao ? `<button class="btn" onclick="abrirPastaDatabook({gerado:true})" ${DB_SERVICO_ON ? '' : 'disabled'}>📄 Ver gerado (${new Date(d.ultima_geracao).toLocaleDateString('pt-BR')}${d.ultima_geracao_info?.paginas ? ' · ' + d.ultima_geracao_info.paginas + ' pág.' : ''})</button>` : ''}
+  </div>
+  <div id="dbProgresso"></div>
+  <div class="db-resumo">
+    <span class="ok">✓ ${r.ok} OK</span><span class="pend">● ${r.pend} pendente(s)</span>${r.err ? `<span class="err">✕ ${r.err} com erro</span>` : ''}<span>${r.na} N/A</span><span>${r.paginas} pág. de anexos</span>
+  </div>`;
+
+  // cabeçalho / carimbo
+  h += `<div class="section"><div class="section-title">Capa e carimbo</div>
+    <div class="form-grid">
+      <div class="field"><label>Pedido</label><input value="${esc(d.pedidos?.numero_pedido || '')} · ${esc(d.pedidos?.cliente || '')}" disabled></div>
+      ${campoTexto('dbh_titulo', 'Título (equipamento)', d.titulo)}
+      ${campoTexto('dbh_projeto', 'Projeto / contrato', d.projeto)}
+      ${campoTexto('dbh_subtitulo', 'Fase', d.subtitulo)}
+      ${campoTexto('dbh_classificacao', 'Classificação', d.classificacao)}
+      ${campoTexto('dbh_numero_cliente', 'Nº do documento no cliente', d.numero_cliente)}
+      ${campoTexto('dbh_numero_contratada', 'Nº MDE (contratada)', d.numero_contratada)}
+      ${campoTexto('dbh_revisao', 'Revisão (carimbo)', d.revisao)}
+      ${campoTexto('dbh_criado_por_nome', 'Criado por', d.criado_por_nome)}
+      ${campoTexto('dbh_criado_data', 'Data criação', d.criado_data, {type:'date'})}
+      ${campoTexto('dbh_verificado_por_nome', 'Verificado por', d.verificado_por_nome)}
+      ${campoTexto('dbh_verificado_data', 'Data verificação', d.verificado_data, {type:'date'})}
+      ${campoTexto('dbh_aprovado_por_nome', 'Aprovado por', d.aprovado_por_nome)}
+      ${campoTexto('dbh_departamento', 'Departamento', d.departamento)}
+      <div class="field"><label for="f_dbh_status">Status</label><select id="f_dbh_status">${Object.entries(DB_LABEL_STATUS).map(([k, l]) => `<option value="${k}" ${d.status===k?'selected':''}>${l}</option>`).join('')}</select></div>
+      <div class="field"><label for="f_dbh_numeracao">Numeração dos itens no PDF</label><select id="f_dbh_numeracao">
+        <option value="oficial" ${d.numeracao==='oficial'?'selected':''}>Oficial do cliente (4.9, 4.12, 4.33...)</option>
+        <option value="sequencial" ${d.numeracao==='sequencial'?'selected':''}>Sequencial (4.1, 4.2, 4.3...)</option></select></div>
+      <div class="field"><label for="f_dbh_carimbar">Etiqueta de página nos certificados</label><select id="f_dbh_carimbar">
+        <option value="1" ${d.carimbar_anexos?'selected':''}>Sim — "Nº · Rev · Página x/y" no rodapé</option>
+        <option value="0" ${!d.carimbar_anexos?'selected':''}>Não</option></select></div>
+      ${campoArea('dbh_escopo_entregue', 'Escopo entregue (termo de entrega — informar TAGs)', d.escopo_entregue, true)}
+      ${campoTexto('dbh_pasta', 'Pasta do databook (caminho completo no PC da Qualidade)', d.pasta, { wide: true })}
+    </div>
+    <div class="form-actions so-editor"><button class="btn btn-primary" onclick="salvarCabecalhoDatabook()">Salvar capa e carimbo</button></div>
+  </div>`;
+
+  // revisões
+  h += `<div class="section"><div class="section-title">Revisões do fornecedor</div>
+    <table class="db-itens db-rev"><thead><tr style="font-size:11px;color:var(--text2)"><td>Rev.</td><td>TE</td><td>Descrição</td><td>Por</td><td>Ver.</td><td>Apr.</td><td>Aut.</td><td>Data</td><td></td></tr></thead>
+    <tbody>${DB_REVS.map(rv => `<tr>
+      ${['rev','te','descricao','por','ver','apr','aut'].map(c => `<td><input ${ed} value="${esc(rv[c] ?? '')}" onchange="salvarRevisaoDatabook(${rv.id}, '${c}', this.value)"></td>`).join('')}
+      <td><input ${ed} type="date" value="${esc(rv.data ?? '')}" onchange="salvarRevisaoDatabook(${rv.id}, 'data', this.value)"></td>
+      <td class="so-editor"><button class="btn btn-sm" onclick="removerRevisaoDatabook(${rv.id})">✕</button></td></tr>`).join('')}</tbody></table>
+    <p style="font-size:11.5px;color:var(--text2);margin-top:6px">TE: A preliminar · B para aprovação · C para conhecimento · D para cotação · E para construção · F conforme comprado · G conforme construído · H cancelado</p>
+    <div class="form-actions so-editor"><button class="btn btn-sm" onclick="adicionarRevisaoDatabook()">+ Revisão</button></div>
+  </div>`;
+
+  // capítulos
+  for (const cap of d.capitulos){
+    const itens = DB_ITENS.filter(it => it.capitulo === cap.num);
+    h += `<div class="section"><div class="section-title db-cap-titulo">Capítulo ${DB_ROMANO[cap.num]} –
+        <input ${ed} value="${esc(cap.titulo)}" onchange="salvarTituloCapitulo(${cap.num}, this.value)"></div>
+      <table class="db-itens"><tbody>${itens.map(it => linhaItemDatabook(it)).join('')}</tbody></table>
+      <div class="form-actions so-editor" style="justify-content:flex-start;align-items:center">
+        <input id="novoCod_${cap.num}" placeholder="Código (ex.: ${cap.num}.${itens.length + 1})" style="width:130px;padding:6px 8px;border:1px solid var(--border);border-radius:8px;font-size:12px">
+        <input id="novoDesc_${cap.num}" placeholder="Descrição do item" style="flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:8px;font-size:12px">
+        <button class="btn btn-sm" onclick="adicionarItemDatabook(${cap.num})">+ Item</button>
+      </div></div>`;
+  }
+  h += `<div class="form-actions so-editor"><button class="btn" style="color:var(--red)" onclick="excluirDatabook()">Excluir este databook</button></div>`;
+  document.getElementById('content').innerHTML = h;
+  if (SOMENTE_LEITURA) travarFormSeLeitura();
+}
+
+function linhaItemDatabook(it){
+  const st = statusItemDatabook(it);
+  const [cls, lbl] = DB_CHIP[st];
+  const arqs = it.arquivos || [];
+  const pags = arqs.reduce((s, a) => s + (a.paginas || 0), 0);
+  const ehModelo = DB_MODELO.some(m => m[1] === it.codigo);
+  const exportar = it.origem === 'rnc' ? `<button class="btn btn-sm so-editor" onclick="exportarRNCsDatabook(${it.id})" ${DB_SERVICO_ON && DB_ATUAL.pasta ? '' : 'disabled'} title="Gera o PDF de cada RNC deste pedido e salva na pasta do item">📤 Exportar RNCs do pedido</button>`
+    : it.origem === 'desenhos' ? `<button class="btn btn-sm so-editor" onclick="exportarDesenhosDatabook(${it.id})" ${DB_SERVICO_ON && DB_ATUAL.pasta ? '' : 'disabled'} title="Gera a lista com os desenhos que a Engenharia subiu para este pedido">📤 Gerar lista de desenhos</button>` : '';
+  return `<tr class="${it.aplicavel ? '' : 'na'}">
+    <td class="chk"><input type="checkbox" ${it.aplicavel ? 'checked' : ''} ${SOMENTE_LEITURA ? 'disabled' : ''} title="Aplicável a este pedido" onchange="marcarAplicavelDatabook(${it.id}, this.checked)"></td>
+    <td class="cod">${esc(it.codigo)}</td>
+    <td>${esc(it.descricao)}${it.aplicavel && exportar ? `<div style="margin-top:4px">${exportar}</div>` : ''}</td>
+    <td class="arq">${it.aplicavel ? (arqs.length ? `${arqs.length} arquivo(s) · ${pags} pág.<ul class="db-arq-lista">${arqs.slice(0, 6).map(a => `<li class="${a.erro ? 'erro' : ''}">${esc(a.nome)}${a.erro ? ' — ' + esc(a.erro) : ` (${a.paginas} pág.)`}</li>`).join('')}${arqs.length > 6 ? `<li>… mais ${arqs.length - 6}</li>` : ''}</ul>` : 'Nenhum arquivo na pasta') : ''}</td>
+    <td class="st"><span class="status-badge ${cls}">${lbl}</span></td>
+    <td style="white-space:nowrap;width:70px">${it.aplicavel ? `<button class="btn btn-sm" title="Abrir a pasta deste item" onclick="abrirPastaDatabook({capitulo:${it.capitulo}, codigo:'${esc(it.codigo)}'})" ${DB_SERVICO_ON && DB_ATUAL.pasta ? '' : 'disabled'}>📁</button>` : ''}
+      ${!ehModelo ? `<button class="btn btn-sm so-editor" title="Remover item" onclick="removerItemDatabook(${it.id})">✕</button>` : ''}</td>
+  </tr>`;
+}
+
+async function salvarCabecalhoDatabook(){
+  const v = id => (document.getElementById('f_dbh_' + id)?.value ?? '').trim();
+  const dados = {
+    titulo: v('titulo') || 'DATA BOOK', projeto: v('projeto') || null, subtitulo: v('subtitulo') || null, classificacao: v('classificacao') || null,
+    numero_cliente: v('numero_cliente') || null, numero_contratada: v('numero_contratada') || null, revisao: v('revisao') || '0',
+    criado_por_nome: v('criado_por_nome') || null, criado_data: v('criado_data') || null, verificado_por_nome: v('verificado_por_nome') || null,
+    verificado_data: v('verificado_data') || null, aprovado_por_nome: v('aprovado_por_nome') || null, departamento: v('departamento') || null,
+    status: v('status') || 'em_montagem', numeracao: v('numeracao') || 'oficial', carimbar_anexos: v('carimbar') === '1',
+    escopo_entregue: v('escopo_entregue') || null, pasta: v('pasta') || null,
+  };
+  const { error } = await sb.from('databooks').update(dados).eq('id', DB_ATUAL.id);
+  if (error){ showMsg('Erro ao salvar: ' + error.message, false); return; }
+  Object.assign(DB_ATUAL, dados);
+  renderNav(); renderDatabook(); showMsg('Capa e carimbo salvos.', true);
+}
+async function salvarTituloCapitulo(num, titulo){
+  const caps = DB_ATUAL.capitulos.map(c => c.num === num ? { ...c, titulo: titulo.trim().toUpperCase() } : c);
+  const { error } = await sb.from('databooks').update({ capitulos: caps }).eq('id', DB_ATUAL.id);
+  if (error){ showMsg('Erro ao salvar título do capítulo: ' + error.message, false); return; }
+  DB_ATUAL.capitulos = caps;
+}
+async function marcarAplicavelDatabook(itemId, aplicavel){
+  const { error } = await sb.from('databook_itens').update({ aplicavel }).eq('id', itemId);
+  if (error){ showMsg('Erro: ' + error.message, false); return; }
+  const it = DB_ITENS.find(x => x.id === itemId); if (it) it.aplicavel = aplicavel;
+  renderDatabook();
+}
+async function adicionarItemDatabook(cap){
+  const cod = document.getElementById('novoCod_' + cap).value.trim();
+  const desc = document.getElementById('novoDesc_' + cap).value.trim();
+  if (!cod || !desc){ showMsg('Informe código e descrição do item.', false); return; }
+  if (DB_ITENS.some(x => x.codigo === cod)){ showMsg(`Já existe o item ${cod} neste databook.`, false); return; }
+  const ordem = Math.max(0, ...DB_ITENS.filter(x => x.capitulo === cap).map(x => x.ordem)) + 10;
+  const { data, error } = await sb.from('databook_itens').insert({ databook_id: DB_ATUAL.id, capitulo: cap, codigo: cod, descricao: desc, ordem, aplicavel: true }).select('*').single();
+  if (error){ showMsg('Erro ao adicionar item: ' + error.message, false); return; }
+  DB_ITENS.push(data); renderDatabook();
+}
+async function removerItemDatabook(itemId){
+  if (!confirm('Remover este item do databook? (os arquivos na pasta não são apagados)')) return;
+  const { error } = await sb.from('databook_itens').delete().eq('id', itemId);
+  if (error){ showMsg('Erro: ' + error.message, false); return; }
+  DB_ITENS = DB_ITENS.filter(x => x.id !== itemId); renderDatabook();
+}
+async function adicionarRevisaoDatabook(){
+  const ordem = Math.max(0, ...DB_REVS.map(r => r.ordem)) + 1;
+  const { data, error } = await sb.from('databook_revisoes').insert({ databook_id: DB_ATUAL.id, rev: String.fromCharCode(64 + Math.min(ordem, 26)), ordem }).select('*').single();
+  if (error){ showMsg('Erro: ' + error.message, false); return; }
+  DB_REVS.push(data); renderDatabook();
+}
+async function salvarRevisaoDatabook(id, campo, valor){
+  const { error } = await sb.from('databook_revisoes').update({ [campo]: valor || null }).eq('id', id);
+  if (error){ showMsg('Erro ao salvar revisão: ' + error.message, false); return; }
+  const rv = DB_REVS.find(x => x.id === id); if (rv) rv[campo] = valor || null;
+}
+async function removerRevisaoDatabook(id){
+  const { error } = await sb.from('databook_revisoes').delete().eq('id', id);
+  if (error){ showMsg('Erro: ' + error.message, false); return; }
+  DB_REVS = DB_REVS.filter(x => x.id !== id); renderDatabook();
+}
+async function excluirDatabook(){
+  if (!confirm(`Excluir o databook do pedido ${DB_ATUAL.pedidos?.numero_pedido}? O checklist some do sistema; os arquivos na pasta continuam.`)) return;
+  const { error } = await sb.from('databooks').delete().eq('id', DB_ATUAL.id);
+  if (error){ showMsg('Erro: ' + error.message, false); return; }
+  irDatabooks();
+}
+
+// ── ponte com o programa local ──
+async function abrirPastaDatabook(extra){
+  try { await servicoDatabook('/abrir', { pasta: DB_ATUAL.pasta, ...(extra || {}) }); }
+  catch (e){ showMsg(e.message, false); }
+}
+async function criarPastasDatabook(silencioso){
+  try {
+    const r = await servicoDatabook('/estrutura', { pasta: DB_ATUAL.pasta, itens: DB_ITENS.map(it => ({ capitulo: it.capitulo, codigo: it.codigo, descricao: it.descricao, aplicavel: it.aplicavel })) });
+    if (!silencioso) showMsg(r.criadas ? `${r.criadas} pasta(s) criada(s). Coloque os PDFs de cada item na pasta dele.` : 'As pastas já existiam — nada novo para criar.', true);
+  } catch (e){ showMsg('Não consegui criar as pastas: ' + e.message, false); }
+}
+async function conferirArquivosDatabook(silencioso){
+  try {
+    const r = await servicoDatabook('/conferir', { pasta: DB_ATUAL.pasta, itens: DB_ITENS.map(it => ({ capitulo: it.capitulo, codigo: it.codigo })) });
+    const agora = new Date().toISOString();
+    const linhas = DB_ITENS.map(it => ({ ...it, arquivos: r.itens[it.codigo]?.arquivos || [], paginas: (r.itens[it.codigo]?.arquivos || []).reduce((s, a) => s + (a.paginas || 0), 0), conferido_em: agora }));
+    const { error } = await sb.from('databook_itens').upsert(linhas, { onConflict: 'id' });
+    if (error) throw new Error(error.message);
+    DB_ITENS = linhas;
+    renderDatabook();
+    if (!silencioso){ const s = resumoItensDatabook(DB_ITENS); showMsg(`Arquivos conferidos: ${s.ok} item(ns) OK, ${s.pend} pendente(s)${s.err ? ', ' + s.err + ' com erro' : ''}.`, !s.err); }
+    return true;
+  } catch (e){ showMsg('Não consegui conferir os arquivos: ' + e.message, false); return false; }
+}
+async function exportarRNCsDatabook(itemId){
+  const it = DB_ITENS.find(x => x.id === itemId);
+  const rncs = RNCS.filter(r => r.pedido_id === DB_ATUAL.pedido_id);
+  if (!rncs.length){ showMsg('Este pedido não tem RNC no sistema. Se não houver, marque o item 5.1 como N/A ou coloque uma declaração na pasta.', false); return; }
+  try {
+    for (let i = 0; i < rncs.length; i++){
+      const arq = await gerarDocumentoRNC(rncs[i].id, { retornar: true });
+      await servicoDatabook('/salvar', { pasta: DB_ATUAL.pasta, capitulo: it.capitulo, codigo: it.codigo, descricao: it.descricao, nome: arq.nome, base64: arq.base64, limpar_antes: i === 0, limpar_prefixo: 'RNC_' });
+    }
+    await conferirArquivosDatabook(true);
+    const abertas = rncs.filter(r => r.status_nc !== 'encerrado').length;
+    showMsg(`${rncs.length} RNC(s) salvos na pasta do item ${it.codigo}.` + (abertas ? ` Atenção: ${abertas} ainda em aberto — o PR-G-363 pede todas encerradas.` : ''), !abertas);
+  } catch (e){ showMsg('Erro ao exportar RNCs: ' + e.message, false); }
+}
+async function exportarDesenhosDatabook(itemId){
+  const it = DB_ITENS.find(x => x.id === itemId);
+  let { data, error } = await sb.from('desenhos_engenharia').select('desenho_mde, desenho_cliente, revisao, nome_equipamento, remessas(numero)').eq('pedido_id', DB_ATUAL.pedido_id);
+  if (error){ ({ data, error } = await sb.from('desenhos_engenharia').select('desenho_mde, desenho_cliente, revisao').eq('pedido_id', DB_ATUAL.pedido_id)); }
+  if (error){ showMsg('Erro ao ler desenhos: ' + error.message, false); return; }
+  const unicos = new Map();
+  (data || []).forEach(d => { if (d.desenho_mde && !unicos.has(normDesenho(d.desenho_mde))) unicos.set(normDesenho(d.desenho_mde), d); });
+  const lista = [...unicos.values()].sort((a, b) => a.desenho_mde.localeCompare(b.desenho_mde));
+  if (!lista.length){ showMsg('A Engenharia ainda não subiu desenhos para este pedido.', false); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const M = 14, cols = [['Desenho MDE', 38], ['Rev.', 12], ['Desenho Cliente', 52], ['Equipamento / Descrição', 62], ['Rem.', 18]];
+  let y = 0, pag = 0;
+  const cab = () => {
+    if (pag) doc.addPage(); pag++;
+    doc.setFont(undefined, 'bold'); doc.setFontSize(13); doc.text('LISTA DE DESENHOS DO FORNECEDOR', 105, 18, { align: 'center' });
+    doc.setFont(undefined, 'normal'); doc.setFontSize(9);
+    doc.text(`Pedido ${DB_ATUAL.pedidos?.numero_pedido || ''} · ${DB_ATUAL.pedidos?.cliente || ''} · ${DB_ATUAL.titulo || ''}`, 105, 24, { align: 'center' });
+    y = 32; let x = M; doc.setFillColor(233, 237, 243); doc.rect(M, y, 182, 7, 'F'); doc.setFont(undefined, 'bold');
+    cols.forEach(([t, w]) => { doc.text(t, x + 1.5, y + 4.8); x += w; }); doc.setFont(undefined, 'normal'); y += 7;
+  };
+  cab();
+  lista.forEach(d => {
+    if (y > 280) cab();
+    const vals = [d.desenho_mde, d.revisao ?? '', d.desenho_cliente ?? '', d.nome_equipamento ?? '', d.remessas?.numero ?? ''];
+    let x = M; doc.setDrawColor(219, 225, 230); doc.line(M, y + 6, M + 182, y + 6);
+    vals.forEach((v, i) => { doc.text(doc.splitTextToSize(String(v), cols[i][1] - 3)[0] || '', x + 1.5, y + 4.3); x += cols[i][1]; });
+    y += 6;
+  });
+  doc.setFontSize(8); doc.text(`${lista.length} desenho(s) · gerado pelo Flow Suite em ${new Date().toLocaleString('pt-BR')}`, M, 290);
+  const nome = `Lista_de_Desenhos_${(DB_ATUAL.pedidos?.numero_pedido || '').replace(/[^\w-]+/g, '')}.pdf`;
+  try {
+    await servicoDatabook('/salvar', { pasta: DB_ATUAL.pasta, capitulo: it.capitulo, codigo: it.codigo, descricao: it.descricao, nome, base64: doc.output('datauristring').split(',')[1], limpar_antes: true, limpar_prefixo: 'Lista_de_Desenhos' });
+    await conferirArquivosDatabook(true);
+    showMsg(`Lista com ${lista.length} desenho(s) salva na pasta do item ${it.codigo}.`, true);
+  } catch (e){ showMsg('Erro ao salvar a lista: ' + e.message, false); }
+}
+
+async function gerarDatabook(){
+  if (DB_GERANDO) return;
+  if (!(await conferirArquivosDatabook(true))) return;
+  const s = resumoItensDatabook(DB_ITENS);
+  if (s.err){ showMsg(`Tem ${s.err} item(ns) com arquivo com erro (PDF com senha/defeito ou formato não aceito). Corrija na pasta e confira de novo.`, false); return; }
+  if (s.pend){
+    const lista = DB_ITENS.filter(it => statusItemDatabook(it) === 'pend').map(it => it.codigo).join(', ');
+    showMsg(`Faltam arquivos em ${s.pend} item(ns): ${lista}. Coloque os arquivos nas pastas ou desmarque o que não se aplica a este pedido.`, false); return;
+  }
+  const abertas = RNCS.filter(r => r.pedido_id === DB_ATUAL.pedido_id && r.status_nc !== 'encerrado');
+  if (abertas.length && !confirm(`Este pedido tem ${abertas.length} RNC em aberto (${abertas.map(formatarNumeroRNC).join(', ')}). O PR-G-363 pede todas encerradas antes do data book. Gerar mesmo assim?`)) return;
+  const d = DB_ATUAL;
+  const corpo = {
+    pasta: d.pasta, cliente: d.pedidos?.cliente || '', capitulos: d.capitulos, revisoes: DB_REVS,
+    itens: DB_ITENS.map(it => ({ capitulo: it.capitulo, codigo: it.codigo, descricao: it.descricao, aplicavel: it.aplicavel, ordem: it.ordem })),
+    databook: { titulo: d.titulo, projeto: d.projeto, subtitulo: d.subtitulo, classificacao: d.classificacao, numero_cliente: d.numero_cliente, numero_contratada: d.numero_contratada,
+      revisao: d.revisao, criado_por_nome: d.criado_por_nome, criado_data: d.criado_data, verificado_por_nome: d.verificado_por_nome, verificado_data: d.verificado_data,
+      aprovado_por_nome: d.aprovado_por_nome, departamento: d.departamento, escopo_entregue: d.escopo_entregue, numeracao: d.numeracao, carimbar_anexos: d.carimbar_anexos },
+  };
+  try { await servicoDatabook('/gerar', corpo); }
+  catch (e){ showMsg('Não consegui iniciar a geração: ' + e.message, false); return; }
+  DB_GERANDO = true; clearMsg();
+  const caixa = document.getElementById('dbProgresso');
+  const tick = async () => {
+    let p;
+    try { p = await servicoDatabook('/progresso'); } catch (e){ p = { erro: 'Perdi a conexão com o programa do Data Book: ' + e.message }; }
+    const pct = p.total ? Math.round((p.atual || 0) * 100 / p.total) : 0;
+    if (caixa) caixa.innerHTML = `<div class="section"><b>Gerando data book…</b> ${esc(p.etapa || '')}<div class="db-progresso"><div style="width:${pct}%"></div></div><span style="font-size:11.5px;color:var(--text2)">${p.atual || 0} de ${p.total || '?'} arquivo(s) · ${p.segundos || 0}s</span></div>`;
+    if (p.rodando){ setTimeout(tick, 1500); return; }
+    DB_GERANDO = false;
+    if (p.erro){ if (caixa) caixa.innerHTML = ''; showMsg('Erro ao gerar: ' + p.erro, false); return; }
+    const info = p.resultado || {};
+    const upd = { ultima_geracao: new Date().toISOString(), ultima_geracao_info: info, status: DB_ATUAL.status === 'em_montagem' ? 'gerado' : DB_ATUAL.status };
+    await sb.from('databooks').update(upd).eq('id', DB_ATUAL.id);
+    Object.assign(DB_ATUAL, upd);
+    renderDatabook();
+    showMsg(`Data book gerado: ${info.paginas} páginas, ${info.tamanho_mb} MB — ${info.arquivo}`, true);
+  };
+  tick();
+}
 
 init();
 </script>
