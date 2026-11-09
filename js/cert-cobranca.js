@@ -20,6 +20,8 @@ const CertCobranca = (() => {
   // a 1ª cobrança vai para Compras, com o fornecedor em cópia; da 2ª em diante
   // a Qualidade cobra o fornecedor direto
   const COMPRAS = { nome: 'Gerson', email: 'gerson.cunha@mde.ind.br' };
+  // responsável da Qualidade: em cópia na 1ª cobrança, faz as seguintes
+  const QUALIDADE = { nome: 'Vagner Lucio', email: 'vagner.lucio@mde.ind.br' };
   const perfil = () => AUTH?.perfil;
   const podeEditar = () => PERFIS_EDITA.includes(perfil());
   const podePrimeira = () => PERFIS_1A.includes(perfil());
@@ -344,7 +346,7 @@ const CertCobranca = (() => {
     $('ccxCobTitulo').textContent = `${seq}ª cobrança — ${forn.nome}`;
     const fornEmails = [...listaEmails(forn.email_para), ...listaEmails(forn.email_cc)];
     const para = seq <= 1 ? [COMPRAS.email] : listaEmails(forn.email_para);
-    const cc = seq <= 1 ? [...fornEmails, ...listaEmails(CFG.cc_padrao)] : [...listaEmails(forn.email_cc), ...listaEmails(CFG.cc_padrao)];
+    const cc = seq <= 1 ? [...fornEmails, QUALIDADE.email, ...listaEmails(CFG.cc_padrao)] : [...listaEmails(forn.email_cc), ...listaEmails(CFG.cc_padrao)];
     $('ccxPara').value = para.join('; ');
     $('ccxCc').value = [...new Set(cc)].filter(e => !para.includes(e)).join('; ');
     $('ccxAssunto').value = `${seq > 1 ? `${seq}ª COBRANÇA — ` : ''}MDE — Certificado de qualidade pendente — NF ${pend.map(x => x.nf).join(', ')}`;
