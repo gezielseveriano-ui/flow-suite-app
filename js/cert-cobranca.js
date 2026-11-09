@@ -10,12 +10,16 @@
 // quantos dias cada fornecedor demorou.
 //
 // Quem cobra: a 1ª cobrança é do Almoxarifado (ou Logística); da 2ª em
-// diante é da Qualidade. Admin faz as duas. Dar baixa ("Chegou") e cadastrar
+// diante é da Qualidade. A 1ª vai para Compras (COMPRAS) com o fornecedor em
+// cópia; a partir da 2ª vai direto para o fornecedor. Admin faz as duas. Dar baixa ("Chegou") e cadastrar
 // fornecedor: os quatro perfis.
 const CertCobranca = (() => {
   const PERFIS_1A = ['almoxarifado', 'logistica', 'admin'];
   const PERFIS_RECOBRA = ['qualidade', 'admin'];
   const PERFIS_EDITA = ['almoxarifado', 'logistica', 'qualidade', 'admin'];
+  // a 1ª cobrança vai para Compras, com o fornecedor em cópia; da 2ª em diante
+  // a Qualidade cobra o fornecedor direto
+  const COMPRAS = { nome: 'Gerson', email: 'gerson.cunha@mde.ind.br' };
   const perfil = () => AUTH?.perfil;
   const podeEditar = () => PERFIS_EDITA.includes(perfil());
   const podePrimeira = () => PERFIS_1A.includes(perfil());
@@ -306,14 +310,15 @@ const CertCobranca = (() => {
     const assinatura = `Atenciosamente,\n${AUTH.nome || ''}\n${setor} — MDE`;
     const varias = linhas.length > 1;
     if (seq <= 1){
+      const forn = linhas[0].forn?.nome || 'o fornecedor';
       return [
-        'Prezados,',
-        `Recebemos o material referente ${varias ? 'às notas fiscais abaixo' : 'à nota fiscal abaixo'} sem o certificado de qualidade:`,
+        `Prezado ${COMPRAS.nome},`,
+        `Recebemos do fornecedor ${forn} o material referente ${varias ? 'às notas fiscais abaixo' : 'à nota fiscal abaixo'} sem o certificado de qualidade:`,
         itens,
-        `Solicitamos o envio ${varias ? 'dos certificados' : 'do certificado'} no prazo de até ${prazo} (${['', 'um', 'dois', 'três', 'quatro', 'cinco'][prazo] || prazo}) dia${prazo > 1 ? 's' : ''}, em resposta a este e-mail.`,
+        `Solicitamos o apoio de Compras para que ${varias ? 'os certificados sejam enviados' : 'o certificado seja enviado'} no prazo de até ${prazo} (${['', 'um', 'dois', 'três', 'quatro', 'cinco'][prazo] || prazo}) dia${prazo > 1 ? 's' : ''}. O fornecedor está em cópia e pode responder a este e-mail diretamente com ${varias ? 'os certificados' : 'o certificado'}.`,
         'Reforçamos que o certificado de qualidade é documento obrigatório em todo fornecimento de matéria-prima para a MDE. Ele garante a rastreabilidade do material e faz parte da documentação técnica (data book) que entregamos aos nossos clientes. Sem ele, a liberação do material e a documentação do pedido ficam comprometidas.',
-        'Pedimos que, nos próximos fornecimentos, o certificado seja enviado junto com a nota fiscal, para que essa situação não volte a acontecer.',
-        'Agradecemos a atenção e contamos com a colaboração de vocês.',
+        `Ao fornecedor ${forn}, pedimos que, nos próximos fornecimentos, o certificado seja enviado junto com a nota fiscal, para que essa situação não volte a acontecer.`,
+        'Agradecemos a atenção e contamos com a colaboração de todos.',
         assinatura,
       ].join('\n\n');
     }
@@ -337,8 +342,11 @@ const CertCobranca = (() => {
     const seq = Math.max(...pend.map(x => x.cobrancas.length)) + 1;
     ENVIO = { forn, linhas: pend, seq };
     $('ccxCobTitulo').textContent = `${seq}ª cobrança — ${forn.nome}`;
-    $('ccxPara').value = forn.email_para || '';
-    $('ccxCc').value = [...new Set([...listaEmails(CFG.cc_padrao), ...listaEmails(forn.email_cc)])].join('; ');
+    const fornEmails = [...listaEmails(forn.email_para), ...listaEmails(forn.email_cc)];
+    const para = seq <= 1 ? [COMPRAS.email] : listaEmails(forn.email_para);
+    const cc = seq <= 1 ? [...fornEmails, ...listaEmails(CFG.cc_padrao)] : [...listaEmails(forn.email_cc), ...listaEmails(CFG.cc_padrao)];
+    $('ccxPara').value = para.join('; ');
+    $('ccxCc').value = [...new Set(cc)].filter(e => !para.includes(e)).join('; ');
     $('ccxAssunto').value = `${seq > 1 ? `${seq}ª COBRANÇA — ` : ''}MDE — Certificado de qualidade pendente — NF ${pend.map(x => x.nf).join(', ')}`;
     $('ccxCorpo').value = texto(pend, seq);
     $('ccxCobErro').classList.remove('show');
