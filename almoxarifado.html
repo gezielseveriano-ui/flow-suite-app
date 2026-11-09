@@ -277,6 +277,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
         <button class="mod-tab" id="tabEstoque" onclick="renderEstoque()">🏷️ Estoque MDE</button>
         <button class="mod-tab" id="tabProtocolo" onclick="renderProtocolo('gerar')">📑 Protocolo</button>
         <button class="mod-tab" id="tabProtocolosGerados" onclick="renderProtocolo('gerados')">🗂️ Protocolos gerados</button>
+        <button class="mod-tab" id="tabCertificados" onclick="renderCobrancaCert()">📨 Certificados pendentes <span id="badgeCert"></span></button>
       </div>
       <div class="nav-bar" id="navBar"></div>
       <div id="msgBox" class="msg-box"></div>
@@ -413,6 +414,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 </div>
 
 <script src="js/supabase-client.js?v=4"></script>
+<script src="js/cert-cobranca.js?v=1"></script>
 <script>
 let AUTH = null;
 let TODOS_ITENS = [];
@@ -534,7 +536,9 @@ async function init(){
   if (location.hash === '#estoque') await renderEstoque();
   else if (location.hash === '#protocolo') await renderProtocolo('gerar');
   else if (location.hash === '#protocolos') await renderProtocolo('gerados');
+  else if (location.hash === '#certificados') await renderCobrancaCert();
   else await renderHome();
+  atualizarBadgeCert();
 }
 
 function renderNav(){
@@ -1411,7 +1415,8 @@ function marcarAbaModulo(qual){
   document.getElementById('tabEstoque').classList.toggle('active', qual === 'estoque');
   document.getElementById('tabProtocolo').classList.toggle('active', qual === 'protocolo');
   document.getElementById('tabProtocolosGerados').classList.toggle('active', qual === 'protocolos');
-  try { history.replaceState(null, '', ['estoque', 'protocolo', 'protocolos'].includes(qual) ? '#' + qual : location.pathname + location.search); } catch (e) {}
+  document.getElementById('tabCertificados').classList.toggle('active', qual === 'certificados');
+  try { history.replaceState(null, '', ['estoque', 'protocolo', 'protocolos', 'certificados'].includes(qual) ? '#' + qual : location.pathname + location.search); } catch (e) {}
 }
 
 function fecharModalEstoque(id){ document.getElementById(id).classList.remove('show'); }
@@ -2368,6 +2373,18 @@ async function pdfProtocolo(id){
 
   doc.save(`Protocolo_${p.numero}_CNPJ_${p.cnpj.replace(/\D/g, '').slice(0, 8)}.pdf`);
 }
+
+// ===== Certificados pendentes (tela em js/cert-cobranca.js, espelhada na Qualidade) =====
+async function renderCobrancaCert(){
+  VISAO = 'certificados';
+  marcarAbaModulo('certificados');
+  if (floatScrollEl) floatScrollEl.classList.remove('show');
+  clearMsg();
+  document.getElementById('navBar').innerHTML = `<span class="nav-crumb active">Almoxarifado — Certificados pendentes de fornecedor</span>`;
+  await CertCobranca.render(document.getElementById('content'));
+  atualizarBadgeCert();
+}
+function atualizarBadgeCert(){ CertCobranca.badge('badgeCert'); }
 
 </script>
 </body>

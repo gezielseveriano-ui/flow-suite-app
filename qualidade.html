@@ -290,6 +290,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
         <button class="mod-tab active" id="tabRNC" onclick="irLista()">📋 RNCs</button>
         <button class="mod-tab" id="tabDesvios" onclick="irDesvios()">⚠️ Controle de Desvio Cliente</button>
         <button class="mod-tab" id="tabDatabooks" onclick="irDatabooks()">📘 Databooks</button>
+        <button class="mod-tab" id="tabCertificados" onclick="irCertificados()">📨 Certificados pendentes <span id="badgeCert"></span></button>
       </div>
       <div class="nav-bar" id="navBar"></div>
       <div id="msgBox" class="msg-box"></div>
@@ -299,6 +300,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 </div>
 
 <script src="js/supabase-client.js?v=4"></script>
+<script src="js/cert-cobranca.js?v=1"></script>
 <script>
 let AUTH = null;
 let PEDIDOS = [];        // [{id, numero_pedido, cliente}]
@@ -341,6 +343,7 @@ async function init(){
 
   await Promise.all([carregarRNCs(), carregarDesvios()]);
   irLista();
+  CertCobranca.badge('badgeCert');
 }
 
 async function carregarRNCs(){
@@ -374,11 +377,15 @@ function renderNav(){
   const nav = document.getElementById('navBar');
   const emDesvios = VISAO === 'desvios' || VISAO === 'desvioForm';
   const emDatabooks = VISAO === 'databooks' || VISAO === 'databookNovo' || VISAO === 'databook';
-  document.getElementById('tabRNC').classList.toggle('active', !emDesvios && !emDatabooks);
+  const emCert = VISAO === 'certificados';
+  document.getElementById('tabRNC').classList.toggle('active', !emDesvios && !emDatabooks && !emCert);
   document.getElementById('tabDesvios').classList.toggle('active', emDesvios);
   document.getElementById('tabDatabooks').classList.toggle('active', emDatabooks);
+  document.getElementById('tabCertificados').classList.toggle('active', emCert);
   let h;
-  if (emDatabooks){
+  if (emCert){
+    h = `<span class="nav-crumb active">Qualidade — Certificados pendentes de fornecedor</span>`;
+  } else if (emDatabooks){
     h = `<span class="nav-crumb ${VISAO==='databooks'?'active':''}" onclick="irDatabooks()">Qualidade — Databooks</span>`;
     if (VISAO === 'databookNovo') h += `<span class="nav-sep">›</span><span class="nav-crumb active">Abrir Databook</span>`;
     if (VISAO === 'databook' && DB_ATUAL) h += `<span class="nav-sep">›</span><span class="nav-crumb active">${esc(DB_ATUAL.pedidos?.numero_pedido || '')} · ${esc(DB_ATUAL.titulo || '')}</span>`;
@@ -1460,6 +1467,13 @@ let DB_ATUAL = null, DB_ITENS = [], DB_REVS = [];
 let DB_SERVICO_ON = false;
 let DB_GERANDO = false;
 
+// certificados de matéria-prima pendentes: mesma tela do Almoxarifado (js/cert-cobranca.js);
+// a 1ª cobrança é do almoxarifado, da 2ª em diante é da Qualidade
+async function irCertificados(){
+  VISAO = 'certificados'; renderNav(); clearMsg();
+  await CertCobranca.render(document.getElementById('content'));
+  CertCobranca.badge('badgeCert');
+}
 function irDatabooks(){ VISAO = 'databooks'; DB_ATUAL = null; renderNav(); renderListaDatabooks(); clearMsg(); }
 function irNovoDatabook(){ VISAO = 'databookNovo'; DB_ATUAL = null; renderNav(); renderNovoDatabook(); clearMsg(); }
 async function irDatabook(id){
