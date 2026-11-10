@@ -550,7 +550,14 @@ async function carregarDados(){
     }
 
     const saldo = Math.max(0, Number(it.quantidade) - qtdExpedida);
-    const item = { ...it, pesoTotal, avancoPct, fabricado, expedido, pendExp, qtdExpedida, saldo, expedicoes: expedicoesPorItem[it.id] || [] };
+    // peça expedida já foi fabricada, mesmo sem apontamento (baixas históricas
+    // e de romaneio) -- fabricado e avanço nunca ficam abaixo do expedido
+    if (pesoTotal > 0 && expedido > 0){
+      const pctExp = Math.min(100, expedido / pesoTotal * 100);
+      if (pctExp > avancoPct) avancoPct = pctExp;
+    }
+    const fabricadoFinal = pesoTotal * (avancoPct / 100);
+    const item = { ...it, pesoTotal, avancoPct, fabricado: fabricadoFinal, expedido, pendExp, qtdExpedida, saldo, expedicoes: expedicoesPorItem[it.id] || [] };
 
     if (!DB[numeroPedido]) DB[numeroPedido] = {};
     if (!DB[numeroPedido][tag]) DB[numeroPedido][tag] = {};
