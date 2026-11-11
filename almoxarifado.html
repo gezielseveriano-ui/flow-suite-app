@@ -2143,8 +2143,8 @@ function renderPendentesProtocolo(){
   const wrap = document.getElementById('protPendentes');
   if (!wrap) return;
   const lista = pendentesFiltrados();
-  const vis = new Set(lista.map(g => g.chave));
-  PROT_SEL.forEach(k => { if (!vis.has(k)) PROT_SEL.delete(k); });
+  // a seleção vale mesmo pra NF que o filtro escondeu agora -- o botão
+  // "Gerar protocolo (n NF)" conta todas as marcadas
   atualizarBotaoGerarProt();
   if (!lista.length){ wrap.innerHTML = `<div class="empty">Nenhuma O.C./NF pendente de protocolo nesse filtro.</div>`; return; }
   const todos = lista.every(g => PROT_SEL.has(g.chave));
