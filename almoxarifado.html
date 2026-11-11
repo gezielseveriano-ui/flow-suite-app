@@ -2059,7 +2059,7 @@ function renderCnpjProtocolo(){
 function linhaFormNfManual(pref, acao){
   return `
     <tr class="prot-form">
-      <td><input class="edit-input txt" id="${pref}Nf" placeholder="nº da NF"></td>
+      <td><input class="edit-input txt" id="${pref}Nf" placeholder="nº da NF" onchange="preencherNfManual('${pref}')"></td>
       <td><input class="edit-input txt" id="${pref}Oc" placeholder="se tiver"></td>
       <td><input class="edit-input txt larga" id="${pref}Forn" placeholder="fornecedor"></td>
       <td><input class="edit-input" type="date" id="${pref}Data" value="${hojeISO()}"></td>
@@ -2068,14 +2068,37 @@ function linhaFormNfManual(pref, acao){
       <td><span class="btn btn-primary" onclick="${acao}">＋ Adicionar</span></td>
     </tr>`;
 }
-function lerFormNfManual(pref){
+// ao digitar a NF, puxa O.C., fornecedor, pedido e data do que já foi lançado no recebimento
+function preencherNfManual(pref){
+  const nf = (document.getElementById(pref + 'Nf').value || '').trim();
+  const achou = nf ? PROT_PENDENTES.filter(g => g.nf === nf) : [];
+  if (!achou.length) return;
+  const set = (id, val) => { if (val) document.getElementById(pref + id).value = val; };
+  set('Oc', achou.map(g => g.oc).filter(Boolean).join(' / '));
+  set('Forn', achou[0].fornecedor);
+  set('Ped', [...new Set(achou.map(g => g.pedido).filter(Boolean))].join(', '));
+  set('Data', achou[0].data_nf);
+  if (achou.length > 1) showMsg(`A NF ${nf} tem ${achou.length} O.C. lançadas — ao adicionar entram as ${achou.length}, uma linha para cada.`, true);
+}
+
+// devolve uma lista de linhas: uma por O.C. quando a NF veio do recebimento
+// com várias O.C. e o campo O.C. não foi mexido (expandir só no protocolo já gerado)
+function lerFormNfManual(pref, expandir){
   const v = id => (document.getElementById(pref + id).value || '').trim();
   const linha = { nf: v('Nf'), oc: v('Oc'), fornecedor: v('Forn'), data_nf: v('Data') || null, pedido: v('Ped'), certificado: v('Cert') || 'na' };
   if (!linha.nf){ showMsg('Informe o número da NF.', false); document.getElementById(pref + 'Nf').focus(); return null; }
-  const k = chaveOcNf(linha.oc, linha.nf);
-  const jaUsada = PROT_LISTA.some(p => (p.protocolos_nf_itens || []).some(l => chaveOcNf(l.oc, l.nf) === k));
-  if (jaUsada){ showMsg(`A NF ${linha.nf}${linha.oc ? ' / O.C. ' + linha.oc : ''} já está em outro protocolo.`, false); return null; }
-  return linha;
+  let linhas = [linha];
+  if (expandir){
+    const achou = PROT_PENDENTES.filter(g => g.nf === linha.nf);
+    if (achou.length && linha.oc === achou.map(g => g.oc).filter(Boolean).join(' / '))
+      linhas = achou.map(g => ({ ...linha, oc: g.oc, pedido: g.pedido || linha.pedido }));
+  }
+  for (const l of linhas){
+    const k = chaveOcNf(l.oc, l.nf);
+    const jaUsada = PROT_LISTA.some(p => (p.protocolos_nf_itens || []).some(x => chaveOcNf(x.oc, x.nf) === k));
+    if (jaUsada){ showMsg(`A NF ${l.nf}${l.oc ? ' / O.C. ' + l.oc : ''} já está em outro protocolo.`, false); return null; }
+  }
+  return linhas;
 }
 function limparFormNfManual(pref){
   ['Nf', 'Oc', 'Forn', 'Ped'].forEach(id => document.getElementById(pref + id).value = '');
@@ -2083,8 +2106,9 @@ function limparFormNfManual(pref){
 }
 
 function adicionarNfManualGerar(){
-  const linha = lerFormNfManual('protNovaGer');
-  if (!linha) return;
+  const linhas = lerFormNfManual('protNovaGer');
+  if (!linhas) return;
+  const linha = linhas[0];
   const k = chaveOcNf(linha.oc, linha.nf);
   if (PROT_MANUAIS.some(m => chaveOcNf(m.oc, m.nf) === k) || PROT_PENDENTES.some(g => g.chave === k)){
     showMsg('Essa NF já está na lista — marque ela na tabela abaixo.', false); return;
@@ -2238,20 +2262,23 @@ function renderDetalheProtocolo(id){
 }
 
 async function adicionarNfManualProt(protId){
-  const linha = lerFormNfManual('protNova' + protId);
-  if (!linha) return;
+  const linhas = lerFormNfManual('protNova' + protId, true);
+  if (!linhas) return;
   const { data, error } = await sb.from('protocolos_nf_itens')
-    .insert({ protocolo_id: protId, ...linha, oc: linha.oc || null, pedido: linha.pedido || null, fornecedor: linha.fornecedor || null })
-    .select('id, oc, nf, fornecedor, data_nf, pedido, certificado').single();
+    .insert(linhas.map(l => ({ protocolo_id: protId, ...l, oc: l.oc || null, pedido: l.pedido || null, fornecedor: l.fornecedor || null })))
+    .select('id, oc, nf, fornecedor, data_nf, pedido, certificado');
   if (error){
-    showMsg(/uq_protocolos_nf_itens_oc_nf|duplicate/i.test(error.message) ? `A NF ${linha.nf} já está em outro protocolo.` : 'Erro ao lançar NF: ' + error.message, false);
+    showMsg(/uq_protocolos_nf_itens_oc_nf|duplicate/i.test(error.message) ? `A NF ${linhas[0].nf} já está em outro protocolo.` : 'Erro ao lançar NF: ' + error.message, false);
     return;
   }
   const p = PROT_LISTA.find(x => x.id === protId);
-  p.protocolos_nf_itens.push(data);
+  p.protocolos_nf_itens.push(...data);
+  // o que entrou sai da lista de pendentes
+  const usadas = new Set(data.map(d => chaveOcNf(d.oc, d.nf)));
+  PROT_PENDENTES = PROT_PENDENTES.filter(g => !usadas.has(g.chave));
   renderGeradosProtocolo();
   abrirDetalheProtocolo(protId);
-  showMsg(`NF ${data.nf} lançada no protocolo nº ${p.numero}. Gere o PDF de novo se já tinha impresso.`, true);
+  showMsg(`NF ${data[0].nf} lançada no protocolo nº ${p.numero}${data.length > 1 ? ` (${data.length} O.C.)` : ''}. Gere o PDF de novo se já tinha impresso.`, true);
 }
 
 async function removerLinhaProt(protId, linhaId){
