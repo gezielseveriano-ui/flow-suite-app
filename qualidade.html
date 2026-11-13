@@ -1520,7 +1520,23 @@ async function irRastreab(){
   document.getElementById('content').innerHTML = '<div class="empty">Carregando certificados...</div>';
   await Promise.all([carregarCerts(), checarServicoCert(), carregarDbsCert()]);
   await carregarRecebidos();
+  const arrumados = await organizarSilencioso();
   renderRastreab();
+  if (arrumados) showMsg(`Arrumei na pasta do pedido: ${arrumados}`, true);
+}
+
+// ao abrir a aba: o que já tem pedido (lançado pelo almoxarife) + item do Databook e ainda está na caixa de entrada
+// (ou em pasta antiga) vai sozinho para P-xxx\CAP ...\. Só move arquivo: não lê PDF, não gasta OCR.
+async function organizarSilencioso(){
+  if (!CERT_SERVICO_ON || CERT_LENDO) return '';
+  // 1) com pedido + item: pra pasta do pedido.  2) sem pedido e ainda na caixa de entrada/pasta antiga: pra CERTIFICADOS SEM PEDIDO
+  const prontos = certsParaArrumar();
+  const ok = [];
+  for (const c of prontos){
+    try { const t = await arquivarCert(c); if (t.includes('→')) ok.push(t); } catch {}
+  }
+  if (ok.length){ await carregarCerts(); await carregarRecebidos(); }
+  return ok.join(' · ');
 }
 
 // ---- caixa de entrada: CERTIFICADOS DE TODOS OS PEDIDOS\CERTIFICADO RECEBIDO DO ALMOXARIFADO
@@ -1601,10 +1617,23 @@ const pedidosDoCert = c => String(c.pedido || '').split(/[,;]+/).map(s => s.trim
 const certArquivado = c => !!c.arquivo && pedidosDoCert(c).length > 0 && c.arquivo.startsWith(nomePastaPedido(pedidosDoCert(c)[0]) + '/');
 
 // põe o PDF na pasta do item do pedido, na rede. Atualiza o caminho guardado no banco. Devolve um texto curto.
+const CERT_PASTA_SEM_PEDIDO = 'CERTIFICADOS SEM PEDIDO';
+// lido, mas o almoxarife ainda não lançou o nº numa NF: o PDF sai da caixa de entrada e espera nesta pasta
+async function moverSemPedidoCert(c){
+  if (c.arquivo.startsWith(CERT_PASTA_SEM_PEDIDO + '/')) return `${c.numero}: já está em ${CERT_PASTA_SEM_PEDIDO}`;
+  const r = await fetch(CERT_SERVICO + '/arquivar', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ arquivo: c.arquivo, sem_pedido: true, nome: c.numero }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) return `${c.numero}: ${j.detail || r.status}`;
+  await sb.from('certificados_mp').update({ arquivo: j.arquivo }).eq('id', c.id);
+  c.arquivo = j.arquivo;
+  return `${c.numero} → ${CERT_PASTA_SEM_PEDIDO} (espera o almoxarife lançar o nº na NF)`;
+}
+
 async function arquivarCert(c){
   if (!c.arquivo) return `${c.numero}: ainda sem PDF lido`;
+  if (!pedidosDoCert(c).length) return await moverSemPedidoCert(c);
   if (!c.item_databook) return `${c.numero}: escolha o item do Databook`;
-  if (!pedidosDoCert(c).length) return `${c.numero}: o almoxarife ainda não lançou este nº numa NF — PDF fica em _SEM PEDIDO`;
   const r = await fetch(CERT_SERVICO + '/arquivar', { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ arquivo: c.arquivo, pedidos: c.pedido, codigo: c.item_databook, descricao: CERT_ITENS_DESC[c.item_databook] || '', nome: c.numero }) });
   const j = await r.json().catch(() => ({}));
@@ -1614,19 +1643,27 @@ async function arquivarCert(c){
   return `${c.numero} → ${j.arquivo.split('/').slice(0, 3).join(' › ')}`;
 }
 
-// cria as pastas (CAP I a VII + GERADO) de todos os pedidos que têm certificado e arruma os PDFs que já podem ir pro lugar
+// o que ainda precisa mudar de pasta: (1) tem pedido + item e não está na pasta do pedido; (2) não tem pedido e
+// ainda está na caixa de entrada ou na pasta antiga (vai para CERTIFICADOS SEM PEDIDO)
+const certsParaArrumar = () => CERTS.filter(c => c.arquivo && ((c.item_databook && pedidosDoCert(c).length && !certArquivado(c))
+  || (!pedidosDoCert(c).length && !c.arquivo.startsWith(CERT_PASTA_SEM_PEDIDO + '/'))));
+
+// cria as pastas (CAP I a VII + DATABOOK) de todos os pedidos que têm certificado e arruma os PDFs que já podem ir pro lugar
 async function organizarPastasCert(){
   const pedidos = [...new Set(CERTS.flatMap(pedidosDoCert))];
-  if (!pedidos.length){ showMsg('Nenhum pedido ainda: o almoxarife lança o nº do certificado na NF.', false); return; }
-  const lista = CERTS.filter(c => c.arquivo && c.item_databook && pedidosDoCert(c).length && !certArquivado(c));
-  if (!confirm(`Criar as pastas de ${pedidos.length} pedido(s) em "CERTIFICADOS DE TODOS OS PEDIDOS" e arquivar ${lista.length} PDF(s) no item certo?`)) return;
+  const lista = certsParaArrumar();
+  if (!pedidos.length && !lista.length){ showMsg('Nada para organizar: o almoxarife lança o nº do certificado na NF e a Qualidade escolhe o item do Databook.', false); return; }
+  if (!confirm(`Criar as pastas de ${pedidos.length} pedido(s) em "CERTIFICADOS DE TODOS OS PEDIDOS" e mover ${lista.length} PDF(s) (para o item certo do pedido, ou para "${CERT_PASTA_SEM_PEDIDO}" quando ainda não tem pedido)?`)) return;
   try {
-    const r = await fetch(CERT_SERVICO + '/estrutura-pedidos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pedidos }) });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(j.detail || r.status);
-    const res = [`${j.criadas.length} pasta(s) de pedido criada(s)` + (j.criadas.length ? ': ' + j.criadas.join(', ') : '')];
+    const res = [];
+    if (pedidos.length){
+      const r = await fetch(CERT_SERVICO + '/estrutura-pedidos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pedidos }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.detail || r.status);
+      res.push(`${j.criadas.length} pasta(s) de pedido criada(s)` + (j.criadas.length ? ': ' + j.criadas.join(', ') : ''));
+    }
     for (const c of lista){ try { res.push(await arquivarCert(c)); } catch (e){ res.push(`${c.numero}: erro ${e.message}`); } }
-    await carregarCerts(); renderTabelaRastreab();
+    await carregarCerts(); await carregarRecebidos(); renderRastreab();
     showMsg(res.join(' · '), true);
   } catch (e){ showMsg('Erro ao organizar as pastas: ' + e.message, false); }
 }
@@ -1747,7 +1784,7 @@ function renderTabelaRastreab(){
   if (!CERT_TABELA_OK){ wrap.innerHTML = '<div class="empty">A tabela de certificados ainda não existe. Rode o <b>sql/087_rastreabilidade_certificados.sql</b> no Supabase.</div>'; return; }
   if (!lista.length){ wrap.innerHTML = `<div class="empty">${CERTS.length ? 'Nenhum certificado nesse filtro.' : 'Nenhum certificado lançado ainda. O almoxarife digita o nº do certificado na NF, na aba Protocolo do Almoxarifado.'}</div>`; return; }
   const cel = (c, campo, ph) => ed
-    ? `<td><input value="${esc(c[campo] || '')}" placeholder="${ph || ''}" onchange="salvarCampoCert(${c.id}, '${campo}', this.value)"></td>`
+    ? `<td><input value="${esc(c[campo] || '')}" placeholder="${ph || ''}" ${campo === 'produto' && c.observacao ? `title="${esc(c.observacao)}"` : ''} onchange="salvarCampoCert(${c.id}, '${campo}', this.value)"></td>`
     : `<td>${esc(c[campo] || '—')}</td>`;
   wrap.innerHTML = `<div class="tbl-wrap"><table class="dtbl rt-tbl">
     <thead><tr><th>Pedido</th><th>O.C.</th><th>NF</th><th>Fornecedor</th><th>Nº certificado</th><th>Usina</th><th>Material</th><th>Bitola</th><th>Norma</th><th>Corrida</th><th>Data cert.</th><th>Desenhos</th><th title="Item do Databook onde o certificado entra (o leitor sugere; você confere)">Item do Databook</th><th>Leitura</th><th></th></tr></thead>
@@ -1764,7 +1801,9 @@ function renderTabelaRastreab(){
         : esc(CERT_ITENS_DB[c.item_databook] || '—')}
         ${c.arquivo ? (certArquivado(c)
           ? `<span class="rt-st st-ok" title="${esc(c.arquivo)}">📁 pasta do pedido</span>`
-          : `<span class="rt-st st-pend" title="PDF ainda em ${esc(c.arquivo)} — falta o pedido (almoxarife) ou o item do Databook">📁 aguardando</span>`) : ''}
+          : c.arquivo.startsWith(CERT_PASTA_SEM_PEDIDO + '/')
+            ? `<span class="rt-st st-pend" title="PDF em ${esc(c.arquivo)} — espera o almoxarife lançar este nº numa NF">📁 sem pedido</span>`
+            : `<span class="rt-st st-pend" title="PDF ainda em ${esc(c.arquivo)} — falta o item do Databook">📁 aguardando</span>`) : ''}
         ${c.enviado_databook_em ? `<span class="rt-st st-ok" title="PDF copiado para a pasta do Databook em ${new Date(c.enviado_databook_em).toLocaleString('pt-BR')}">no Databook</span>` : ''}</td>
       <td><span class="rt-st ${cls}">${lbl}</span></td>
       <td style="white-space:nowrap">
@@ -1877,35 +1916,44 @@ async function processarLeituraCert(j, nomeArq, alvoId){
   const nCampos = ['usina', 'produto', 'norma', 'bitola', 'corrida'].filter(k => lido[k]).length;
   let alvo = alvoId != null ? CERTS.find(x => x.id === alvoId) : null;
   let aviso = '';
-  if (!alvo && c.certificado){
+  // o nº lançado pelo almoxarife pode ser o do certificado OU outro nº do documento (ex.: Haitai: subcontrato
+  // HT-HQ-PO323; TE: "Order Item"): o leitor devolve esses nºs em "referencias"
+  const chaves = [c.certificado, ...(c.referencias || [])].filter(Boolean).map(chaveCert);
+  if (!alvo && chaves.length){
+    alvo = CERTS.find(x => chaves.includes(chaveCert(x.numero)));
     const k = chaveCert(c.certificado);
-    alvo = CERTS.find(x => chaveCert(x.numero) === k);
     if (!alvo && /^\d{10}/.test(k)){               // Gerdau: 8136904163-10 x 8136904163/000010
       const cand = CERTS.filter(x => chaveCert(x.numero).startsWith(k.slice(0, 10)));
       if (cand.length === 1){ alvo = cand[0]; aviso = 'conferir'; }
     }
   }
-  if (alvo && alvoId != null && c.certificado && chaveCert(c.certificado) !== chaveCert(alvo.numero)) aviso = 'conferir';
+  if (alvo && alvoId != null && chaves.length && !chaves.includes(chaveCert(alvo.numero))) aviso = 'conferir';
   if (!alvo && !c.certificado) return `${nomeArq}: não consegui ler o nº do certificado (o PDF continua na caixa de entrada)`;
   const status = aviso === 'conferir' || !c.certificado || nCampos < 3 ? 'conferir' : 'lido';
   const dados = { ...lido, leitura_status: status, lido_em: new Date().toISOString() };
+  // validade/fabricação (tinta) vai em observacao; não sobrescreve o que a Qualidade já escreveu
+  if (c.observacao && !(alvo && alvo.observacao)) dados.observacao = c.observacao;
   // item do Databook: o leitor sugere pelo conteúdo; não sobrescreve o que a Qualidade já escolheu
   const itemDb = (alvo && alvo.item_databook) || (j.classe && j.classe.codigo) || null;
   if (itemDb) dados.item_databook = itemDb;
   if (alvo){
     await gravarCert(dados, alvo.id);
     let msg = `${alvo.numero}: ${status === 'lido' ? 'lido e ligado à NF ' + (alvo.nf || '—') : 'lido, conferir os campos'}`;
-    // lido com segurança + item definido: arquiva na pasta do pedido (rede) e, se o pedido tiver Databook, copia pra lá
-    if (status === 'lido' && itemDb){
-      const cert = { id: alvo.id, numero: alvo.numero, arquivo: lido.arquivo, pedido: alvo.pedido, item_databook: itemDb };
+    const cert = { id: alvo.id, numero: alvo.numero, arquivo: lido.arquivo, pedido: alvo.pedido, item_databook: itemDb };
+    if (!pedidosDoCert(cert).length){
+      msg += ' · ' + await arquivarCert(cert);          // sem pedido: sai da caixa de entrada e vai pra CERTIFICADOS SEM PEDIDO
+    } else if (status === 'lido' && itemDb){
+      // lido com segurança + item definido: arquiva na pasta do pedido (rede) e, se o pedido tiver Databook, copia pra lá
       msg += ' · ' + await arquivarCert(cert);
       msg += ' · ' + await enviarCertDatabook(cert);
     }
     else if (itemDb) msg += ` · sugestão: item ${itemDb} (confira e use 📘 Enviar)`;
     return msg;
   }
-  await gravarCert({ numero: c.certificado, ...dados }, null);
-  return `${c.certificado}: lido, mas o almoxarife ainda não lançou este nº em nenhuma NF (aparece marcado em amarelo)`;
+  const novoId = await gravarCert({ numero: c.certificado, ...dados }, null);
+  // ninguém lançou este nº numa NF ainda: sai da caixa de entrada e espera em CERTIFICADOS SEM PEDIDO
+  const mov = lido.arquivo ? await moverSemPedidoCert({ id: novoId, numero: c.certificado, arquivo: lido.arquivo }) : '';
+  return `${c.certificado}: lido, mas o almoxarife ainda não lançou este nº em nenhuma NF (linha amarela)` + (mov.includes('→') ? ` · PDF em ${CERT_PASTA_SEM_PEDIDO}` : ` · ${mov}`);
 }
 
 // grava (update se tem id, insert se não); tolera o sql/088 ainda não rodado
