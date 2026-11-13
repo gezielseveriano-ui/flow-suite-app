@@ -1507,8 +1507,64 @@ const CERT_LEIT = { pendente: ['st-pend', 'Não lido'], lido: ['st-ok', 'Lido'],
 async function irRastreab(){
   VISAO = 'rastreab'; renderNav(); clearMsg();
   document.getElementById('content').innerHTML = '<div class="empty">Carregando certificados...</div>';
-  await Promise.all([carregarCerts(), checarServicoCert()]);
+  await Promise.all([carregarCerts(), checarServicoCert(), carregarDbsCert()]);
   renderRastreab();
+}
+
+// Databooks abertos (com a pasta e os itens): nem todo pedido tem um
+let CERT_DBS = [];
+async function carregarDbsCert(){
+  const { data } = await sb.from('databooks').select('id, pasta, pedidos(numero_pedido), databook_itens(codigo, descricao, capitulo, aplicavel)');
+  CERT_DBS = data || [];
+}
+const CERT_ITENS_DB = { '3.1': '3.1 Matéria-prima', '3.2': '3.2 Material de END', '3.4': '3.4 Solda', '3.5': '3.5 Pintura', '3.7': '3.7 Itens comerciais', '4.1': '4.1 Registros de END' };
+const soDigitos = s => String(s || '').replace(/\D/g, '');
+
+// copia o PDF do certificado para a pasta do item do Databook do(s) pedido(s). Devolve um texto curto.
+async function enviarCertDatabook(c){
+  if (!c.arquivo) return `${c.numero}: ainda sem PDF lido`;
+  if (!c.item_databook) return `${c.numero}: escolha o item do Databook`;
+  const nums = String(c.pedido || '').split(/[,;]+/).map(soDigitos).filter(Boolean);
+  const dbs = CERT_DBS.filter(d => nums.includes(soDigitos(d.pedidos?.numero_pedido)));
+  if (!dbs.length) return `${c.numero}: pedido ${c.pedido || '(sem pedido)'} sem Databook — PDF fica só na pasta de certificados`;
+  const out = [];
+  for (const d of dbs){
+    const ped = d.pedidos?.numero_pedido;
+    const item = (d.databook_itens || []).find(i => i.codigo === c.item_databook);
+    if (!d.pasta) { out.push(`${ped}: Databook sem pasta`); continue; }
+    if (!item) { out.push(`${ped}: não tem o item ${c.item_databook}`); continue; }
+    if (!item.aplicavel) { out.push(`${ped}: item ${c.item_databook} está desmarcado`); continue; }
+    const r = await fetch(CERT_SERVICO + '/enviar-databook', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ arquivo: c.arquivo, pasta: d.pasta, capitulo: item.capitulo, codigo: item.codigo, descricao: item.descricao }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { out.push(`${ped}: ${j.detail || r.status}`); continue; }
+    out.push(`${ped} → ${c.item_databook}${j.ja_existia ? ' (já estava)' : ''}`);
+    await sb.from('certificados_mp').update({ enviado_databook_em: new Date().toISOString() }).eq('id', c.id);
+  }
+  return `${c.numero}: ${out.join('; ')}`;
+}
+
+async function mudarItemDatabook(id, valor){
+  const { error } = await sb.from('certificados_mp').update({ item_databook: valor || null }).eq('id', id);
+  if (error){ showMsg('Erro ao salvar: ' + error.message, false); return; }
+  const c = CERTS.find(x => x.id === id); if (c) c.item_databook = valor || null;
+  renderTabelaRastreab();
+}
+
+async function enviarUmCertDatabook(id){
+  const c = CERTS.find(x => x.id === id); if (!c) return;
+  try { showMsg(await enviarCertDatabook(c), true); await carregarCerts(); renderTabelaRastreab(); }
+  catch (e){ showMsg('Erro ao enviar: ' + e.message, false); }
+}
+
+async function enviarTodosDatabook(){
+  const lista = certsFiltrados().filter(c => c.arquivo && c.item_databook && !c.enviado_databook_em);
+  if (!lista.length){ showMsg('Nada a enviar: só entram certificados já lidos, com item do Databook escolhido e ainda não enviados.', false); return; }
+  if (!confirm(`Enviar ${lista.length} certificado(s) para a pasta do Databook dos pedidos que têm Databook aberto?`)) return;
+  const res = [];
+  for (const c of lista){ try { res.push(await enviarCertDatabook(c)); } catch (e){ res.push(`${c.numero}: erro ${e.message}`); } }
+  await carregarCerts(); renderTabelaRastreab();
+  showMsg(res.join(' · '), true);
 }
 
 async function carregarCerts(){
@@ -1556,6 +1612,7 @@ function renderRastreab(){
       <select onchange="CERT_FILTRO.pedido=this.value;renderTabelaRastreab()"><option value="">Todos os pedidos</option>${pedidos.map(p => `<option ${p === CERT_FILTRO.pedido ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select>
       <select onchange="CERT_FILTRO.status=this.value;renderTabelaRastreab()"><option value="">Qualquer leitura</option><option value="pendente" ${CERT_FILTRO.status === 'pendente' ? 'selected' : ''}>Não lidos</option><option value="lido" ${CERT_FILTRO.status === 'lido' ? 'selected' : ''}>Lidos</option><option value="conferir" ${CERT_FILTRO.status === 'conferir' ? 'selected' : ''}>Para conferir</option></select>
       <button class="btn btn-primary so-editor" onclick="escolherPdfCert(null)" ${CERT_SERVICO_ON ? '' : 'disabled'} title="Escolha um ou vários PDFs: o sistema lê e liga ao nº que o almoxarifado digitou">📄 Ler certificados (PDF)</button>
+      <button class="btn so-editor" onclick="enviarTodosDatabook()" ${CERT_SERVICO_ON ? '' : 'disabled'} title="Copia para a pasta do Databook todos os certificados lidos, com item escolhido, dos pedidos que têm Databook aberto">📘 Enviar ao Databook</button>
       <button class="btn" onclick="exportarCertsCsv()">⬇ Exportar CSV</button>
       <input type="file" id="rtArquivo" accept="application/pdf,.pdf" multiple style="display:none" onchange="lerPdfsCert(this)">
     </div>
@@ -1574,7 +1631,7 @@ function renderTabelaRastreab(){
     ? `<td><input value="${esc(c[campo] || '')}" placeholder="${ph || ''}" onchange="salvarCampoCert(${c.id}, '${campo}', this.value)"></td>`
     : `<td>${esc(c[campo] || '—')}</td>`;
   wrap.innerHTML = `<div class="tbl-wrap"><table class="dtbl rt-tbl">
-    <thead><tr><th>Pedido</th><th>O.C.</th><th>NF</th><th>Fornecedor</th><th>Nº certificado</th><th>Usina</th><th>Material</th><th>Bitola</th><th>Norma</th><th>Corrida</th><th>Data cert.</th><th>Desenhos</th><th>Leitura</th><th></th></tr></thead>
+    <thead><tr><th>Pedido</th><th>O.C.</th><th>NF</th><th>Fornecedor</th><th>Nº certificado</th><th>Usina</th><th>Material</th><th>Bitola</th><th>Norma</th><th>Corrida</th><th>Data cert.</th><th>Desenhos</th><th title="Item do Databook onde o certificado entra (o leitor sugere; você confere)">Item do Databook</th><th>Leitura</th><th></th></tr></thead>
     <tbody>${lista.map(c => {
       const [cls, lbl] = CERT_LEIT[c.leitura_status] || CERT_LEIT.pendente;
       return `<tr class="${c.protocolo_item_id ? '' : 'rt-solto'}" ${c.protocolo_item_id ? '' : 'title="Lido do PDF, mas o almoxarife ainda não lançou este nº em nenhuma NF"'}>
@@ -1583,9 +1640,14 @@ function renderTabelaRastreab(){
       ${cel(c, 'usina')}${cel(c, 'produto')}${cel(c, 'bitola')}${cel(c, 'norma')}${cel(c, 'corrida')}
       <td>${c.data_cert ? new Date(c.data_cert + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}</td>
       ${cel(c, 'desenhos', 'T-0000-1, ...')}
+      <td style="white-space:nowrap">${ed
+        ? `<select onchange="mudarItemDatabook(${c.id}, this.value)" style="padding:3px 4px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);color:inherit;font-size:12px"><option value="">—</option>${Object.entries(CERT_ITENS_DB).map(([k, v]) => `<option value="${k}" ${c.item_databook === k ? 'selected' : ''}>${v}</option>`).join('')}</select>`
+        : esc(CERT_ITENS_DB[c.item_databook] || '—')}
+        ${c.enviado_databook_em ? `<span class="rt-st st-ok" title="PDF copiado para a pasta do Databook em ${new Date(c.enviado_databook_em).toLocaleString('pt-BR')}">no Databook</span>` : ''}</td>
       <td><span class="rt-st ${cls}">${lbl}</span></td>
       <td style="white-space:nowrap">
         ${c.arquivo ? `<button class="btn btn-sm" title="Abrir o PDF deste certificado" onclick="abrirPdfCert(${c.id})" ${CERT_SERVICO_ON ? '' : 'disabled'}>📄</button>` : ''}
+        ${c.arquivo && c.item_databook && !c.enviado_databook_em ? `<button class="btn btn-sm so-editor" title="Copiar o PDF para a pasta do item no Databook do pedido" onclick="enviarUmCertDatabook(${c.id})" ${CERT_SERVICO_ON ? '' : 'disabled'}>📘 Enviar</button>` : ''}
         <button class="btn btn-sm so-editor" title="Ler o PDF deste certificado" onclick="escolherPdfCert(${c.id})" ${CERT_SERVICO_ON ? '' : 'disabled'}>🔍 Ler</button>
         <button class="btn btn-sm so-editor" title="Apagar este certificado" onclick="apagarCert(${c.id})">✕</button>
       </td></tr>`;
@@ -1658,14 +1720,33 @@ async function lerUmPdfCert(file, alvoId){
   if (!alvo && !c.certificado) return `${file.name}: não consegui ler o nº do certificado`;
   const status = aviso === 'conferir' || !c.certificado || nCampos < 3 ? 'conferir' : 'lido';
   const dados = { ...lido, leitura_status: status, lido_em: new Date().toISOString() };
+  // item do Databook: o leitor sugere pelo conteúdo; não sobrescreve o que a Qualidade já escolheu
+  const itemDb = (alvo && alvo.item_databook) || (j.classe && j.classe.codigo) || null;
+  if (itemDb) dados.item_databook = itemDb;
   if (alvo){
-    const { error } = await sb.from('certificados_mp').update(dados).eq('id', alvo.id);
-    if (error) throw error;
-    return `${alvo.numero}: ${status === 'lido' ? 'lido e ligado à NF ' + (alvo.nf || '—') : 'lido, conferir os campos'}`;
+    await gravarCert(dados, alvo.id);
+    let msg = `${alvo.numero}: ${status === 'lido' ? 'lido e ligado à NF ' + (alvo.nf || '—') : 'lido, conferir os campos'}`;
+    // lido com segurança + item definido: já manda para a pasta do Databook (se o pedido tiver um)
+    if (status === 'lido' && itemDb) msg += ' · ' + await enviarCertDatabook({ id: alvo.id, numero: alvo.numero, arquivo: lido.arquivo, pedido: alvo.pedido, item_databook: itemDb });
+    else if (itemDb) msg += ` · sugestão: item ${itemDb} (confira e use 📘 Enviar)`;
+    return msg;
   }
-  const { error } = await sb.from('certificados_mp').insert({ numero: c.certificado, ...dados });
-  if (error) throw error;
+  await gravarCert({ numero: c.certificado, ...dados }, null);
   return `${c.certificado}: lido, mas o almoxarife ainda não lançou este nº em nenhuma NF (aparece marcado em amarelo)`;
+}
+
+// grava (update se tem id, insert se não); tolera o sql/088 ainda não rodado
+async function gravarCert(dados, id){
+  const exec = d => id
+    ? sb.from('certificados_mp').update(d).eq('id', id).select('id').single()
+    : sb.from('certificados_mp').insert(d).select('id').single();
+  let r = await exec(dados);
+  if (r.error && /item_databook|enviado_databook_em/.test(r.error.message)){
+    const { item_databook, enviado_databook_em, ...resto } = dados;
+    r = await exec(resto);
+  }
+  if (r.error) throw r.error;
+  return r.data.id;
 }
 
 async function abrirPdfCert(id){
