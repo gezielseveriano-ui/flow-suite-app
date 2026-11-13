@@ -178,6 +178,12 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 .st-err{background:var(--red-dim);color:var(--red)}
 .db-progresso{height:8px;border-radius:8px;background:var(--bg4);overflow:hidden;margin:8px 0 4px}
 .db-progresso div{height:100%;background:var(--blue);transition:width .3s}
+/* Rastreabilidade de certificados */
+.rt-tbl td input{width:100%;min-width:90px;padding:4px 6px;border:1px solid transparent;background:none;font:inherit;font-size:12px;color:inherit;border-radius:6px}
+.rt-tbl td input:hover,.rt-tbl td input:focus{border-color:var(--border);outline:none;background:var(--bg2)}
+.rt-tbl tbody tr{cursor:default}
+.rt-st{display:inline-block;padding:2px 9px;border-radius:10px;font-size:11px;font-weight:600}
+.rt-solto td:first-child{box-shadow:inset 3px 0 0 var(--amber)}
 .db-rev td input{width:100%;padding:5px 6px;border:1px solid var(--border);border-radius:6px;font:inherit;font-size:12px}
 
 .print-only{display:none}
@@ -290,6 +296,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
         <button class="mod-tab active" id="tabRNC" onclick="irLista()">📋 RNCs</button>
         <button class="mod-tab" id="tabDesvios" onclick="irDesvios()">⚠️ Controle de Desvio Cliente</button>
         <button class="mod-tab" id="tabDatabooks" onclick="irDatabooks()">📘 Databooks</button>
+        <button class="mod-tab" id="tabRastreab" onclick="irRastreab()">🔎 Rastreabilidade</button>
         <button class="mod-tab" id="tabCertificados" onclick="irCertificados()">📨 Certificados pendentes <span id="badgeCert"></span></button>
       </div>
       <div class="nav-bar" id="navBar"></div>
@@ -378,12 +385,16 @@ function renderNav(){
   const emDesvios = VISAO === 'desvios' || VISAO === 'desvioForm';
   const emDatabooks = VISAO === 'databooks' || VISAO === 'databookNovo' || VISAO === 'databook';
   const emCert = VISAO === 'certificados';
-  document.getElementById('tabRNC').classList.toggle('active', !emDesvios && !emDatabooks && !emCert);
+  const emRastreab = VISAO === 'rastreab';
+  document.getElementById('tabRNC').classList.toggle('active', !emDesvios && !emDatabooks && !emCert && !emRastreab);
   document.getElementById('tabDesvios').classList.toggle('active', emDesvios);
   document.getElementById('tabDatabooks').classList.toggle('active', emDatabooks);
+  document.getElementById('tabRastreab').classList.toggle('active', emRastreab);
   document.getElementById('tabCertificados').classList.toggle('active', emCert);
   let h;
-  if (emCert){
+  if (emRastreab){
+    h = `<span class="nav-crumb active">Qualidade — Rastreabilidade de certificados de matéria-prima</span>`;
+  } else if (emCert){
     h = `<span class="nav-crumb active">Qualidade — Certificados pendentes de fornecedor</span>`;
   } else if (emDatabooks){
     h = `<span class="nav-crumb ${VISAO==='databooks'?'active':''}" onclick="irDatabooks()">Qualidade — Databooks</span>`;
@@ -1481,6 +1492,197 @@ async function irDatabook(id){
   document.getElementById('content').innerHTML = '<div class="empty">Carregando databook...</div>';
   await carregarDatabook(id);
   renderNav(); renderDatabook();
+}
+
+// ── RASTREABILIDADE DE CERTIFICADOS DE MATÉRIA-PRIMA ─────────────────────
+// O almoxarife digita o nº do certificado na NF do protocolo (almoxarifado.html);
+// aqui a Qualidade lê o PDF (programa local certificado_service.py, porta 8020) e
+// o sistema casa o nº lido com o digitado: pedido, O.C., NF e fornecedor vêm do
+// protocolo; usina, material, bitola, norma e corrida vêm da leitura. sql/087.
+const CERT_SERVICO = 'http://127.0.0.1:8020';
+let CERTS = [], CERT_TABELA_OK = true, CERT_SERVICO_ON = false, CERT_LENDO = false;
+const CERT_FILTRO = { pedido: '', q: '', status: '' };
+const CERT_LEIT = { pendente: ['st-pend', 'Não lido'], lido: ['st-ok', 'Lido'], conferir: ['st-err', 'Conferir'] };
+
+async function irRastreab(){
+  VISAO = 'rastreab'; renderNav(); clearMsg();
+  document.getElementById('content').innerHTML = '<div class="empty">Carregando certificados...</div>';
+  await Promise.all([carregarCerts(), checarServicoCert()]);
+  renderRastreab();
+}
+
+async function carregarCerts(){
+  const { data, error } = await sb.from('certificados_mp').select('*').order('criado_em', { ascending: false }).limit(3000);
+  CERT_TABELA_OK = !error;
+  if (error){
+    CERTS = [];
+    showMsg('Rastreabilidade: ' + error.message + (/relation|does not exist|schema cache/i.test(error.message) ? ' — rode o sql/087_rastreabilidade_certificados.sql no Supabase.' : ''), false);
+    return;
+  }
+  CERTS = data || [];
+}
+
+async function checarServicoCert(){
+  try {
+    const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 1500);
+    const r = await fetch(CERT_SERVICO + '/status', { signal: ctl.signal }); clearTimeout(t);
+    CERT_SERVICO_ON = r.ok;
+  } catch { CERT_SERVICO_ON = false; }
+  return CERT_SERVICO_ON;
+}
+
+function certsFiltrados(){
+  const q = CERT_FILTRO.q.trim().toLowerCase();
+  return CERTS.filter(c => {
+    if (CERT_FILTRO.pedido && (c.pedido || '') !== CERT_FILTRO.pedido) return false;
+    if (CERT_FILTRO.status && c.leitura_status !== CERT_FILTRO.status) return false;
+    if (!q) return true;
+    return [c.numero, c.oc, c.nf, c.pedido, c.fornecedor, c.usina, c.produto, c.norma, c.bitola, c.corrida, c.desenhos]
+      .some(v => String(v || '').toLowerCase().includes(q));
+  });
+}
+
+function renderRastreab(){
+  const pedidos = [...new Set(CERTS.map(c => c.pedido).filter(Boolean))].sort();
+  const n = { pendente: 0, lido: 0, conferir: 0 };
+  CERTS.forEach(c => n[c.leitura_status]++);
+  document.getElementById('content').innerHTML = `
+    ${CERT_SERVICO_ON
+      ? `<div class="db-servico on">🟢 Leitor de certificados conectado neste PC — pode ler os PDFs.</div>`
+      : `<div class="db-servico off">⚪ O leitor de certificados não está aberto neste PC. Para ler PDFs, use o PC da Qualidade e abra <b>&nbsp;Iniciar-Certificados&nbsp;</b>. <button class="btn btn-sm" style="margin-left:auto" onclick="irRastreab()">Tentar de novo</button></div>`}
+    <div class="db-resumo"><span>${CERTS.length} certificado(s)</span><span class="ok">✓ ${n.lido} lido(s)</span><span class="pend">● ${n.pendente} não lido(s)</span><span class="err">${n.conferir} para conferir</span></div>
+    <div class="search-row">
+      <input class="main" id="rtBusca" placeholder="🔍 Buscar por nº do certificado, NF, O.C., fornecedor, material, corrida ou desenho..." value="${esc(CERT_FILTRO.q)}" oninput="CERT_FILTRO.q=this.value;renderTabelaRastreab()">
+      <select onchange="CERT_FILTRO.pedido=this.value;renderTabelaRastreab()"><option value="">Todos os pedidos</option>${pedidos.map(p => `<option ${p === CERT_FILTRO.pedido ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select>
+      <select onchange="CERT_FILTRO.status=this.value;renderTabelaRastreab()"><option value="">Qualquer leitura</option><option value="pendente" ${CERT_FILTRO.status === 'pendente' ? 'selected' : ''}>Não lidos</option><option value="lido" ${CERT_FILTRO.status === 'lido' ? 'selected' : ''}>Lidos</option><option value="conferir" ${CERT_FILTRO.status === 'conferir' ? 'selected' : ''}>Para conferir</option></select>
+      <button class="btn btn-primary so-editor" onclick="escolherPdfCert(null)" ${CERT_SERVICO_ON ? '' : 'disabled'} title="Escolha um ou vários PDFs: o sistema lê e liga ao nº que o almoxarifado digitou">📄 Ler certificados (PDF)</button>
+      <button class="btn" onclick="exportarCertsCsv()">⬇ Exportar CSV</button>
+      <input type="file" id="rtArquivo" accept="application/pdf,.pdf" multiple style="display:none" onchange="lerPdfsCert(this)">
+    </div>
+    <div id="rtTabela"></div>`;
+  renderTabelaRastreab();
+}
+
+function renderTabelaRastreab(){
+  const wrap = document.getElementById('rtTabela');
+  if (!wrap) return;
+  const lista = certsFiltrados();
+  const ed = !SOMENTE_LEITURA;
+  if (!CERT_TABELA_OK){ wrap.innerHTML = '<div class="empty">A tabela de certificados ainda não existe. Rode o <b>sql/087_rastreabilidade_certificados.sql</b> no Supabase.</div>'; return; }
+  if (!lista.length){ wrap.innerHTML = `<div class="empty">${CERTS.length ? 'Nenhum certificado nesse filtro.' : 'Nenhum certificado lançado ainda. O almoxarife digita o nº do certificado na NF, na aba Protocolo do Almoxarifado.'}</div>`; return; }
+  const cel = (c, campo, ph) => ed
+    ? `<td><input value="${esc(c[campo] || '')}" placeholder="${ph || ''}" onchange="salvarCampoCert(${c.id}, '${campo}', this.value)"></td>`
+    : `<td>${esc(c[campo] || '—')}</td>`;
+  wrap.innerHTML = `<div class="tbl-wrap"><table class="dtbl rt-tbl">
+    <thead><tr><th>Pedido</th><th>O.C.</th><th>NF</th><th>Fornecedor</th><th>Nº certificado</th><th>Usina</th><th>Material</th><th>Bitola</th><th>Norma</th><th>Corrida</th><th>Data cert.</th><th>Desenhos</th><th>Leitura</th><th></th></tr></thead>
+    <tbody>${lista.map(c => {
+      const [cls, lbl] = CERT_LEIT[c.leitura_status] || CERT_LEIT.pendente;
+      return `<tr class="${c.protocolo_item_id ? '' : 'rt-solto'}" ${c.protocolo_item_id ? '' : 'title="Lido do PDF, mas o almoxarife ainda não lançou este nº em nenhuma NF"'}>
+      <td>${esc(c.pedido || '—')}</td><td>${esc(c.oc || '—')}</td><td>${esc(c.nf || '—')}</td><td>${esc(c.fornecedor || '—')}</td>
+      <td><b>${esc(c.numero)}</b></td>
+      ${cel(c, 'usina')}${cel(c, 'produto')}${cel(c, 'bitola')}${cel(c, 'norma')}${cel(c, 'corrida')}
+      <td>${c.data_cert ? new Date(c.data_cert + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}</td>
+      ${cel(c, 'desenhos', 'T-0000-1, ...')}
+      <td><span class="rt-st ${cls}">${lbl}</span></td>
+      <td style="white-space:nowrap">
+        ${c.arquivo ? `<button class="btn btn-sm" title="Abrir o PDF deste certificado" onclick="abrirPdfCert(${c.id})" ${CERT_SERVICO_ON ? '' : 'disabled'}>📄</button>` : ''}
+        <button class="btn btn-sm so-editor" title="Ler o PDF deste certificado" onclick="escolherPdfCert(${c.id})" ${CERT_SERVICO_ON ? '' : 'disabled'}>🔍 Ler</button>
+        <button class="btn btn-sm so-editor" title="Apagar este certificado" onclick="apagarCert(${c.id})">✕</button>
+      </td></tr>`;
+    }).join('')}</tbody></table></div>`;
+}
+
+async function salvarCampoCert(id, campo, valor){
+  const { error } = await sb.from('certificados_mp').update({ [campo]: valor.trim() || null }).eq('id', id);
+  if (error){ showMsg('Erro ao salvar: ' + error.message, false); return; }
+  const c = CERTS.find(x => x.id === id); if (c) c[campo] = valor.trim() || null;
+}
+
+async function apagarCert(id){
+  const c = CERTS.find(x => x.id === id);
+  if (!c || !confirm(`Apagar o certificado ${c.numero}? (o PDF na pasta não é apagado)`)) return;
+  const { error } = await sb.from('certificados_mp').delete().eq('id', id);
+  if (error){ showMsg('Erro ao apagar: ' + error.message, false); return; }
+  CERTS = CERTS.filter(x => x.id !== id); renderRastreab();
+}
+
+// ---- leitura do PDF ----
+let CERT_ALVO = null; // linha escolhida pelo botão "Ler" (ou null = deixa o sistema achar pelo nº lido)
+function escolherPdfCert(id){ CERT_ALVO = id; const f = document.getElementById('rtArquivo'); f.value = ''; f.multiple = id == null; f.click(); }
+
+const chaveCert = n => String(n || '').toLowerCase().replace(/[^0-9a-z]/g, '');
+function dataCertISO(s){
+  const m = String(s || '').match(/(\d{2})[./](\d{2})[./](\d{4})/);
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : null;
+}
+function arquivoParaBase64(file){
+  return new Promise((ok, err) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1]); r.onerror = () => err(r.error); r.readAsDataURL(file); });
+}
+
+async function lerPdfsCert(inp){
+  const arquivos = [...inp.files];
+  if (!arquivos.length || CERT_LENDO) return;
+  CERT_LENDO = true;
+  const alvo = CERT_ALVO; CERT_ALVO = null;
+  const res = [];
+  try {
+    for (let i = 0; i < arquivos.length; i++){
+      showMsg(`Lendo ${i + 1}/${arquivos.length}: ${arquivos[i].name} ... (certificado escaneado pode levar 1 minuto)`, true);
+      res.push(await lerUmPdfCert(arquivos[i], alvo));
+    }
+  } catch (e){ res.push('Erro: ' + e.message); }
+  CERT_LENDO = false;
+  await carregarCerts(); renderRastreab();
+  showMsg(res.join(' · '), !res.some(r => /^Erro|não consegui/i.test(r)));
+}
+
+async function lerUmPdfCert(file, alvoId){
+  const b64 = await arquivoParaBase64(file);
+  const r = await fetch(CERT_SERVICO + '/ler', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nome: file.name, base64: b64 }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.detail || ('Leitor respondeu ' + r.status));
+  const c = j.campos || {};
+  const lido = { usina: c.usina && c.usina !== 'DESCONHECIDO' ? c.usina : null, produto: c.produto || null, norma: c.norma || null, bitola: c.bitola || null, corrida: c.corridas || null, data_cert: dataCertISO(c.data), arquivo: j.arquivo || null };
+  const nCampos = ['usina', 'produto', 'norma', 'bitola', 'corrida'].filter(k => lido[k]).length;
+  let alvo = alvoId != null ? CERTS.find(x => x.id === alvoId) : null;
+  let aviso = '';
+  if (!alvo && c.certificado){
+    const k = chaveCert(c.certificado);
+    alvo = CERTS.find(x => chaveCert(x.numero) === k);
+    if (!alvo && /^\d{10}/.test(k)){               // Gerdau: 8136904163-10 x 8136904163/000010
+      const cand = CERTS.filter(x => chaveCert(x.numero).startsWith(k.slice(0, 10)));
+      if (cand.length === 1){ alvo = cand[0]; aviso = 'conferir'; }
+    }
+  }
+  if (alvo && alvoId != null && c.certificado && chaveCert(c.certificado) !== chaveCert(alvo.numero)) aviso = 'conferir';
+  if (!alvo && !c.certificado) return `${file.name}: não consegui ler o nº do certificado`;
+  const status = aviso === 'conferir' || !c.certificado || nCampos < 3 ? 'conferir' : 'lido';
+  const dados = { ...lido, leitura_status: status, lido_em: new Date().toISOString() };
+  if (alvo){
+    const { error } = await sb.from('certificados_mp').update(dados).eq('id', alvo.id);
+    if (error) throw error;
+    return `${alvo.numero}: ${status === 'lido' ? 'lido e ligado à NF ' + (alvo.nf || '—') : 'lido, conferir os campos'}`;
+  }
+  const { error } = await sb.from('certificados_mp').insert({ numero: c.certificado, ...dados });
+  if (error) throw error;
+  return `${c.certificado}: lido, mas o almoxarife ainda não lançou este nº em nenhuma NF (aparece marcado em amarelo)`;
+}
+
+async function abrirPdfCert(id){
+  const c = CERTS.find(x => x.id === id); if (!c || !c.arquivo) return;
+  try {
+    const r = await fetch(CERT_SERVICO + '/abrir', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ arquivo: c.arquivo }) });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.status);
+  } catch (e){ showMsg('Não consegui abrir o PDF: ' + e.message, false); }
+}
+
+function exportarCertsCsv(){
+  const cab = ['Pedido', 'O.C.', 'NF', 'Fornecedor', 'Nº certificado', 'Usina', 'Material', 'Bitola', 'Norma', 'Corrida', 'Data cert.', 'Desenhos', 'Leitura'];
+  const lin = certsFiltrados().map(c => [c.pedido, c.oc, c.nf, c.fornecedor, c.numero, c.usina, c.produto, c.bitola, c.norma, c.corrida, c.data_cert, c.desenhos, (CERT_LEIT[c.leitura_status] || [])[1]]);
+  const csv = [cab, ...lin].map(r => r.map(v => '"' + String(v ?? '').replace(/"/g, '""') + '"').join(';')).join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = 'rastreabilidade-certificados.csv'; a.click(); URL.revokeObjectURL(a.href);
 }
 
 async function servicoDatabook(rota, corpo){

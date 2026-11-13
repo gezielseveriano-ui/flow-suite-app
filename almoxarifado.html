@@ -183,6 +183,11 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 .somente-leitura .somente-leitura-msg{display:block}
 .prot-manual{margin:0 0 1rem;padding:10px 14px;border:1px dashed var(--border);border-radius:var(--radius-sm);font-size:12.5px}
 .prot-dica{color:var(--text2);font-size:12px;font-weight:400}
+.cert-chip{display:inline-block;padding:2px 8px;margin:0 4px 4px 0;border-radius:10px;font-size:11.5px;background:var(--bg3);color:var(--text)}
+.cert-chip.lido{background:var(--green-dim);color:#047857}
+.cert-chip.conferir{background:#fef3c7;color:#92400e}
+.cert-chip a{cursor:pointer;margin-left:3px;opacity:.6}
+.cert-chip a:hover{opacity:1}
 .edit-input.txt.larga{width:200px}
 .prot-form td{background:var(--bg)}
 .prot-sec{font-size:14px;font-weight:700;margin:1.5rem 0 .6rem}
@@ -1949,6 +1954,8 @@ let PROT_PENDENTES = [];   // pares O.C./NF ainda sem protocolo
 let PROT_LISTA = [];       // protocolos já gerados
 let PROT_SEL = new Set();  // chaves dos pares marcados
 let PROT_CERT = {};        // chave -> certificado escolhido
+let PROT_CERTNUM = {};     // chave -> nº(s) do certificado digitado ao gerar o protocolo
+let CERT_MP_ON = false;    // tabela certificados_mp existe (sql/087)?
 let PROT_MANUAIS = [];     // NFs lançadas à mão (manutenção etc.) pro próximo protocolo
 
 const chaveOcNf = (oc, nf) => `${(oc || '').trim()}|${(nf || '').trim()}`;
@@ -1970,9 +1977,17 @@ async function carregarDadosProtocolo(){
     if (data.length < 1000) break;
     de += 1000;
   }
-  const { data: prots, error: e1 } = await sb.from('protocolos_nf')
-    .select('id, cnpj, numero, data, protocolos_nf_itens(id, oc, nf, fornecedor, data_nf, pedido, certificado)')
+  // certificados_mp (sql/087) vem junto; se o SQL ainda não foi rodado, o protocolo funciona sem a coluna
+  const colsItens = 'id, oc, nf, fornecedor, data_nf, pedido, certificado';
+  let { data: prots, error: e1 } = await sb.from('protocolos_nf')
+    .select(`id, cnpj, numero, data, protocolos_nf_itens(${colsItens}, certificados_mp(id, numero, leitura_status))`)
     .order('numero', { ascending: false });
+  CERT_MP_ON = !e1;
+  if (e1){
+    ({ data: prots, error: e1 } = await sb.from('protocolos_nf')
+      .select(`id, cnpj, numero, data, protocolos_nf_itens(${colsItens})`)
+      .order('numero', { ascending: false }));
+  }
   if (e1) throw e1;
   PROT_LISTA = prots || [];
 
@@ -2009,7 +2024,7 @@ async function renderProtocolo(modo){
   content.innerHTML = `<div class="empty">Carregando...</div>`;
   try { await carregarDadosProtocolo(); }
   catch (err){ content.innerHTML = `<div class="empty">Erro: ${esc(err.message)}</div>`; return; }
-  PROT_SEL = new Set(); PROT_CERT = {}; PROT_MANUAIS = [];
+  PROT_SEL = new Set(); PROT_CERT = {}; PROT_CERTNUM = {}; PROT_MANUAIS = [];
 
   content.innerHTML = `
     <div class="search-row">
@@ -2056,7 +2071,7 @@ function renderCnpjProtocolo(){
 }
 
 // ---- NF lançada à mão (manutenção, serviço...) -- não vem de almoxarifado_itens
-function linhaFormNfManual(pref, acao){
+function linhaFormNfManual(pref, acao, colCert){
   return `
     <tr class="prot-form">
       <td><input class="edit-input txt" id="${pref}Nf" placeholder="nº da NF" onchange="preencherNfManual('${pref}')"></td>
@@ -2065,6 +2080,7 @@ function linhaFormNfManual(pref, acao){
       <td><input class="edit-input" type="date" id="${pref}Data" value="${hojeISO()}"></td>
       <td><input class="edit-input txt" id="${pref}Ped" placeholder="se tiver"></td>
       <td><select class="cert" id="${pref}Cert">${Object.entries(LABEL_CERT).map(([v, l]) => `<option value="${v}" ${v === 'na' ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
+      ${colCert ? '<td></td>' : ''}
       <td><span class="btn btn-primary" onclick="${acao}">＋ Adicionar</span></td>
     </tr>`;
 }
@@ -2152,7 +2168,7 @@ function renderPendentesProtocolo(){
     <table class="dtbl">
       <thead><tr>
         <th><input type="checkbox" ${todos ? 'checked' : ''} onchange="marcarTodosProt(this.checked)"></th>
-        <th>NF</th><th>O.C.</th><th>Fornecedor</th><th>Data Receb. NF</th><th>Pedido</th><th class="r">Itens</th><th>Certificado</th>
+        <th>NF</th><th>O.C.</th><th>Fornecedor</th><th>Data Receb. NF</th><th>Pedido</th><th class="r">Itens</th><th>Certificado</th>${CERT_MP_ON ? '<th title="Número do certificado de matéria-prima desta NF (vários: separe por vírgula)">Nº do certificado</th>' : ''}
       </tr></thead>
       <tbody>${lista.map(g => `
         <tr>
@@ -2162,6 +2178,7 @@ function renderPendentesProtocolo(){
           <td><select class="cert" data-k="${esc(g.chave)}" onchange="PROT_CERT[this.dataset.k]=this.value">
             ${Object.entries(LABEL_CERT).map(([v, l]) => `<option value="${v}" ${(PROT_CERT[g.chave] || 'na') === v ? 'selected' : ''}>${l}</option>`).join('')}
           </select></td>
+          ${CERT_MP_ON ? `<td><input class="edit-input txt" data-k="${esc(g.chave)}" value="${esc(PROT_CERTNUM[g.chave] || '')}" placeholder="nº do certificado" oninput="PROT_CERTNUM[this.dataset.k]=this.value"></td>` : ''}
         </tr>`).join('')}</tbody>
     </table>`;
 }
@@ -2201,8 +2218,21 @@ async function gerarProtocolo(){
     return;
   }
   const novo = Array.isArray(data) ? data[0] : data;
+  // nº(s) de certificado digitados na lista -> viram certificados_mp ligados à linha do protocolo
+  let msgCert = '';
+  const comNum = CERT_MP_ON ? Object.entries(PROT_CERTNUM).filter(([k, v]) => PROT_SEL.has(k) && numerosCertificado(v).length) : [];
+  if (comNum.length){
+    const { data: itensNovos } = await sb.from('protocolos_nf_itens').select('id, oc, nf, fornecedor, pedido').eq('protocolo_id', novo.id);
+    let n = 0, falhas = 0;
+    for (const [k, v] of comNum){
+      const linha = (itensNovos || []).find(l => chaveOcNf(l.oc, l.nf) === k);
+      if (!linha){ falhas++; continue; }
+      try { n += (await gravarCertificadosLinha(linha, numerosCertificado(v))).ok; } catch (e){ falhas++; }
+    }
+    msgCert = ` ${n} certificado(s) lançado(s).` + (falhas ? ` ${falhas} NF sem certificado gravado — lance pelo protocolo.` : '');
+  }
   await renderProtocolo('gerados');
-  showMsg(`Protocolo nº ${novo.numero} gerado.`, true);
+  showMsg(`Protocolo nº ${novo.numero} gerado.${msgCert}`, true);
   const p = PROT_LISTA.find(x => x.id === novo.id);
   if (p) pdfProtocolo(p.id);
 }
@@ -2212,7 +2242,7 @@ function renderGeradosProtocolo(){
   if (!wrap) return;
   const q = (document.getElementById('protBuscaGer')?.value || '').trim().toLowerCase();
   const lista = PROT_LISTA.filter(p => p.cnpj === PROT_CNPJ && (!q || String(p.numero) === q
-    || (p.protocolos_nf_itens || []).some(l => `${l.nf} ${l.oc || ''} ${l.fornecedor || ''} ${l.pedido || ''}`.toLowerCase().includes(q))));
+    || (p.protocolos_nf_itens || []).some(l => `${l.nf} ${l.oc || ''} ${l.fornecedor || ''} ${l.pedido || ''} ${(l.certificados_mp || []).map(c => c.numero).join(' ')}`.toLowerCase().includes(q))));
   if (!lista.length){ wrap.innerHTML = `<div class="empty">Nenhum protocolo ${q ? 'encontrado' : 'gerado'} para o CNPJ ${PROT_CNPJ}.</div>`; return; }
   wrap.innerHTML = `
     <table class="dtbl">
@@ -2246,14 +2276,15 @@ function renderDetalheProtocolo(id){
   const ls = ordenarLinhasProt(p.protocolos_nf_itens || []);
   document.getElementById('protDetTd' + id).innerHTML = `
     <table class="dtbl">
-      <thead><tr><th>NF</th><th>O.C.</th><th>Fornecedor</th><th>Data</th><th>Pedido</th><th>Certificado</th><th class="so-editor"></th></tr></thead>
+      <thead><tr><th>NF</th><th>O.C.</th><th>Fornecedor</th><th>Data</th><th>Pedido</th><th>Certificado</th>${CERT_MP_ON ? '<th title="Número(s) do certificado de matéria-prima desta NF">Nº do certificado</th>' : ''}<th class="so-editor"></th></tr></thead>
       <tbody>${ls.map(l => `
         <tr><td>${esc(l.nf)}</td><td>${esc(l.oc || '—')}</td><td>${esc(l.fornecedor || '—')}</td><td>${fmtData(l.data_nf) || '—'}</td><td>${esc(l.pedido || '—')}</td>
           <td>${PODE_EDITAR
             ? `<select class="cert" onchange="mudarCertificadoProt(${p.id}, ${l.id}, this)">${Object.entries(LABEL_CERT).map(([v, t]) => `<option value="${v}" ${l.certificado === v ? 'selected' : ''}>${t}</option>`).join('')}</select>`
             : LABEL_CERT[l.certificado]}</td>
+          ${CERT_MP_ON ? `<td>${(l.certificados_mp || []).map(c => `<span class="cert-chip ${esc(c.leitura_status)}" title="${c.leitura_status === 'lido' ? 'Certificado lido pela Qualidade' : c.leitura_status === 'conferir' ? 'Leitura precisa de conferência' : 'Ainda não lido pela Qualidade'}">${esc(c.numero)}${PODE_EDITAR ? ` <a onclick="removerCertProt(${p.id}, ${l.id}, ${c.id})" title="Tirar este certificado">✕</a>` : ''}</span>`).join('')}${PODE_EDITAR ? `<input class="edit-input txt" id="certNovo${l.id}" placeholder="+ nº do certificado" onchange="adicionarCertProt(${p.id}, ${l.id})">` : ''}</td>` : ''}
           <td class="so-editor"><span class="btn" onclick="removerLinhaProt(${p.id}, ${l.id})" title="Tirar esta NF do protocolo">✕</span></td></tr>`).join('')}</tbody>
-      ${PODE_EDITAR ? `<tfoot>${linhaFormNfManual('protNova' + p.id, `adicionarNfManualProt(${p.id})`)}</tfoot>` : ''}
+      ${PODE_EDITAR ? `<tfoot>${linhaFormNfManual('protNova' + p.id, `adicionarNfManualProt(${p.id})`, CERT_MP_ON)}</tfoot>` : ''}
     </table>
     <div class="so-editor" style="margin-top:8px;display:flex;justify-content:space-between;align-items:center">
       <span class="prot-dica">Use a última linha para lançar à mão uma NF fora da lista de compras (manutenção, serviço etc.).</span>
@@ -2279,6 +2310,67 @@ async function adicionarNfManualProt(protId){
   renderGeradosProtocolo();
   abrirDetalheProtocolo(protId);
   showMsg(`NF ${data[0].nf} lançada no protocolo nº ${p.numero}${data.length > 1 ? ` (${data.length} O.C.)` : ''}. Gere o PDF de novo se já tinha impresso.`, true);
+}
+
+// ---- certificados de matéria-prima (sql/087): nº digitado aqui, lido depois pela Qualidade
+// vários nºs: separe por vírgula, ponto e vírgula ou quebra de linha (o "/" faz parte do nº)
+function numerosCertificado(txt){
+  return [...new Set(String(txt || '').split(/[,;\n]+/).map(s => s.trim()).filter(Boolean))];
+}
+
+// grava os certificados de uma linha do protocolo. Se a Qualidade já leu o PDF antes
+// (linha solta, sem NF), liga aquela linha em vez de duplicar.
+async function gravarCertificadosLinha(linha, numeros){
+  let ok = 0, dup = 0;
+  for (const num of numeros){
+    let { data: solto } = await sb.from('certificados_mp').select('id')
+      .ilike('numero', num.replace(/[\\%_]/g, '\\$&')).is('protocolo_item_id', null).limit(1);
+    let conferir = false;
+    if (!(solto && solto.length) && /^\d{10}/.test(num)){
+      // Gerdau escreve 8136904163-10 no PDF e 8136904163/000010 na NF: mesmos 10 primeiros dígitos, só uma linha solta
+      const { data: cand } = await sb.from('certificados_mp').select('id')
+        .like('numero', num.slice(0, 10) + '%').is('protocolo_item_id', null).limit(2);
+      if (cand && cand.length === 1){ solto = cand; conferir = true; }
+    }
+    const dados = { protocolo_item_id: linha.id, oc: linha.oc || null, nf: linha.nf, pedido: linha.pedido || null, fornecedor: linha.fornecedor || null };
+    if (conferir) dados.leitura_status = 'conferir';
+    const r = (solto && solto.length)
+      ? await sb.from('certificados_mp').update(dados).eq('id', solto[0].id).select('id, numero, leitura_status').single()
+      : await sb.from('certificados_mp').insert({ numero: num, ...dados }).select('id, numero, leitura_status').single();
+    if (r.error){
+      if (/uq_certificados_mp|duplicate/i.test(r.error.message)) dup++; else throw r.error;
+    } else {
+      ok++;
+      if (linha.certificados_mp) linha.certificados_mp.push(r.data);
+    }
+  }
+  return { ok, dup };
+}
+
+async function adicionarCertProt(protId, linhaId){
+  const el = document.getElementById('certNovo' + linhaId);
+  const nums = numerosCertificado(el?.value);
+  if (!nums.length) return;
+  const p = PROT_LISTA.find(x => x.id === protId);
+  const l = p.protocolos_nf_itens.find(x => x.id === linhaId);
+  if (!l.certificados_mp) l.certificados_mp = [];
+  try {
+    const { ok, dup } = await gravarCertificadosLinha(l, nums);
+    renderDetalheProtocolo(protId);
+    showMsg(dup ? `${ok} certificado(s) lançado(s); ${dup} já estava(m) lançado(s) nesta NF.` : `${ok} certificado(s) lançado(s) na NF ${l.nf}.`, true);
+  } catch (e){ showMsg('Erro ao lançar certificado: ' + e.message, false); }
+}
+
+async function removerCertProt(protId, linhaId, certId){
+  const p = PROT_LISTA.find(x => x.id === protId);
+  const l = p.protocolos_nf_itens.find(x => x.id === linhaId);
+  const c = (l.certificados_mp || []).find(x => x.id === certId);
+  if (!c || !confirm(`Tirar o certificado ${c.numero} da NF ${l.nf}?`)) return;
+  const { error } = await sb.from('certificados_mp').delete().eq('id', certId);
+  if (error){ showMsg('Erro ao tirar certificado: ' + error.message, false); return; }
+  l.certificados_mp = l.certificados_mp.filter(x => x.id !== certId);
+  renderDetalheProtocolo(protId);
+  showMsg(`Certificado ${c.numero} tirado.`, true);
 }
 
 async function removerLinhaProt(protId, linhaId){
