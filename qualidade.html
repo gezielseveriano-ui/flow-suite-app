@@ -184,6 +184,16 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 .rt-tbl tbody tr{cursor:default}
 .rt-st{display:inline-block;padding:2px 9px;border-radius:10px;font-size:11px;font-weight:600}
 .rt-solto td:first-child{box-shadow:inset 3px 0 0 var(--amber)}
+.rt-prog{display:flex;align-items:center;gap:16px;padding:14px 18px;margin-bottom:1rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg2);box-shadow:var(--shadow-sm)}
+.rt-ring{position:relative;width:64px;height:64px;flex:none}
+.rt-ring svg{transform:rotate(-90deg)}
+.rt-ring circle{fill:none;stroke-width:6}
+.rt-ring .fundo{stroke:var(--bg4)}
+.rt-ring .valor{stroke:var(--blue);stroke-linecap:round;transition:stroke-dashoffset .35s linear}
+.rt-ring b{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:14px;font-variant-numeric:tabular-nums}
+.rt-prog .txt{min-width:0}
+.rt-prog .etapa{font-size:13.5px;font-weight:600}
+.rt-prog .sub{font-size:12px;color:var(--text2);margin-top:3px}
 .db-rev td input{width:100%;padding:5px 6px;border:1px solid var(--border);border-radius:6px;font:inherit;font-size:12px}
 
 .print-only{display:none}
@@ -1606,6 +1616,7 @@ function renderRastreab(){
     ${CERT_SERVICO_ON
       ? `<div class="db-servico on">🟢 Leitor de certificados conectado neste PC — pode ler os PDFs.</div>`
       : `<div class="db-servico off">⚪ O leitor de certificados não está aberto neste PC. Para ler PDFs, use o PC da Qualidade e abra <b>&nbsp;Iniciar-Certificados&nbsp;</b>. <button class="btn btn-sm" style="margin-left:auto" onclick="irRastreab()">Tentar de novo</button></div>`}
+    <div id="rtProgresso"></div>
     <div class="db-resumo"><span>${CERTS.length} certificado(s)</span><span class="ok">✓ ${n.lido} lido(s)</span><span class="pend">● ${n.pendente} não lido(s)</span><span class="err">${n.conferir} para conferir</span></div>
     <div class="search-row">
       <input class="main" id="rtBusca" placeholder="🔍 Buscar por nº do certificado, NF, O.C., fornecedor, material, corrida ou desenho..." value="${esc(CERT_FILTRO.q)}" oninput="CERT_FILTRO.q=this.value;renderTabelaRastreab()">
@@ -1681,16 +1692,58 @@ function arquivoParaBase64(file){
   return new Promise((ok, err) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1]); r.onerror = () => err(r.error); r.readAsDataURL(file); });
 }
 
+// ---- andamento da leitura: o programa informa a etapa (/progresso); o anel anda
+// devagar até onde a etapa vai, pra nunca parecer travado. Estimativa = proporção do tempo já gasto.
+const RT_PROG = { timer: null, t0: 0, mostrado: 0, real: 0, alvo: 0, etapa: '', i: 1, n: 1, nome: '' };
+function desenharProgressoCert(){
+  const el = document.getElementById('rtProgresso');
+  if (!el) return;
+  const p = RT_PROG, pct = Math.max(0, Math.min(100, Math.round(p.mostrado)));
+  const seg = Math.round((Date.now() - p.t0) / 1000);
+  const falta = seg >= 6 && p.mostrado >= 12 ? Math.max(1, Math.round(seg * (100 - p.mostrado) / p.mostrado)) : null;
+  const C = 2 * Math.PI * 26;
+  el.innerHTML = `<div class="rt-prog">
+    <div class="rt-ring"><svg width="64" height="64" viewBox="0 0 64 64"><circle class="fundo" cx="32" cy="32" r="26"/><circle class="valor" cx="32" cy="32" r="26" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - pct / 100)}"/></svg><b>${pct}%</b></div>
+    <div class="txt">
+      <div class="etapa">${esc(p.etapa || 'Enviando o PDF para o leitor...')}</div>
+      <div class="sub">${p.n > 1 ? `Arquivo ${p.i} de ${p.n} · ` : ''}${esc(p.nome)} · ${seg} s${falta ? ` · faltam cerca de ${falta} s` : ''}</div>
+      <div class="sub">Certificado escaneado pode levar até 1 minuto. Não feche a janela do leitor.</div>
+    </div></div>`;
+}
+function iniciarProgressoCert(i, n, nome){
+  Object.assign(RT_PROG, { t0: Date.now(), mostrado: 0, real: 0, alvo: 8, etapa: '', i, n, nome });
+  desenharProgressoCert();
+  clearInterval(RT_PROG.timer);
+  RT_PROG.timer = setInterval(async () => {
+    try {
+      const j = await (await fetch(CERT_SERVICO + '/progresso')).json();
+      if (j.ativo){ RT_PROG.etapa = j.etapa; RT_PROG.real = j.pct; RT_PROG.alvo = j.ate; }
+    } catch {}
+    if (RT_PROG.mostrado < RT_PROG.real) RT_PROG.mostrado = RT_PROG.real;           // nunca anda pra trás
+    const meta = Math.min(98, Math.max(RT_PROG.real, RT_PROG.alvo - 1));
+    RT_PROG.mostrado += (meta - RT_PROG.mostrado) * 0.07;                           // desliza até o fim da etapa
+    desenharProgressoCert();
+  }, 400);
+}
+async function pararProgressoCert(){
+  clearInterval(RT_PROG.timer); RT_PROG.timer = null;
+  RT_PROG.mostrado = 100; RT_PROG.etapa = 'Pronto!'; desenharProgressoCert();
+  await new Promise(r => setTimeout(r, 500));
+  const el = document.getElementById('rtProgresso'); if (el) el.innerHTML = '';
+}
+
 async function lerPdfsCert(inp){
   const arquivos = [...inp.files];
   if (!arquivos.length || CERT_LENDO) return;
   CERT_LENDO = true;
   const alvo = CERT_ALVO; CERT_ALVO = null;
   const res = [];
+  clearMsg();
   try {
     for (let i = 0; i < arquivos.length; i++){
-      showMsg(`Lendo ${i + 1}/${arquivos.length}: ${arquivos[i].name} ... (certificado escaneado pode levar 1 minuto)`, true);
-      res.push(await lerUmPdfCert(arquivos[i], alvo));
+      iniciarProgressoCert(i + 1, arquivos.length, arquivos[i].name);
+      try { res.push(await lerUmPdfCert(arquivos[i], alvo)); }
+      finally { await pararProgressoCert(); }
     }
   } catch (e){ res.push('Erro: ' + e.message); }
   CERT_LENDO = false;
