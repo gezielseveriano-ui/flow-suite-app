@@ -376,6 +376,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
         <select id="ieTipo" onchange="onItemTipoMudou()">
           <option value="comprado">Item comprado</option>
           <option value="materia_prima">Matéria-prima</option>
+          <option value="suprimento">Suprimento (EPI, disco, gás, lixa, limpeza...)</option>
         </select>
       </label>
       <label>Código (opcional)<input id="ieCodigo" placeholder="código interno / Sapiens"></label>
@@ -1395,7 +1396,7 @@ async function confirmarImportacaoFornecedor(){
 // (rolamento, mancal, bucha...) e matéria-prima (cantoneira, chapa... que
 // controla peças/barras E kg). Saldo só muda pelas RPCs de 075_estoque_mde.sql
 // (entrada / saída / estorno) -- a tela nunca grava saldo direto.
-let EST_TIPO = 'comprado';            // 'comprado' | 'materia_prima'
+let EST_TIPO = 'comprado';            // 'comprado' | 'materia_prima' | 'suprimento'
 let EST_ITENS = [];                    // todos os itens (os 2 tipos -- o relatório Excel usa os dois)
 let EST_PEDIDOS = null;                // cache dos pedidos pro select da baixa
 let EST_MOV_TIPO = 'entrada';          // modal de movimento aberto como entrada ou saída
@@ -1403,10 +1404,12 @@ let EST_ITEM_EDITANDO = null;          // id do item no modal de cadastro (null 
 let EST_VOLTAR_PRO_MOV = false;        // cadastro aberto de dentro do modal de movimento
 let EST_HIST_ITEM = null;
 
-const EST_TIPO_ROTULO = { comprado: 'Itens comprados', materia_prima: 'Matéria-prima' };
+const EST_TIPO_ROTULO = { comprado: 'Itens comprados', materia_prima: 'Matéria-prima', suprimento: 'Suprimentos' };
+const EST_TIPO_ICONE = { comprado: '⚙️', materia_prima: '🔩', suprimento: '🧰' };
 const EST_CATEGORIAS = {
   comprado: ['Rolamento', 'Mancal', 'Bucha de fixação', 'Anel de fixação', 'Motorredutor', 'Fixação (parafuso/porca/arruela)', 'Outros'],
   materia_prima: ['Cantoneira', 'Chapa', 'Tubo', 'Barra chata', 'Barra redonda', 'Perfil U', 'Perfil W / I', 'Outros'],
+  suprimento: ['EPI (luva, óculos, protetor)', 'Disco de corte / desbaste', 'Lixa / abrasivo', 'Gás (oxigênio, acetileno, argônio)', 'Ferramenta de consumo (broca, serra)', 'Lubrificante / óleo', 'Tinta / solvente', 'Limpeza', 'Escritório', 'Outros'],
 };
 const EST_SETORES = ['Caldeiraria', 'Montagem', 'Usinagem', 'Pintura', 'Manutenção', 'Expedição'];
 const EST_ORIGENS = ['Estoque antigo', 'NF de compra', 'Inventário (acerto)', 'Devolução de obra', 'Sobra de produção'];
@@ -1453,7 +1456,7 @@ async function renderEstoque(tipo){
       <span class="btn btn-baixa so-editor" onclick="abrirMovimento('saida')">➖ Saída (baixa)</span>
       <span class="btn so-editor" onclick="abrirItemEstoque(null)">＋ Cadastrar item</span>
       <span style="flex:1"></span>
-      <span class="btn" onclick="relatorioEstoqueExcel()" title="Saldo dos itens comprados e da matéria-prima, uma aba cada">📊 Relatório Excel</span>
+      <span class="btn" onclick="relatorioEstoqueExcel()" title="Saldo dos itens comprados, da matéria-prima e dos suprimentos, uma aba cada">📊 Relatório Excel</span>
       <span class="btn" onclick="relatorioEstoquePdf()" title="Saldo do que está filtrado na tela">📄 Relatório PDF</span>
     </div>
     <div class="search-row">
@@ -1477,8 +1480,8 @@ async function renderEstoque(tipo){
 
 function renderChipsEstoque(){
   const n = t => EST_ITENS.filter(i => i.tipo === t && i.ativo).length;
-  document.getElementById('estChips').innerHTML = ['comprado', 'materia_prima'].map(t => `
-    <span class="chip ${EST_TIPO === t ? 'active' : ''}" onclick="renderEstoque('${t}')">${t === 'comprado' ? '⚙️' : '🔩'} ${EST_TIPO_ROTULO[t]}<span class="n">(${n(t)})</span></span>`).join('');
+  document.getElementById('estChips').innerHTML = ['comprado', 'materia_prima', 'suprimento'].map(t => `
+    <span class="chip ${EST_TIPO === t ? 'active' : ''}" onclick="renderEstoque('${t}')">${EST_TIPO_ICONE[t]} ${EST_TIPO_ROTULO[t]}<span class="n">(${n(t)})</span></span>`).join('');
 }
 
 function itensEstoqueFiltrados(){
@@ -1573,7 +1576,11 @@ async function abrirMovimento(tipo, itemId){
   preencherSelectItensMov(itemId);
   document.getElementById('modalMovimento').classList.add('show');
 
-  if (saida) await preencherSelectPedidos();
+  if (saida){
+    await preencherSelectPedidos();
+    // suprimento quase sempre sai pra uso da fábrica, sem pedido: já vem marcado
+    if (EST_TIPO === 'suprimento') document.getElementById('movPedido').value = 'interno';
+  }
 }
 
 function preencherSelectItensMov(selecionarId){
@@ -1813,7 +1820,7 @@ async function relatorioEstoqueExcel(){
   const preenchimento = cor => ({ type: 'pattern', pattern: 'solid', fgColor: { argb: cor } });
   const wb = new ExcelJS.Workbook();
 
-  ['comprado', 'materia_prima'].forEach(tipo => {
+  ['comprado', 'materia_prima', 'suprimento'].forEach(tipo => {
     const mp = tipo === 'materia_prima';
     const itens = EST_ITENS.filter(i => i.tipo === tipo && i.ativo).sort((a, b) => (a.categoria || '').localeCompare(b.categoria || '', 'pt-BR') || a.descricao.localeCompare(b.descricao, 'pt-BR'));
     const COLS = [
