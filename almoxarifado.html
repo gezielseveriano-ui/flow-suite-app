@@ -1405,7 +1405,13 @@ let EST_VOLTAR_PRO_MOV = false;        // cadastro aberto de dentro do modal de 
 let EST_HIST_ITEM = null;
 
 const EST_TIPO_ROTULO = { comprado: 'Itens comprados', materia_prima: 'Matéria-prima', suprimento: 'Suprimentos' };
-const EST_TIPO_ICONE = { comprado: '⚙️', materia_prima: '🔩', suprimento: '🧰' };
+// os 3 ícones são do mesmo estilo e seguem a cor do botão (branco no selecionado, cinza nos outros)
+const _ico = d => `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px">${d}</svg>`;
+const EST_TIPO_ICONE = {
+  comprado: _ico('<path d="M21 8l-9-5-9 5v8l9 5 9-5V8z"/><path d="M3 8l9 5 9-5M12 13v8"/>'),          // caixa
+  materia_prima: _ico('<path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/>'),                // chapas empilhadas
+  suprimento: _ico('<rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>'), // maleta
+};
 const EST_CATEGORIAS = {
   comprado: ['Rolamento', 'Mancal', 'Bucha de fixação', 'Anel de fixação', 'Motorredutor', 'Fixação (parafuso/porca/arruela)', 'Outros'],
   materia_prima: ['Cantoneira', 'Chapa', 'Tubo', 'Barra chata', 'Barra redonda', 'Perfil U', 'Perfil W / I', 'Outros'],
@@ -2438,7 +2444,11 @@ async function pdfProtocolo(id){
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const M = 12, W = 186, ROW = 6.5;
-  const COLS = [
+  // com a tabela de certificados (sql/087) entra a coluna "Nº CERTIFICADO"; vazia enquanto o almoxarife não lançou
+  const COLS = CERT_MP_ON ? [
+    { t: 'NF', w: 22 }, { t: 'O.C.', w: 16 }, { t: 'FORNECEDOR', w: 44 },
+    { t: 'DATA', w: 20 }, { t: 'CERTIFICADO', w: 24 }, { t: 'Nº CERTIFICADO', w: 38 }, { t: 'PEDIDO', w: 22 },
+  ] : [
     { t: 'NF', w: 26 }, { t: 'O.C.', w: 20 }, { t: 'FORNECEDOR', w: 60 },
     { t: 'DATA', w: 24 }, { t: 'CERTIFICADO', w: 28 }, { t: 'PEDIDO', w: 28 },
   ];
@@ -2470,21 +2480,32 @@ async function pdfProtocolo(id){
   }
 
   cabecalho();
+  const iNumCert = COLS.findIndex(c => c.t === 'Nº CERTIFICADO');
   ls.forEach(l => {
-    if (y + ROW > 262){ doc.addPage(); cabecalho(); }
-    const vals = [l.nf, l.oc || '', l.fornecedor || '', fmtData(l.data_nf), LABEL_CERT[l.certificado], l.pedido || ''];
-    doc.rect(M, y, W, ROW);
+    const vals = [l.nf, l.oc || '', l.fornecedor || '', fmtData(l.data_nf), LABEL_CERT[l.certificado]];
+    if (iNumCert >= 0) vals.push((l.certificados_mp || []).map(c => c.numero).join(', '));
+    vals.push(l.pedido || '');
+    // vários certificados na mesma NF: o nº quebra em linhas e a linha cresce
+    const linhasNum = iNumCert >= 0 && vals[iNumCert] ? doc.splitTextToSize(String(vals[iNumCert]), COLS[iNumCert].w - 2) : [];
+    const h = Math.max(ROW, linhasNum.length > 1 ? linhasNum.length * 3.8 + 2.7 : ROW);
+    if (y + h > 262){ doc.addPage(); cabecalho(); }
+    doc.rect(M, y, W, h);
     let x = M;
     vals.forEach((v, i) => {
       const c = COLS[i];
-      const txt = doc.splitTextToSize(String(v), c.w - 2)[0] || '';
-      if (i === 4) doc.setFont('helvetica', 'bold');
-      doc.text(txt, x + c.w / 2, y + 4.4, { align: 'center' });
-      if (i === 4) doc.setFont('helvetica', 'normal');
+      if (i === iNumCert){
+        linhasNum.forEach((t, k) => doc.text(t, x + c.w / 2, y + (linhasNum.length > 1 ? 4.2 : h / 2 + 1.5) + k * 3.8, { align: 'center' }));
+      } else {
+        const txt = doc.splitTextToSize(String(v), c.w - 2)[0] || '';
+        const certCol = COLS[i].t === 'CERTIFICADO';
+        if (certCol) doc.setFont('helvetica', 'bold');
+        doc.text(txt, x + c.w / 2, y + h / 2 + 1.5, { align: 'center' });
+        if (certCol) doc.setFont('helvetica', 'normal');
+      }
       x += c.w;
-      if (i < COLS.length - 1) doc.line(x, y, x, y + ROW);
+      if (i < COLS.length - 1) doc.line(x, y, x, y + h);
     });
-    y += ROW;
+    y += h;
   });
 
   // assinaturas
