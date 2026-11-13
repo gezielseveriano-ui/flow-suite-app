@@ -1586,7 +1586,7 @@ async function processarCaixaCert(){
         const r = await fetch(CERT_SERVICO + '/ler-recebido', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ arquivo: novos[i].arquivo }) });
         const j = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(j.detail || ('Leitor respondeu ' + r.status));
-        res.push(await processarLeituraCert(j, novos[i].nome, null));
+        res.push(await processarResultadoLeitura(j, novos[i].nome, null));
       } catch (e){ res.push(`${novos[i].nome}: erro ${e.message}`); }
       finally { await pararProgressoCert(); }
     }
@@ -1906,7 +1906,20 @@ async function lerUmPdfCert(file, alvoId){
   const r = await fetch(CERT_SERVICO + '/ler', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nome: file.name, base64: b64 }) });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.detail || ('Leitor respondeu ' + r.status));
-  return processarLeituraCert(j, file.name, alvoId);
+  return processarResultadoLeitura(j, file.name, alvoId);
+}
+
+// o leitor devolve "partes" quando o PDF tem VÁRIOS certificados (cada um já separado em PDF próprio)
+async function processarResultadoLeitura(j, nomeArq, alvoId){
+  if (Array.isArray(j.partes) && j.partes.length){
+    const out = [];
+    for (const p of j.partes){
+      try { out.push(await processarLeituraCert(p, `${nomeArq} (pág. ${p.paginas.join(',')})`, null)); }
+      catch (e){ out.push(`${nomeArq} (pág. ${p.paginas.join(',')}): erro ${e.message}`); }
+    }
+    return `${nomeArq}: tinha ${j.partes.length} certificados, separei um por um → ` + out.join(' | ');
+  }
+  return processarLeituraCert(j, nomeArq, alvoId);
 }
 
 // resultado da leitura (PDF enviado pela tela ou lido na caixa de entrada) -> grava no banco e, se já der, arquiva
@@ -1920,8 +1933,8 @@ async function processarLeituraCert(j, nomeArq, alvoId){
   // HT-HQ-PO323; TE: "Order Item"): o leitor devolve esses nºs em "referencias"
   const chaves = [c.certificado, ...(c.referencias || [])].filter(Boolean).map(chaveCert);
   if (!alvo && chaves.length){
-    alvo = CERTS.find(x => chaves.includes(chaveCert(x.numero)));
     const k = chaveCert(c.certificado);
+    alvo = CERTS.find(x => chaveCert(x.numero) === k) || CERTS.find(x => chaves.includes(chaveCert(x.numero)));
     if (!alvo && /^\d{10}/.test(k)){               // Gerdau: 8136904163-10 x 8136904163/000010
       const cand = CERTS.filter(x => chaveCert(x.numero).startsWith(k.slice(0, 10)));
       if (cand.length === 1){ alvo = cand[0]; aviso = 'conferir'; }
