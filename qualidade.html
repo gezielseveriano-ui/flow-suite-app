@@ -184,6 +184,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 .rt-tbl tbody tr{cursor:default}
 .rt-st{display:inline-block;padding:2px 9px;border-radius:10px;font-size:11px;font-weight:600}
 .rt-solto td:first-child{box-shadow:inset 3px 0 0 var(--amber)}
+.rt-caixa{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px;margin-bottom:1rem;border:1px dashed var(--border);border-radius:var(--radius);background:var(--bg2);font-size:13px}
 .rt-prog{display:flex;align-items:center;gap:16px;padding:14px 18px;margin-bottom:1rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg2);box-shadow:var(--shadow-sm)}
 .rt-ring{position:relative;width:64px;height:64px;flex:none}
 .rt-ring svg{transform:rotate(-90deg)}
@@ -1518,7 +1519,69 @@ async function irRastreab(){
   VISAO = 'rastreab'; renderNav(); clearMsg();
   document.getElementById('content').innerHTML = '<div class="empty">Carregando certificados...</div>';
   await Promise.all([carregarCerts(), checarServicoCert(), carregarDbsCert()]);
+  await carregarRecebidos();
   renderRastreab();
+}
+
+// ---- caixa de entrada: CERTIFICADOS DE TODOS OS PEDIDOS\CERTIFICADO RECEBIDO DO ALMOXARIFADO
+// Todo PDF cai lá, sem importar o pedido. "Processar" lê os novos, acha o pedido pelo nº que o
+// almoxarife lançou na NF e recorta o PDF para P-xxx\CAP ...\ (o que não achar pedido espera lá).
+let CERT_RECEB = { pasta: '', arquivos: [] };
+async function carregarRecebidos(){
+  CERT_RECEB = { pasta: '', arquivos: [] };
+  if (!CERT_SERVICO_ON) return;
+  try { CERT_RECEB = await (await fetch(CERT_SERVICO + '/recebidos')).json(); } catch {}
+}
+function resumoRecebidos(){
+  const naBase = new Set(CERTS.map(c => c.arquivo));
+  const arqs = CERT_RECEB.arquivos || [];
+  return {
+    novos: arqs.filter(a => !a.lido && a.estavel && !naBase.has(a.arquivo)),
+    copiando: arqs.filter(a => !a.estavel),
+    semNumero: arqs.filter(a => a.lido && !naBase.has(a.arquivo)),
+    esperando: arqs.filter(a => naBase.has(a.arquivo)),
+  };
+}
+function renderCaixaCert(){
+  const el = document.getElementById('rtCaixa'); if (!el) return;
+  if (!CERT_SERVICO_ON){ el.innerHTML = ''; return; }
+  const r = resumoRecebidos();
+  const total = (CERT_RECEB.arquivos || []).length;
+  el.innerHTML = `<div class="rt-caixa">
+    <div style="flex:1;min-width:240px"><b>📥 Caixa de entrada</b> <span style="color:var(--text2)">— CERTIFICADO RECEBIDO DO ALMOXARIFADO</span><br>
+      <span style="font-size:12px;color:var(--text2)">${total ? [
+        r.novos.length ? `<b>${r.novos.length} novo(s)</b> para ler` : '',
+        r.esperando.length ? `${r.esperando.length} lido(s) esperando o pedido ou o item` : '',
+        r.semNumero.length ? `${r.semNumero.length} sem nº legível (${r.semNumero.map(a => esc(a.nome)).join(', ')})` : '',
+        r.copiando.length ? `${r.copiando.length} ainda sendo copiado(s)` : ''].filter(Boolean).join(' · ') || 'nada novo' : 'vazia — jogue os PDFs dos certificados nessa pasta'}</span></div>
+    <button class="btn btn-primary so-editor" onclick="processarCaixaCert()" ${r.novos.length || r.esperando.length ? '' : 'disabled'} title="Lê os PDFs novos, acha o pedido pelo nº que o almoxarife lançou e recorta cada PDF para a pasta do pedido">▶ Processar caixa de entrada</button>
+    <button class="btn" onclick="irRastreab()" title="Ver de novo o que tem na pasta">↻</button></div>`;
+}
+
+async function processarCaixaCert(){
+  if (CERT_LENDO) return;
+  const novos = resumoRecebidos().novos;
+  CERT_LENDO = true; clearMsg();
+  const res = [];
+  try {
+    for (let i = 0; i < novos.length; i++){
+      iniciarProgressoCert(i + 1, novos.length, novos[i].nome);
+      try {
+        const r = await fetch(CERT_SERVICO + '/ler-recebido', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ arquivo: novos[i].arquivo }) });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j.detail || ('Leitor respondeu ' + r.status));
+        res.push(await processarLeituraCert(j, novos[i].nome, null));
+      } catch (e){ res.push(`${novos[i].nome}: erro ${e.message}`); }
+      finally { await pararProgressoCert(); }
+    }
+    // o que já tem pedido + item e ainda está na caixa de entrada: recorta para a pasta do pedido
+    await carregarCerts();
+    const prontos = CERTS.filter(c => c.arquivo && c.item_databook && pedidosDoCert(c).length && !certArquivado(c));
+    for (const c of prontos){ try { res.push(await arquivarCert(c)); } catch (e){ res.push(`${c.numero}: erro ${e.message}`); } }
+  } catch (e){ res.push('Erro: ' + e.message); }
+  CERT_LENDO = false;
+  await carregarCerts(); await carregarRecebidos(); renderRastreab();
+  showMsg(res.length ? res.join(' · ') : 'Nada para processar na caixa de entrada.', !res.some(r => /erro|não consegui/i.test(r)));
 }
 
 // Databooks abertos (com a pasta e os itens): nem todo pedido tem um
@@ -1543,7 +1606,7 @@ async function arquivarCert(c){
   if (!c.item_databook) return `${c.numero}: escolha o item do Databook`;
   if (!pedidosDoCert(c).length) return `${c.numero}: o almoxarife ainda não lançou este nº numa NF — PDF fica em _SEM PEDIDO`;
   const r = await fetch(CERT_SERVICO + '/arquivar', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ arquivo: c.arquivo, pedidos: c.pedido, codigo: c.item_databook, descricao: CERT_ITENS_DESC[c.item_databook] || '' }) });
+    body: JSON.stringify({ arquivo: c.arquivo, pedidos: c.pedido, codigo: c.item_databook, descricao: CERT_ITENS_DESC[c.item_databook] || '', nome: c.numero }) });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) return `${c.numero}: ${j.detail || r.status}`;
   await sb.from('certificados_mp').update({ arquivo: j.arquivo }).eq('id', c.id);
@@ -1658,6 +1721,7 @@ function renderRastreab(){
     ${CERT_SERVICO_ON
       ? `<div class="db-servico on">🟢 Leitor de certificados conectado neste PC — pode ler os PDFs.</div>`
       : `<div class="db-servico off">⚪ O leitor de certificados não está aberto neste PC. Para ler PDFs, use o PC da Qualidade e abra <b>&nbsp;Iniciar-Certificados&nbsp;</b>. <button class="btn btn-sm" style="margin-left:auto" onclick="irRastreab()">Tentar de novo</button></div>`}
+    <div id="rtCaixa"></div>
     <div id="rtProgresso"></div>
     <div class="db-resumo"><span>${CERTS.length} certificado(s)</span><span class="ok">✓ ${n.lido} lido(s)</span><span class="pend">● ${n.pendente} não lido(s)</span><span class="err">${n.conferir} para conferir</span></div>
     <div class="search-row">
@@ -1671,6 +1735,7 @@ function renderRastreab(){
       <input type="file" id="rtArquivo" accept="application/pdf,.pdf" multiple style="display:none" onchange="lerPdfsCert(this)">
     </div>
     <div id="rtTabela"></div>`;
+  renderCaixaCert();
   renderTabelaRastreab();
 }
 
@@ -1793,7 +1858,7 @@ async function lerPdfsCert(inp){
     }
   } catch (e){ res.push('Erro: ' + e.message); }
   CERT_LENDO = false;
-  await carregarCerts(); renderRastreab();
+  await carregarCerts(); await carregarRecebidos(); renderRastreab();
   showMsg(res.join(' · '), !res.some(r => /^Erro|não consegui/i.test(r)));
 }
 
@@ -1802,6 +1867,11 @@ async function lerUmPdfCert(file, alvoId){
   const r = await fetch(CERT_SERVICO + '/ler', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nome: file.name, base64: b64 }) });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.detail || ('Leitor respondeu ' + r.status));
+  return processarLeituraCert(j, file.name, alvoId);
+}
+
+// resultado da leitura (PDF enviado pela tela ou lido na caixa de entrada) -> grava no banco e, se já der, arquiva
+async function processarLeituraCert(j, nomeArq, alvoId){
   const c = j.campos || {};
   const lido = { usina: c.usina && c.usina !== 'DESCONHECIDO' ? c.usina : null, produto: c.produto || null, norma: c.norma || null, bitola: c.bitola || null, corrida: c.corridas || null, data_cert: dataCertISO(c.data), arquivo: j.arquivo || null };
   const nCampos = ['usina', 'produto', 'norma', 'bitola', 'corrida'].filter(k => lido[k]).length;
@@ -1816,7 +1886,7 @@ async function lerUmPdfCert(file, alvoId){
     }
   }
   if (alvo && alvoId != null && c.certificado && chaveCert(c.certificado) !== chaveCert(alvo.numero)) aviso = 'conferir';
-  if (!alvo && !c.certificado) return `${file.name}: não consegui ler o nº do certificado`;
+  if (!alvo && !c.certificado) return `${nomeArq}: não consegui ler o nº do certificado (o PDF continua na caixa de entrada)`;
   const status = aviso === 'conferir' || !c.certificado || nCampos < 3 ? 'conferir' : 'lido';
   const dados = { ...lido, leitura_status: status, lido_em: new Date().toISOString() };
   // item do Databook: o leitor sugere pelo conteúdo; não sobrescreve o que a Qualidade já escolheu
