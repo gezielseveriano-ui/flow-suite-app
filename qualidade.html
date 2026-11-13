@@ -1529,6 +1529,44 @@ async function carregarDbsCert(){
 }
 const CERT_ITENS_DB = { '3.1': '3.1 Matéria-prima', '3.2': '3.2 Material de END', '3.4': '3.4 Solda', '3.5': '3.5 Pintura', '3.7': '3.7 Itens comerciais', '4.1': '4.1 Registros de END' };
 const soDigitos = s => String(s || '').replace(/\D/g, '');
+const CERT_ITENS_DESC = { '3.1': 'Certificados de materiais metálicos e não metálicos', '3.2': 'Certificados de materiais utilizados em END', '3.4': 'Certificados de consumíveis de soldagem', '3.5': 'Certificados de consumíveis de pintura e galvanização', '3.7': 'Certificados de itens comerciais', '4.1': 'Registros de Ensaios Não Destrutivos' };
+
+// pasta do pedido na rede (CERTIFICADOS DE TODOS OS PEDIDOS\P-224\CAP III\3.1 ...): 'P-224', '224' e 'P224' são a mesma
+const nomePastaPedido = t => /^p?\s*-?\s*\d{1,6}$/i.test(String(t).trim()) ? 'P-' + soDigitos(t) : String(t).trim();
+const pedidosDoCert = c => String(c.pedido || '').split(/[,;]+/).map(s => s.trim()).filter(Boolean);
+// o PDF já está na pasta do pedido (e não esperando em _SEM PEDIDO)?
+const certArquivado = c => !!c.arquivo && pedidosDoCert(c).length > 0 && c.arquivo.startsWith(nomePastaPedido(pedidosDoCert(c)[0]) + '/');
+
+// põe o PDF na pasta do item do pedido, na rede. Atualiza o caminho guardado no banco. Devolve um texto curto.
+async function arquivarCert(c){
+  if (!c.arquivo) return `${c.numero}: ainda sem PDF lido`;
+  if (!c.item_databook) return `${c.numero}: escolha o item do Databook`;
+  if (!pedidosDoCert(c).length) return `${c.numero}: o almoxarife ainda não lançou este nº numa NF — PDF fica em _SEM PEDIDO`;
+  const r = await fetch(CERT_SERVICO + '/arquivar', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ arquivo: c.arquivo, pedidos: c.pedido, codigo: c.item_databook, descricao: CERT_ITENS_DESC[c.item_databook] || '' }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) return `${c.numero}: ${j.detail || r.status}`;
+  await sb.from('certificados_mp').update({ arquivo: j.arquivo }).eq('id', c.id);
+  c.arquivo = j.arquivo;
+  return `${c.numero} → ${j.arquivo.split('/').slice(0, 3).join(' › ')}`;
+}
+
+// cria as pastas (CAP I a VII + GERADO) de todos os pedidos que têm certificado e arruma os PDFs que já podem ir pro lugar
+async function organizarPastasCert(){
+  const pedidos = [...new Set(CERTS.flatMap(pedidosDoCert))];
+  if (!pedidos.length){ showMsg('Nenhum pedido ainda: o almoxarife lança o nº do certificado na NF.', false); return; }
+  const lista = CERTS.filter(c => c.arquivo && c.item_databook && pedidosDoCert(c).length && !certArquivado(c));
+  if (!confirm(`Criar as pastas de ${pedidos.length} pedido(s) em "CERTIFICADOS DE TODOS OS PEDIDOS" e arquivar ${lista.length} PDF(s) no item certo?`)) return;
+  try {
+    const r = await fetch(CERT_SERVICO + '/estrutura-pedidos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pedidos }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.detail || r.status);
+    const res = [`${j.criadas.length} pasta(s) de pedido criada(s)` + (j.criadas.length ? ': ' + j.criadas.join(', ') : '')];
+    for (const c of lista){ try { res.push(await arquivarCert(c)); } catch (e){ res.push(`${c.numero}: erro ${e.message}`); } }
+    await carregarCerts(); renderTabelaRastreab();
+    showMsg(res.join(' · '), true);
+  } catch (e){ showMsg('Erro ao organizar as pastas: ' + e.message, false); }
+}
 
 // copia o PDF do certificado para a pasta do item do Databook do(s) pedido(s). Devolve um texto curto.
 async function enviarCertDatabook(c){
@@ -1558,6 +1596,10 @@ async function mudarItemDatabook(id, valor){
   const { error } = await sb.from('certificados_mp').update({ item_databook: valor || null }).eq('id', id);
   if (error){ showMsg('Erro ao salvar: ' + error.message, false); return; }
   const c = CERTS.find(x => x.id === id); if (c) c.item_databook = valor || null;
+  // trocou o item: o PDF muda de pasta junto (se o pedido já é conhecido e o leitor está aberto)
+  if (c && valor && c.arquivo && pedidosDoCert(c).length && CERT_SERVICO_ON){
+    try { showMsg(await arquivarCert(c), true); } catch (e){ showMsg('Erro ao mover o PDF: ' + e.message, false); }
+  }
   renderTabelaRastreab();
 }
 
@@ -1623,6 +1665,7 @@ function renderRastreab(){
       <select onchange="CERT_FILTRO.pedido=this.value;renderTabelaRastreab()"><option value="">Todos os pedidos</option>${pedidos.map(p => `<option ${p === CERT_FILTRO.pedido ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select>
       <select onchange="CERT_FILTRO.status=this.value;renderTabelaRastreab()"><option value="">Qualquer leitura</option><option value="pendente" ${CERT_FILTRO.status === 'pendente' ? 'selected' : ''}>Não lidos</option><option value="lido" ${CERT_FILTRO.status === 'lido' ? 'selected' : ''}>Lidos</option><option value="conferir" ${CERT_FILTRO.status === 'conferir' ? 'selected' : ''}>Para conferir</option></select>
       <button class="btn btn-primary so-editor" onclick="escolherPdfCert(null)" ${CERT_SERVICO_ON ? '' : 'disabled'} title="Escolha um ou vários PDFs: o sistema lê e liga ao nº que o almoxarifado digitou">📄 Ler certificados (PDF)</button>
+      <button class="btn so-editor" onclick="organizarPastasCert()" ${CERT_SERVICO_ON ? '' : 'disabled'} title="Cria as pastas de cada pedido em CERTIFICADOS DE TODOS OS PEDIDOS (CAP I a VII) e põe cada PDF lido na pasta do item">🗂 Organizar pastas</button>
       <button class="btn so-editor" onclick="enviarTodosDatabook()" ${CERT_SERVICO_ON ? '' : 'disabled'} title="Copia para a pasta do Databook todos os certificados lidos, com item escolhido, dos pedidos que têm Databook aberto">📘 Enviar ao Databook</button>
       <button class="btn" onclick="exportarCertsCsv()">⬇ Exportar CSV</button>
       <input type="file" id="rtArquivo" accept="application/pdf,.pdf" multiple style="display:none" onchange="lerPdfsCert(this)">
@@ -1654,6 +1697,9 @@ function renderTabelaRastreab(){
       <td style="white-space:nowrap">${ed
         ? `<select onchange="mudarItemDatabook(${c.id}, this.value)" style="padding:3px 4px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);color:inherit;font-size:12px"><option value="">—</option>${Object.entries(CERT_ITENS_DB).map(([k, v]) => `<option value="${k}" ${c.item_databook === k ? 'selected' : ''}>${v}</option>`).join('')}</select>`
         : esc(CERT_ITENS_DB[c.item_databook] || '—')}
+        ${c.arquivo ? (certArquivado(c)
+          ? `<span class="rt-st st-ok" title="${esc(c.arquivo)}">📁 pasta do pedido</span>`
+          : `<span class="rt-st st-pend" title="PDF ainda em ${esc(c.arquivo)} — falta o pedido (almoxarife) ou o item do Databook">📁 aguardando</span>`) : ''}
         ${c.enviado_databook_em ? `<span class="rt-st st-ok" title="PDF copiado para a pasta do Databook em ${new Date(c.enviado_databook_em).toLocaleString('pt-BR')}">no Databook</span>` : ''}</td>
       <td><span class="rt-st ${cls}">${lbl}</span></td>
       <td style="white-space:nowrap">
@@ -1779,8 +1825,12 @@ async function lerUmPdfCert(file, alvoId){
   if (alvo){
     await gravarCert(dados, alvo.id);
     let msg = `${alvo.numero}: ${status === 'lido' ? 'lido e ligado à NF ' + (alvo.nf || '—') : 'lido, conferir os campos'}`;
-    // lido com segurança + item definido: já manda para a pasta do Databook (se o pedido tiver um)
-    if (status === 'lido' && itemDb) msg += ' · ' + await enviarCertDatabook({ id: alvo.id, numero: alvo.numero, arquivo: lido.arquivo, pedido: alvo.pedido, item_databook: itemDb });
+    // lido com segurança + item definido: arquiva na pasta do pedido (rede) e, se o pedido tiver Databook, copia pra lá
+    if (status === 'lido' && itemDb){
+      const cert = { id: alvo.id, numero: alvo.numero, arquivo: lido.arquivo, pedido: alvo.pedido, item_databook: itemDb };
+      msg += ' · ' + await arquivarCert(cert);
+      msg += ' · ' + await enviarCertDatabook(cert);
+    }
     else if (itemDb) msg += ` · sugestão: item ${itemDb} (confira e use 📘 Enviar)`;
     return msg;
   }
