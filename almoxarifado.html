@@ -1237,12 +1237,22 @@ async function onArquivoSapiensSelecionado(inputEl){
       // soltos do relatório) -- ficam em branco até o Sapiens exportar isso
       // de um jeito identificável, ou até editar manualmente aqui na tela.
       let desenho = null, solicitante = null, familia = null, fornecedor = null, nfSistema = null;
+      let colSolic = -1;
       for (let c = 14; c < row.length; c++){
         const val = row[c];
         if (val == null || val === '') continue;
-        if (typeof val === 'string' && pareceUsername(val)) { solicitante = solicitante || val; continue; }
+        if (typeof val === 'string' && pareceUsername(val)) { if (colSolic < 0) colSolic = c; solicitante = solicitante || val; continue; }
         if (typeof val === 'string' && /^[A-Z]{2,4}$/.test(val.trim())) { familia = familia || val.trim(); continue; }
         if (typeof val === 'string' && /[A-Z]-?\d{3,}/.test(val) && val.length < 40) { desenho = desenho || val; continue; }
+      }
+      // O Desenho é a coluna colada antes do Solicitante (mesma ordem do
+      // cabeçalho do relatório). Ler por posição pega QUALQUER texto -- só
+      // número ("73247"), "R-1-4-8850", "CONFORME ESPECIFICAÇÃO..." --, que o
+      // reconhecimento por formato acima deixava em branco (SC 2056 do P-198).
+      // O formato continua só como reserva quando não achar o Solicitante.
+      if (colSolic > 14){
+        const d = row[colSolic - 1];
+        desenho = (d == null || String(d).trim() === '') ? null : String(d).trim();
       }
 
       itens.push({
