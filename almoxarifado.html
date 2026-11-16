@@ -110,6 +110,10 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 .dtbl tbody td{padding:7px 10px;vertical-align:middle;white-space:nowrap}
 .dtbl tbody tr.row-total td{background:var(--green-dim)}
 .dtbl tbody tr.row-total td:first-child{box-shadow:inset 4px 0 0 var(--green)}
+.dtbl tbody tr.row-pausado td{background:#EDE9FE;color:#6D28D9}
+.dtbl tbody tr.row-pausado td:first-child{box-shadow:inset 4px 0 0 #7C3AED}
+.dtbl tbody tr.row-pausado .desc-cell{color:#6D28D9;text-decoration:line-through}
+.sb-pausado{background:#DDD6FE;color:#5B21B6}
 .desc-cell{max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2)}
 .dtbl td.r{text-align:right;font-variant-numeric:tabular-nums}
 .status-badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:10px;font-weight:600;white-space:nowrap}
@@ -568,7 +572,7 @@ async function buscarContagemPorPedido(){
   let leves = [];
   let de = 0;
   while (true){
-    const { data, error } = await sb.from('almoxarifado_itens').select('id, pedido_id, status_recebimento').range(de, de + 999);
+    const { data, error } = await sb.from('almoxarifado_itens').select('id, pedido_id, status_recebimento, pausado').range(de, de + 999);
     if (error) throw error;
     leves = leves.concat(data);
     if (data.length < 1000) break;
@@ -610,7 +614,7 @@ async function renderHome(){
     const chave = it.pedido_id || 'SEM_PEDIDO';
     if (!agg[chave]) agg[chave] = { total: 0, pendentes: 0 };
     agg[chave].total++;
-    if (it.status_recebimento !== 'total') agg[chave].pendentes++;
+    if (it.status_recebimento !== 'total' && !it.pausado) agg[chave].pendentes++;
   });
 
   if (!leves.length){
@@ -718,6 +722,7 @@ function renderDetalhe(itens){
         <option value="pendente">Pendente</option>
         <option value="parcial">Parcialmente recebido</option>
         <option value="total">Totalmente recebido</option>
+        <option value="pausado">⏸ Pausado (não comprar)</option>
       </select>
       <select id="filtroFamilia" onchange="aplicarFiltros()">${opcoesFamilia(itens)}</select>
       <select id="filtroSitOc" onchange="aplicarFiltros()">${opcoesSitOc(itens)}</select>
@@ -753,7 +758,8 @@ function opcoesSitOc(itens){
     + (temSem ? '<option value="__sem">(sem OC)</option>' : '');
 }
 
-function badgeStatus(s){
+function badgeStatus(s, pausado){
+  if (pausado) return '<span class="status-badge sb-pausado" title="Compra pausada: não entra no PDF de cobrança nem no Excel">⏸ Pausado</span>';
   if (s === 'total') return '<span class="status-badge sb-total">Totalmente recebido</span>';
   if (s === 'parcial') return '<span class="status-badge sb-parcial">Parcial</span>';
   return '<span class="status-badge sb-pendente">Pendente</span>';
@@ -765,7 +771,7 @@ function aplicarFiltros(){
   const familiaF = document.getElementById('filtroFamilia').value;
   const sitOcF = document.getElementById('filtroSitOc').value;
   const itens = TODOS_ITENS.filter(it => {
-    if (statusF && it.status_recebimento !== statusF) return false;
+    if (statusF === 'pausado' ? !it.pausado : (statusF && it.status_recebimento !== statusF)) return false;
     const fam = (it.familia || '').trim();
     if (familiaF === '__sem' ? fam : (familiaF && fam !== familiaF)) return false;
     const sit = (it.situacao_oc || '').trim();
@@ -797,7 +803,7 @@ function renderTabela(itens){
       </tr></thead>
       <tbody>
         ${itens.map(it => `
-        <tr id="row-${it.id}" class="${it.status_recebimento === 'total' ? 'row-total' : ''}">
+        <tr id="row-${it.id}" class="${it.pausado ? 'row-pausado' : (it.status_recebimento === 'total' ? 'row-total' : '')}">
           <td><input type="checkbox" class="chkItem" ${itensSelecionados.has(it.id) ? 'checked' : ''} onchange="toggleItemSelecionado(${it.id}, this.checked)"></td>
           <td>${it.sc}</td>
           <td>${it.item_seq}</td>
@@ -815,8 +821,9 @@ function renderTabela(itens){
           <td><input class="edit-input txt" id="nf-${it.id}" ${RO()} value="${esc(it.nf || '')}" oninput="marcarLinhaSuja(${it.id})" onblur="salvarRecebimento(${it.id}, {silencioso:true})"></td>
           <td><input class="edit-input" id="dataNf-${it.id}" type="date" ${RO()} value="${it.data_recebimento_nf || ''}" oninput="marcarLinhaSuja(${it.id})" onblur="salvarRecebimento(${it.id}, {silencioso:true})"></td>
           <td><input class="edit-input txt" id="obs-${it.id}" ${RO()} title="${esc(it.observacao || '')}" value="${esc(it.observacao || '')}" oninput="marcarLinhaSuja(${it.id})" onblur="salvarRecebimento(${it.id}, {silencioso:true})"></td>
-          <td id="status-${it.id}">${badgeStatus(it.status_recebimento)}</td>
-          <td class="so-editor"><span class="btn" id="btnSalvar-${it.id}" onclick="salvarRecebimento(${it.id})">Salvar</span></td>
+          <td id="status-${it.id}">${badgeStatus(it.status_recebimento, it.pausado)}</td>
+          <td class="so-editor"><span class="btn" id="btnSalvar-${it.id}" onclick="salvarRecebimento(${it.id})">Salvar</span>
+            <span class="btn" id="btnPausa-${it.id}" onclick="pausarItem(${it.id})" title="${it.pausado ? 'Voltar a comprar/cobrar este item' : 'Não vou mais comprar este item: some do PDF de cobrança e do Excel'}">${it.pausado ? '▶ Retomar' : '⏸ Pausar'}</span></td>
         </tr>`).join('')}
       </tbody>
     </table>`;
@@ -897,7 +904,8 @@ function atualizarBotaoExportarItens(){
 function gerarPdfCobranca(){
   // sem nada marcado, cobra o que está filtrado na tela (ex.: só a família MAP)
   const base = itensSelecionados.size ? TODOS_ITENS.filter(it => itensSelecionados.has(it.id)) : (window.__itensRenderizados || TODOS_ITENS);
-  const pendentes = base.filter(it => Number(it.quantidade_pendente) > 0);
+  // item pausado (compra cancelada) nunca vai pra cobrança
+  const pendentes = base.filter(it => Number(it.quantidade_pendente) > 0 && !it.pausado);
   if (!pendentes.length){ showMsg('Nenhum item pendente para cobrar.', true); return; }
 
   const { jsPDF } = window.jspdf;
@@ -979,8 +987,10 @@ function gerarPdfCobranca(){
 }
 
 async function exportarItensSelecionadosExcel(){
-  const itens = TODOS_ITENS.filter(it => itensSelecionados.has(it.id));
-  if (!itens.length) return;
+  // item pausado (compra cancelada) não sai no Excel
+  const marcados = TODOS_ITENS.filter(it => itensSelecionados.has(it.id));
+  const itens = marcados.filter(it => !it.pausado);
+  if (!itens.length){ if (marcados.length) showMsg('Os itens marcados estão todos pausados — nada para exportar.', false); return; }
 
   const dataExcel = s => { const m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null; };
   const COLS = [
@@ -1109,15 +1119,41 @@ async function salvarRecebimento(id, { silencioso = false } = {}){
     const celPend = document.getElementById(`qtdPend-${id}`);
     if (celPend) celPend.textContent = item.quantidade_pendente.toLocaleString('pt-BR');
     const celStatus = document.getElementById(`status-${id}`);
-    if (celStatus) celStatus.innerHTML = badgeStatus(item.status_recebimento);
+    if (celStatus) celStatus.innerHTML = badgeStatus(item.status_recebimento, item.pausado);
     const linha = document.getElementById(`row-${id}`);
-    if (linha) linha.classList.toggle('row-total', item.status_recebimento === 'total');
+    if (linha) linha.classList.toggle('row-total', !item.pausado && item.status_recebimento === 'total');
   }
 
   linhasSujas.delete(id);
   const btn = document.getElementById(`btnSalvar-${id}`);
   if (btn) btn.classList.remove('btn-suja');
   if (!silencioso) showMsg('Recebimento atualizado.', true);
+}
+
+// ── PAUSAR / RETOMAR a compra de um item ────────────────────────────────────
+// Pausado não aparece no PDF de cobrança nem no Excel, e a linha fica roxa.
+// Atualiza só a linha (DOM + TODOS_ITENS), sem recarregar a tabela.
+async function pausarItem(id){
+  const item = TODOS_ITENS.find(it => it.id === id);
+  if (!item) return;
+  const pausar = !item.pausado;
+  if (pausar && !confirm(`Pausar este item?\n\n${item.descricao || ''}\n\nEle deixa de aparecer no PDF de cobrança e no Excel. Dá pra retomar depois.`)) return;
+  const { error } = await sb.rpc('pausar_item_almoxarifado', { p_id: id, p_pausado: pausar });
+  if (error){ showMsg('Erro ao ' + (pausar ? 'pausar' : 'retomar') + ': ' + error.message, false); return; }
+  item.pausado = pausar;
+  const linha = document.getElementById(`row-${id}`);
+  if (linha){
+    linha.classList.toggle('row-pausado', pausar);
+    linha.classList.toggle('row-total', !pausar && item.status_recebimento === 'total');
+  }
+  const celStatus = document.getElementById(`status-${id}`);
+  if (celStatus) celStatus.innerHTML = badgeStatus(item.status_recebimento, pausar);
+  const btn = document.getElementById(`btnPausa-${id}`);
+  if (btn){
+    btn.textContent = pausar ? '▶ Retomar' : '⏸ Pausar';
+    btn.title = pausar ? 'Voltar a comprar/cobrar este item' : 'Não vou mais comprar este item: some do PDF de cobrança e do Excel';
+  }
+  showMsg(pausar ? 'Item pausado.' : 'Item retomado.', true);
 }
 
 // avisa antes de fechar/sair da página se ainda tiver linha não salva --
