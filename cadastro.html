@@ -1604,7 +1604,13 @@ async function sincronizarItensPCP(desenho, posicoesAtuais){
     // multiplica pela "quantidade a fabricar" que a Engenharia informou (ex:
     // "FABRICAR 3x CONFORME DESENHO" — cada posição da lista de material do
     // desenho é fabricada 3 vezes, não só 1).
-    const quantidade = (pos.quantidade ?? 1) * (desenho.quantidade_fabricar || 1);
+    // REGRA (Geziel, 2026-11-19): desenho de ROLETE e de BASE DE ROLETE vale 1 peça
+    // por desenho. A quantidade vem só do "fabricar Nx" da Engenharia/PCP (ex: 8x = 8
+    // rolos). Se a posição transcrita trouxer qtd > 1 (ex: digitaram 8 por causa do
+    // "8x"), NÃO multiplica de novo — era isso que gerava 64 no lugar de 8 (P-902).
+    const setorUmaPeca = ['ROLOS', 'BASES ROLETES'].includes(String(desenho.setor || '').toUpperCase());
+    const qtdPosicao = setorUmaPeca ? 1 : (pos.quantidade ?? 1);
+    const quantidade = qtdPosicao * (desenho.quantidade_fabricar || 1);
     const pesoUnitario = pos.peso_unitario ?? pos.peso_total ?? 0;
     const existente = porPosicao[chave];
 
