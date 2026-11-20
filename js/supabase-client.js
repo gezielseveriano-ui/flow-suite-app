@@ -67,6 +67,8 @@ async function exigirLogin(perfisPermitidos) {
     return null;
   }
 
+  // Suprimentos ainda em teste: item do menu só para o administrador
+  try { const navS = document.getElementById('navSuprimentos'); if (navS && perfilRow.perfil === 'admin') navS.style.display = ''; } catch (e) {}
   return { user: session.user, nome: perfilRow.nome, perfil: perfilRow.perfil };
 }
 
