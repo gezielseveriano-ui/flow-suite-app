@@ -225,6 +225,11 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 .cfg-box{max-width:820px}.cfg-dica{font-size:12px;color:var(--text2);margin:6px 0 0 22px}
 .modal-box{max-width:1180px}
 @media (max-width:640px){.painel-grid{grid-template-columns:1fr}}
+.mat-dd{position:fixed;z-index:900;background:var(--bg-card,#fff);color:var(--text,#222);border:1px solid var(--border,#cfd6df);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.25);max-height:300px;overflow:auto;min-width:380px}
+.mat-dd .it{padding:7px 12px;cursor:pointer;border-bottom:1px solid var(--border,#e5e9ef);font-size:13px}
+.mat-dd .it:hover{background:rgba(80,140,255,.15)}.mat-dd .it b{font-family:monospace;font-size:13px}.mat-dd .vazio{padding:10px 12px;font-size:13px;opacity:.7}
+.mat-prev{margin-top:12px;padding:10px 14px;border:1px dashed var(--border,#cfd6df);border-radius:8px}
+.mat-cod{font-family:monospace;font-size:20px;font-weight:700;letter-spacing:.5px}
 </style>
 </head>
 <body>
@@ -313,6 +318,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
         <button class="mod-tab active" id="tabPainel" onclick="renderPainel()">📊 Painel</button>
         <button class="mod-tab" id="tabSC" onclick="renderSC()">📋 Solicitações (SC) <span id="badgeSC" class="tab-badge"></span></button>
         <button class="mod-tab" id="tabOC" onclick="renderOC()">🛒 Ordens de Compra (OC)</button>
+        <button class="mod-tab" id="tabMat" onclick="renderMat()">📦 Materiais</button>
         <button class="mod-tab" id="tabForn" onclick="renderForn()">🏭 Fornecedores</button>
         <button class="mod-tab" id="tabCfg" onclick="renderCfg()">⚙️ Configuração</button>
       </div>
@@ -336,10 +342,10 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
     </div>
     <div class="prot-sec">Itens</div>
     <div class="tbl-wrap"><table class="dtbl" id="scItensTbl">
-      <thead><tr><th>#</th><th>Código</th><th style="min-width:230px">Descrição *</th><th style="min-width:230px">Especificação técnica</th><th>Un.</th><th>Qtd. *</th><th>Desenho</th><th></th></tr></thead>
+      <thead><tr><th>#</th><th>Código (busque no cadastro)</th><th style="min-width:230px">Descrição *</th><th style="min-width:230px">Formato / especificação</th><th>Un.</th><th>Qtd. *</th><th>Desenho</th><th></th></tr></thead>
       <tbody id="scItensBody"></tbody>
     </table></div>
-    <div style="margin-top:10px"><span class="btn" onclick="scAddLinha()">➕ Adicionar item</span></div>
+    <div style="margin-top:10px"><span class="btn" onclick="scAddLinha()">➕ Adicionar item</span> <span class="espec" style="margin-left:8px">Digite parte do código ou do nome (ex.: <b>M CH 3/8</b>) e escolha o material. Sem cadastro? Digite a descrição mesmo — Suprimentos cadastra depois.</span></div>
     <div class="msg-box" id="scMsg"></div>
     <div class="modal-actions">
       <span class="btn" onclick="fecharModal('modalSC')">Cancelar</span>
@@ -387,6 +393,56 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 <div class="modal-overlay" id="modalOCDet">
   <div class="modal-box" id="ocDetBox"></div>
 </div>
+
+<!-- Material -->
+<div class="modal-overlay" id="modalMat">
+  <div class="modal-box" style="max-width:760px">
+    <div class="modal-title" id="matTitulo">Novo material</div>
+    <div class="form-grid">
+      <label>Grupo<select id="matGrupo" onchange="matTipoOpcoes()"></select></label>
+      <label>Tipo<select id="matTipo" onchange="matCampos()"></select></label>
+    </div>
+    <div class="form-grid" id="matCampos" style="margin-top:8px"></div>
+    <div class="mat-prev"><div class="espec">Código gerado</div><div class="mat-cod" id="matPrevCod">—</div><div id="matPrevNome" class="espec"></div></div>
+    <div class="form-grid" style="margin-top:8px">
+      <label>Unidade de compra<input id="matUn" value="UN" style="text-transform:uppercase"></label>
+      <label>Código no ERP externo (opcional)<input id="matErp" placeholder="ex.: Sapiens"></label>
+      <label class="full">Formatos padrão (separe por vírgula)<input id="matFormatos" placeholder="ex.: 1200x3000, 1500x6000, 2500x3000"></label>
+      <label class="full">Observação / complemento<textarea id="matObs" rows="2"></textarea></label>
+      <label class="chk full" id="matAtivoWrap"><input type="checkbox" id="matAtivo" checked> Material ativo (aparece na busca da SC)</label>
+    </div>
+    <div class="msg-box" id="matMsg"></div>
+    <div class="modal-actions">
+      <span class="btn" onclick="fecharModal('modalMat')">Cancelar</span>
+      <span class="btn btn-primary" onclick="salvarMat()">Salvar material</span>
+    </div>
+  </div>
+</div>
+
+<!-- Tipo de material -->
+<div class="modal-overlay" id="modalTipo">
+  <div class="modal-box" style="max-width:760px">
+    <div class="modal-title" id="tipoTitulo">Tipo de material</div>
+    <div class="modal-sub">O tipo define o que o cadastro pergunta e o que entra no código (<b>GRUPO-TIPO-característica-característica</b>).</div>
+    <div class="form-grid">
+      <label>Letra do grupo<input id="tpGrupo" maxlength="3" placeholder="M" style="text-transform:uppercase"></label>
+      <label>Nome do grupo<input id="tpGrupoNome" placeholder="Matéria-prima"></label>
+      <label>Sigla do tipo<input id="tpCodigo" maxlength="6" placeholder="CH" style="text-transform:uppercase"></label>
+      <label>Nome do tipo<input id="tpNome" placeholder="Chapa"></label>
+      <label>Unidade padrão<input id="tpUn" value="UN"></label>
+      <label class="chk" id="tpAtivoWrap"><input type="checkbox" id="tpAtivo" checked> Tipo ativo</label>
+      <label class="full">Características — uma por linha: <b>Nome | opções separadas por vírgula | no código? (s/n) | obrigatório? (s/n)</b>
+        <textarea id="tpCampos" rows="7" style="font-family:monospace" placeholder="Espessura | | s | s&#10;Aço / material | A36, 1045, 316 | s | s&#10;Observação técnica | | n | n"></textarea></label>
+    </div>
+    <div class="msg-box" id="tipoMsg"></div>
+    <div class="modal-actions">
+      <span class="btn" onclick="fecharModal('modalTipo')">Cancelar</span>
+      <span class="btn btn-primary" onclick="salvarTipo()">Salvar tipo</span>
+    </div>
+  </div>
+</div>
+
+<div id="matDD" class="mat-dd" style="display:none"></div>
 
 <!-- Fornecedor -->
 <div class="modal-overlay" id="modalForn">
@@ -437,7 +493,8 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 // SUPRIMENTOS — Solicitação de Compra (SC) → Ordem de Compra (OC) → Almoxarifado
 // Todas as escritas passam por funções do banco (sql/092), que conferem o perfil.
 // ============================================================================
-let AUTH = null, CFG = {}, FORNS = [], PEDIDOS = [], SCS = [], OCS = [], RECEB = {};
+let AUTH = null, CFG = {}, FORNS = [], PEDIDOS = [], SCS = [], OCS = [], RECEB = {}, TIPOS = [], MATS = [];
+const PERFIS_MAT = ['admin', 'suprimentos', 'almoxarifado', 'engenharia'];
 let ABA = 'painel';
 const PERFIS_SC = ['pcp', 'engenharia', 'almoxarifado', 'producao', 'suprimentos', 'gestao', 'admin'];
 const PERFIS_OC = ['suprimentos', 'admin'];
@@ -486,15 +543,18 @@ const ocAberta = oc => ['emitida', 'enviada'].includes(oc.status) && !(RECEB[oc.
 
 // ── carga de dados ──────────────────────────────────────────────────────────
 async function carregarTudo(){
-  const [cfg, forns, peds, scs, ocs, rec] = await Promise.all([
+  const [cfg, forns, peds, scs, ocs, rec, tipos, mats] = await Promise.all([
     sb.from('suprimentos_config').select('*').eq('id', 1).maybeSingle(),
     sb.from('fornecedores_compra').select('*').order('razao_social'),
     sb.from('pedidos').select('id, numero_pedido, cliente').eq('arquivado', false).order('numero_pedido'),
     sb.from('sc_compra').select('*, sc_itens(*), pedidos(numero_pedido, cliente)').order('numero', { ascending: false }),
     sb.from('oc_compra').select('*, oc_itens(*), fornecedores_compra(razao_social, nome_fantasia, cnpj, email)').order('numero', { ascending: false }),
-    sb.from('vw_oc_recebimento').select('oc_id, quantidade, quantidade_recebida')
+    sb.from('vw_oc_recebimento').select('oc_id, quantidade, quantidade_recebida'),
+    sb.from('mat_tipos').select('*').order('grupo').order('nome'),
+    sb.from('materiais').select('*').order('codigo')
   ]);
-  for (const r of [cfg, forns, peds, scs, ocs, rec]) if (r.error) throw r.error;
+  for (const r of [cfg, forns, peds, scs, ocs, rec, tipos, mats]) if (r.error) throw r.error;
+  TIPOS = tipos.data; MATS = mats.data;
   CFG = cfg.data || {};
   FORNS = forns.data; PEDIDOS = peds.data;
   SCS = scs.data.map(s => ({ ...s, sc_itens: (s.sc_itens || []).sort((a, b) => a.item_seq - b.item_seq) }));
@@ -507,7 +567,7 @@ async function carregarTudo(){
 
 function marcarAba(a){
   ABA = a;
-  [['painel', 'tabPainel'], ['sc', 'tabSC'], ['oc', 'tabOC'], ['forn', 'tabForn'], ['cfg', 'tabCfg']].forEach(([k, id]) => $(id).classList.toggle('active', k === a));
+  [['painel', 'tabPainel'], ['sc', 'tabSC'], ['oc', 'tabOC'], ['mat', 'tabMat'], ['forn', 'tabForn'], ['cfg', 'tabCfg']].forEach(([k, id]) => $(id).classList.toggle('active', k === a));
   try { history.replaceState(null, '', a === 'painel' ? location.pathname + location.search : '#' + a); } catch (e) {}
   $('msgBox').classList.remove('show');
 }
@@ -524,7 +584,7 @@ async function init(){
     $('avisoLeitura').textContent = '👁 Modo visualização — você pode consultar solicitações e ordens de compra. Solicitar e comprar depende do seu perfil.';
   }
   await carregarTudo();
-  const abas = { sc: renderSC, oc: renderOC, forn: renderForn, cfg: renderCfg };
+  const abas = { sc: renderSC, oc: renderOC, mat: renderMat, forn: renderForn, cfg: renderCfg };
   (abas[location.hash.replace('#', '')] || renderPainel)();
 }
 
@@ -617,9 +677,10 @@ let SC_EDIT_ID = null;
 function scLinhaHTML(i = {}){
   return `<tr>
     <td class="sc-n"></td>
-    <td><input class="edit-input txt" data-f="codigo" value="${esc(i.codigo || '')}" style="width:90px"></td>
+    <td><input class="edit-input txt" data-f="codigo" value="${esc(i.codigo || '')}" placeholder="🔍 código ou nome" autocomplete="off" style="width:170px" oninput="matBusca(this)" onfocus="matBusca(this)" onblur="setTimeout(matFechaDD, 180)">
+      <input type="hidden" data-f="material_id" value="${i.material_id || ''}"><datalist class="dl-fmt"></datalist></td>
     <td><input class="edit-input txt" data-f="descricao" value="${esc(i.descricao || '')}" placeholder="ex.: Chapa inox 316L" style="width:100%"></td>
-    <td><input class="edit-input txt" data-f="especificacao" value="${esc(i.especificacao || '')}" placeholder="ex.: e=6,35 mm · 1500×6000 · cert. 3.1" style="width:100%"></td>
+    <td><input class="edit-input txt" data-f="especificacao" value="${esc(i.especificacao || '')}" placeholder="formato / complemento (ex.: 1500x6000 · cert. 3.1)" style="width:100%"></td>
     <td><input class="edit-input txt" data-f="unidade" value="${esc(i.unidade || 'UN')}" style="width:56px"></td>
     <td><input class="edit-input" data-f="quantidade" type="number" min="0" step="any" value="${i.quantidade ?? ''}" style="width:84px"></td>
     <td><input class="edit-input txt" data-f="desenho" value="${esc(i.desenho || '')}" style="width:100px"></td>
@@ -693,7 +754,7 @@ function abrirSC(id){
     ${s.aprovador_nome && !['recusada', 'cancelada'].includes(s.status) ? `<p class="det-txt"><b>Aprovada por:</b> ${esc(s.aprovador_nome)} em ${fmtData(s.aprovado_em)}</p>` : ''}
     <div class="tbl-wrap"><table class="dtbl">
       <thead><tr><th>#</th><th>Código</th><th>Descrição</th><th>Especificação</th><th>Un.</th><th class="r">Solicitado</th><th class="r">Em OC</th><th class="r">A comprar</th><th>Desenho</th></tr></thead>
-      <tbody>${s.sc_itens.map(i => `<tr><td>${i.item_seq}</td><td>${esc(i.codigo || '')}</td><td><b>${esc(i.descricao)}</b></td><td class="desc-cell" title="${esc(i.especificacao || '')}">${esc(i.especificacao || '')}</td><td>${esc(i.unidade)}</td>
+      <tbody>${s.sc_itens.map(i => `<tr><td>${i.item_seq}</td><td>${i.material_id ? `<b style="font-family:monospace">${esc(i.codigo || '')}</b>` : (i.codigo ? esc(i.codigo) : badge('sem cadastro', 'st-amber'))}</td><td><b>${esc(i.descricao)}</b></td><td class="desc-cell" title="${esc(i.especificacao || '')}">${esc(i.especificacao || '')}</td><td>${esc(i.unidade)}</td>
         <td class="r">${fmtNum(i.quantidade)}</td><td class="r">${fmtNum(i.quantidade_em_oc)}</td><td class="r"><b>${fmtNum(Math.max(0, i.quantidade - i.quantidade_em_oc))}</b></td><td>${esc(i.desenho || '')}</td></tr>`).join('')}</tbody>
     </table></div>
     ${ocsDaSC.length ? `<p class="det-txt"><b>Ordens de compra:</b> ${ocsDaSC.map(o => `<a href="#" onclick="event.preventDefault();fecharModal('modalSCDet');abrirOC(${o.id})">OC ${numStr(o.numero)}</a>`).join(' · ')}</p>` : ''}
@@ -1011,6 +1072,159 @@ function pdfOC(id){
   const n = doc.getNumberOfPages();
   for (let p = 1; p <= n; p++){ doc.setPage(p); doc.setFontSize(7.5); doc.setTextColor(130); txt(`OC ${numStr(o.numero)} · página ${p} de ${n} · gerado pelo Flow Suite`, W / 2, 291, { align: 'center' }); }
   doc.save(`OC_${numStr(o.numero)}_${(f.nome_fantasia || f.razao_social || 'fornecedor').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w]+/g, '_').slice(0, 30)}.pdf`);
+}
+
+// ============================================================================
+// MATERIAIS — catálogo com código montado: GRUPO-TIPO-característica-... (sql/093)
+// ============================================================================
+function renderMat(){
+  marcarAba('mat');
+  const edita = pode(PERFIS_MAT), tipos = pode(['admin', 'suprimentos']);
+  $('content').innerHTML = `
+    <div class="search-row">
+      ${edita ? `<span class="btn btn-primary" onclick="abrirMat()">➕ Novo material</span>` : ''}
+      ${tipos ? `<span class="btn" onclick="renderTipos()">🧩 Tipos e características</span>` : ''}
+      <input class="main" id="mBusca" placeholder="🔍 Busque por pedaços: M CH 3/8  ·  parafuso A325  ·  rolamento 6205..." oninput="renderMatTabela()">
+    </div>
+    <div class="tbl-wrap"><table class="dtbl">
+      <thead><tr><th>Código</th><th>Nome</th><th>Un.</th><th>Formatos padrão</th><th>Observação</th><th>Cód. ERP</th><th>Situação</th></tr></thead>
+      <tbody id="mTbody"></tbody></table></div>`;
+  renderMatTabela();
+}
+function matFiltra(q, soAtivos){
+  const tk = (q || '').toLowerCase().split(/[\s\-]+/).filter(Boolean);
+  return MATS.filter(m => (!soAtivos || m.ativo) && tk.every(w => (m.codigo + ' ' + m.nome + ' ' + (m.codigo_erp || '')).toLowerCase().includes(w)));
+}
+function renderMatTabela(){
+  const lista = matFiltra(($('mBusca') || {}).value, false);
+  $('mTbody').innerHTML = lista.length ? lista.map(m => `<tr class="${pode(PERFIS_MAT) ? 'clk' : ''}" ${pode(PERFIS_MAT) ? `onclick="abrirMat(${m.id})"` : ''}>
+    <td><b style="font-family:monospace">${esc(m.codigo)}</b></td><td>${esc(m.nome)}</td><td>${esc(m.unidade)}</td>
+    <td>${esc((m.formatos || []).join(' · '))}</td><td class="desc-cell" title="${esc(m.observacao || '')}">${esc(m.observacao || '')}</td><td>${esc(m.codigo_erp || '')}</td>
+    <td>${m.ativo ? badge('Ativo', 'st-green') : badge('Inativo', 'st-gray')}</td></tr>`).join('')
+    : `<tr><td colspan="7" class="empty">Nenhum material encontrado${pode(PERFIS_MAT) ? ' — clique em "Novo material"' : ''}.</td></tr>`;
+}
+
+let MAT_EDIT = null;
+function abrirMat(id){
+  const m = MATS.find(x => x.id === id) || null; MAT_EDIT = m;
+  $('matTitulo').textContent = m ? 'Material ' + m.codigo : 'Novo material';
+  const grupos = [...new Map(TIPOS.filter(t => t.ativo || (m && m.tipo_id === t.id)).map(t => [t.grupo, t.grupo_nome])).entries()];
+  $('matGrupo').innerHTML = grupos.map(([g, n]) => `<option value="${esc(g)}">${esc(g)} — ${esc(n)}</option>`).join('');
+  if (m) $('matGrupo').value = TIPOS.find(t => t.id === m.tipo_id).grupo;
+  matTipoOpcoes(m ? m.tipo_id : null);
+  $('matGrupo').disabled = $('matTipo').disabled = !!m;
+  $('matUn').value = m ? m.unidade : ($('matUn').value || 'UN');
+  $('matErp').value = m?.codigo_erp || '';
+  $('matFormatos').value = (m?.formatos || []).join(', ');
+  $('matObs').value = m?.observacao || '';
+  $('matAtivo').checked = m ? m.ativo : true; $('matAtivoWrap').style.display = m ? '' : 'none';
+  msgModal('matMsg', ''); abrirModal('modalMat');
+  if (m) matCampos(m.atributos);
+}
+function matTipoOpcoes(sel){
+  const g = $('matGrupo').value;
+  $('matTipo').innerHTML = TIPOS.filter(t => t.grupo === g && (t.ativo || t.id === sel)).map(t => `<option value="${t.id}">${esc(t.codigo)} — ${esc(t.nome)}</option>`).join('');
+  if (sel) $('matTipo').value = sel;
+  matCampos(MAT_EDIT ? MAT_EDIT.atributos : null);
+  if (!MAT_EDIT) { const t = TIPOS.find(x => x.id === Number($('matTipo').value)); if (t) $('matUn').value = t.unidade_padrao; }
+}
+function matCampos(vals){
+  const t = TIPOS.find(x => x.id === Number($('matTipo').value)); vals = vals || {};
+  $('matCampos').innerHTML = t ? t.campos.map((c, k) => {
+    const trava = MAT_EDIT && c.codigo;
+    const dl = (c.opcoes || []).length ? `<datalist id="mdl${k}">${c.opcoes.map(o => `<option value="${esc(o)}">`).join('')}</datalist>` : '';
+    return `<label><span>${esc(c.rotulo)}${c.obrigatorio ? ' <span class="req"></span>' : ''}${c.codigo ? ' <span class="espec">(no código)</span>' : ''}</span>
+      <input data-k="${esc(c.chave)}" value="${esc(vals[c.chave] || '')}" ${dl ? `list="mdl${k}"` : ''} ${trava ? 'disabled' : ''} placeholder="${esc(c.exemplo ? 'ex.: ' + c.exemplo : '')}" oninput="matPrev()">${dl}</label>`;
+  }).join('') : '';
+  matPrev();
+}
+function matPrev(){
+  const t = TIPOS.find(x => x.id === Number($('matTipo').value));
+  if (MAT_EDIT) { $('matPrevCod').textContent = MAT_EDIT.codigo; $('matPrevNome').textContent = MAT_EDIT.nome; return; }
+  if (!t) { $('matPrevCod').textContent = '—'; return; }
+  let cod = t.grupo + '-' + t.codigo, nome = t.nome;
+  for (const c of t.campos) {
+    const v = (document.querySelector(`#matCampos [data-k="${c.chave}"]`)?.value || '').replace(/\s+/g, '');
+    if (v && c.codigo) { cod += '-' + v; nome += ' ' + v; }
+  }
+  $('matPrevCod').textContent = cod; $('matPrevNome').textContent = nome;
+}
+async function salvarMat(){
+  const t = TIPOS.find(x => x.id === Number($('matTipo').value));
+  if (!t) return msgModal('matMsg', 'Escolha o tipo de material.');
+  const atributos = {}; document.querySelectorAll('#matCampos [data-k]').forEach(i => { if (!i.disabled || MAT_EDIT) atributos[i.dataset.k] = i.value.trim(); });
+  if (!MAT_EDIT) for (const c of t.campos) if (c.obrigatorio && !atributos[c.chave]) return msgModal('matMsg', 'Informe: ' + c.rotulo);
+  const dados = { tipo_id: t.id, atributos, unidade: val('matUn').toUpperCase(), codigo_erp: val('matErp'), observacao: val('matObs'), ativo: $('matAtivo').checked,
+    formatos: val('matFormatos').split(',').map(s => s.trim()).filter(Boolean) };
+  const { error } = await sb.rpc('salvar_material', { p_id: MAT_EDIT ? MAT_EDIT.id : null, p_dados: dados });
+  if (error) return msgModal('matMsg', error.message);
+  fecharModal('modalMat'); await carregarTudo(); renderMat(); showMsg('Material salvo.', true);
+}
+
+// ── tipos e características ─────────────────────────────────────────────────
+function renderTipos(){
+  marcarAba('mat');
+  $('content').innerHTML = `
+    <div class="search-row"><span class="btn" onclick="renderMat()">← Materiais</span><span class="btn btn-primary" onclick="abrirTipo()">➕ Novo tipo</span></div>
+    <div class="tbl-wrap"><table class="dtbl"><thead><tr><th>Prefixo</th><th>Grupo</th><th>Tipo</th><th>Características (o que entra no código está em negrito)</th><th>Materiais</th><th>Situação</th></tr></thead>
+    <tbody>${TIPOS.map(t => `<tr class="clk" onclick="abrirTipo(${t.id})"><td><b style="font-family:monospace">${esc(t.grupo)}-${esc(t.codigo)}</b></td><td>${esc(t.grupo_nome)}</td><td>${esc(t.nome)}</td>
+      <td>${t.campos.map(c => c.codigo ? `<b>${esc(c.rotulo)}</b>` : esc(c.rotulo)).join(' · ')}</td><td>${MATS.filter(m => m.tipo_id === t.id).length}</td><td>${t.ativo ? badge('Ativo', 'st-green') : badge('Inativo', 'st-gray')}</td></tr>`).join('')}</tbody></table></div>`;
+}
+let TIPO_EDIT = null;
+const slug = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+function abrirTipo(id){
+  const t = TIPOS.find(x => x.id === id) || null; TIPO_EDIT = t;
+  $('tipoTitulo').textContent = t ? `Tipo ${t.grupo}-${t.codigo} — ${t.nome}` : 'Novo tipo de material';
+  $('tpGrupo').value = t?.grupo || ''; $('tpGrupoNome').value = t?.grupo_nome || ''; $('tpCodigo').value = t?.codigo || ''; $('tpNome').value = t?.nome || '';
+  $('tpGrupo').disabled = $('tpCodigo').disabled = !!t;
+  $('tpUn').value = t?.unidade_padrao || 'UN'; $('tpAtivo').checked = t ? t.ativo : true; $('tpAtivoWrap').style.display = t ? '' : 'none';
+  $('tpCampos').value = (t?.campos || []).map(c => [c.rotulo, (c.opcoes || []).join(', '), c.codigo ? 's' : 'n', c.obrigatorio ? 's' : 'n'].join(' | ')).join('\n');
+  msgModal('tipoMsg', ''); abrirModal('modalTipo');
+}
+async function salvarTipo(){
+  const campos = []; const usados = new Set();
+  for (const linha of $('tpCampos').value.split('\n').map(l => l.trim()).filter(Boolean)) {
+    const [rot, ops, cod, obr] = linha.split('|').map(s => (s || '').trim());
+    if (!rot) continue;
+    let chave = slug(rot) || 'campo', n = 2; while (usados.has(chave)) chave = slug(rot) + '_' + n++; usados.add(chave);
+    const c = { chave, rotulo: rot, codigo: /^s/i.test(cod || 's'), obrigatorio: /^s/i.test(obr || (/^s/i.test(cod || 's') ? 's' : 'n')) };
+    if (ops) c.opcoes = ops.split(',').map(s => s.trim()).filter(Boolean);
+    campos.push(c);
+  }
+  if (!val('tpNome') || (!TIPO_EDIT && (!val('tpGrupo') || !val('tpCodigo') || !val('tpGrupoNome')))) return msgModal('tipoMsg', 'Preencha grupo, nome do grupo, sigla e nome do tipo.');
+  if (!campos.length) return msgModal('tipoMsg', 'Inclua pelo menos uma característica.');
+  const { error } = await sb.rpc('salvar_mat_tipo', { p_id: TIPO_EDIT ? TIPO_EDIT.id : null, p_dados: {
+    grupo: val('tpGrupo'), grupo_nome: val('tpGrupoNome'), codigo: val('tpCodigo'), nome: val('tpNome'), unidade_padrao: val('tpUn'), campos, ativo: $('tpAtivo').checked } });
+  if (error) return msgModal('tipoMsg', error.message.includes('mat_tipos_grupo_codigo_key') ? 'Já existe um tipo com esse grupo e sigla.' : error.message);
+  fecharModal('modalTipo'); await carregarTudo(); renderTipos(); showMsg('Tipo salvo.', true);
+}
+
+// ── busca no catálogo dentro da linha da SC ─────────────────────────────────
+let DD_INPUT = null;
+function matFechaDD(){ $('matDD').style.display = 'none'; DD_INPUT = null; }
+function matBusca(inp){
+  const tr = inp.closest('tr'), hid = tr.querySelector('[data-f="material_id"]');
+  const atual = MATS.find(m => String(m.id) === hid.value);
+  if (atual && atual.codigo !== inp.value.trim()) hid.value = '';      // mexeu no código: deixa de ser o material cadastrado
+  DD_INPUT = inp;
+  const q = inp.value.trim();
+  const lista = (q ? matFiltra(q, true) : MATS.filter(m => m.ativo)).slice(0, 12);
+  const dd = $('matDD'), r = inp.getBoundingClientRect();
+  dd.style.left = r.left + 'px'; dd.style.top = (r.bottom + 2) + 'px';
+  dd.innerHTML = lista.length ? lista.map(m => `<div class="it" onmousedown="matEscolhe(${m.id})"><b>${esc(m.codigo)}</b> &nbsp; ${esc(m.nome)}${(m.formatos || []).length ? `<div class="espec">${esc(m.formatos.join(' · '))}</div>` : ''}</div>`).join('')
+    : `<div class="vazio">${MATS.length ? 'Nenhum material com esse trecho.' : 'Catálogo vazio.'} Pode digitar a descrição manualmente — o item segue como "sem cadastro".</div>`;
+  dd.style.display = '';
+}
+function matEscolhe(id){
+  const m = MATS.find(x => x.id === id), tr = DD_INPUT && DD_INPUT.closest('tr'); if (!m || !tr) return;
+  const f = k => tr.querySelector(`[data-f="${k}"]`);
+  f('codigo').value = m.codigo; f('material_id').value = m.id; f('descricao').value = m.nome; f('unidade').value = m.unidade;
+  const dl = tr.querySelector('.dl-fmt'); dl.id = 'dlf' + Date.now();
+  dl.innerHTML = (m.formatos || []).map(x => `<option value="${esc(x)}">`).join('');
+  f('especificacao').setAttribute('list', dl.id);
+  if (!f('especificacao').value) f('especificacao').value = (m.formatos || []).length === 1 ? m.formatos[0] : '';
+  matFechaDD();
+  (m.formatos || []).length > 1 ? f('especificacao').focus() : f('quantidade').focus();
 }
 
 // ============================================================================
